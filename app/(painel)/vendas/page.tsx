@@ -56,7 +56,8 @@ async function Conteudo({ searchParams }: Props) {
   const geral = admin && escolhido === null;
   const visao = !geral && sp.visao === "ano" ? "ano" : "mes";
   const base = `/vendas?v=${geral ? "geral" : escolhido!.equipe_id}`;
-  const opcoes = vendedores.map((v) => ({ id: v.equipe_id, nome: v.nome }));
+  // o vendedor não recebe nem o nome dos outros
+  const opcoes = (admin ? vendedores : [eu!]).map((v) => ({ id: v.equipe_id, nome: v.nome }));
 
   return (
     <>
