@@ -4,6 +4,14 @@
 //   - botão "rodar teste agora" na tela do monitor (usuário logado).
 // Regras ficam em modulos/monitor/enviar-teste.ts.
 
-export function POST() {
+import { chamadaDoCron } from "@/lib/auth/cron";
+import { usuarioLogado } from "@/lib/auth/papeis";
+
+export async function POST(request: Request) {
+  const autorizado = chamadaDoCron(request) || (await usuarioLogado()) !== null;
+  if (!autorizado) {
+    return Response.json({ error: "nao autorizado" }, { status: 401 });
+  }
+
   return Response.json({ error: "nao implementado" }, { status: 501 });
 }
