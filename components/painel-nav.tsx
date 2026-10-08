@@ -16,16 +16,19 @@ import { usePathname } from "next/navigation";
 
 // Menu no estilo do masterview: pílula de vidro no topo (computador) e barra de
 // ícones flutuante embaixo (celular). Módulo novo = um item aqui.
-const ITENS = [
-  { href: "/", label: "Início", icon: House, emBreve: false },
-  { href: "/monitor", label: "Monitor", icon: Activity, emBreve: false },
-  { href: "/tarefas", label: "Tarefas", icon: ListChecks, emBreve: false },
-  { href: "/vendas", label: "Vendas", icon: BadgeDollarSign, emBreve: false },
-  { href: "/fechamento", label: "Fechamento", icon: CalendarCheck, emBreve: true },
-  { href: "/bms", label: "BMs", icon: Building2, emBreve: false },
-  // TODO(papeis): mostrar só para admin quando lib/auth/papeis.ts existir.
-  { href: "/admin/usuarios", label: "Usuários", icon: Users, emBreve: true },
+// `admin: true` = só admin vê. O bloqueio de verdade (endereço digitado) fica em
+// lib/supabase/proxy.ts (ADMIN_PATHS): manter as duas listas iguais.
+const TODOS = [
+  { href: "/", label: "Início", icon: House, emBreve: false, admin: false },
+  { href: "/monitor", label: "Monitor", icon: Activity, emBreve: false, admin: true },
+  { href: "/tarefas", label: "Tarefas", icon: ListChecks, emBreve: false, admin: false },
+  { href: "/vendas", label: "Vendas", icon: BadgeDollarSign, emBreve: false, admin: false },
+  { href: "/fechamento", label: "Fechamento", icon: CalendarCheck, emBreve: true, admin: true },
+  { href: "/bms", label: "BMs", icon: Building2, emBreve: false, admin: true },
+  { href: "/admin/usuarios", label: "Usuários", icon: Users, emBreve: true, admin: true },
 ];
+
+const itens = (admin: boolean) => TODOS.filter((i) => admin || !i.admin);
 
 function estaAtivo(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -33,7 +36,7 @@ function estaAtivo(pathname: string, href: string) {
 }
 
 /** Pílula do topo (computador). `usuario` = e-mail de quem está logado. */
-export function PainelNav({ usuario }: { usuario?: React.ReactNode }) {
+export function PainelNav({ usuario, admin = false }: { usuario?: React.ReactNode; admin?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -42,7 +45,7 @@ export function PainelNav({ usuario }: { usuario?: React.ReactNode }) {
       aria-label="Navegação principal"
     >
       <span className="shrink-0 px-3 text-[12.5px] font-semibold text-white">Ospinabiz</span>
-      {ITENS.map(({ href, label, emBreve }) => {
+      {itens(admin).map(({ href, label, emBreve }) => {
         const ativo = estaAtivo(pathname, href);
         return (
           <Link
@@ -71,7 +74,7 @@ export function PainelNav({ usuario }: { usuario?: React.ReactNode }) {
 }
 
 /** Barra de ícones flutuante embaixo (celular). */
-export function PainelNavMobile() {
+export function PainelNavMobile({ admin = false }: { admin?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -79,7 +82,7 @@ export function PainelNavMobile() {
       className="glass fixed bottom-4 left-1/2 z-40 flex w-[min(420px,calc(100vw-24px))] -translate-x-1/2 items-center justify-between rounded-full p-1.5 md:hidden"
       aria-label="Navegação principal"
     >
-      {ITENS.map(({ href, label, icon: Icon }) => {
+      {itens(admin).map(({ href, label, icon: Icon }) => {
         const ativo = estaAtivo(pathname, href);
         return (
           <Link

@@ -29,10 +29,12 @@ function saudacao(agora: Date): string {
 
 async function ConteudoInicio() {
   const usuario = await usuarioLogado();
+  const admin = usuario?.papel === "admin";
+  // Monitor é só de admin: para atendente nem carrega.
   const [capa, nome, monitor, tarefas] = await Promise.all([
     urlDaCapa(),
     usuario ? nomeNaEquipe(usuario.id) : Promise.resolve(null),
-    carregarMonitor(),
+    admin ? carregarMonitor() : Promise.resolve(null),
     listarTarefas(),
   ]);
 
@@ -40,16 +42,16 @@ async function ConteudoInicio() {
   const hoje = hojeEmSaoPaulo(agora);
   const dataHoje = new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO, weekday: "long", day: "numeric", month: "long" }).format(agora);
 
-  const numeros = statusDosNumeros(monitor.numeros, monitor.testeAberto, monitor.ultimoFechado, monitor.resultados);
+  const numeros = monitor ? statusDosNumeros(monitor.numeros, monitor.testeAberto, monitor.ultimoFechado, monitor.resultados) : [];
   const resumo = resumirTeste(numeros);
   const bmsComProblema = [...new Set(numeros.filter((n) => n.status === "falhou" || n.status === "sem_resposta").map((n) => n.bm.nome))];
   const contagem = contarPorFiltro(tarefas, hoje);
-  const temTeste = monitor.ultimoFechado !== null;
+  const temTeste = monitor?.ultimoFechado != null;
 
   return (
     <>
       <div className="relative -mt-8 mb-8 pt-[270px] md:-mt-24">
-        <Capa url={capa} admin={usuario?.papel === "admin"} />
+        <Capa url={capa} admin={admin} />
         <header className="relative z-10">
           <p className="text-[11px] uppercase tracking-[0.2em] text-ink-dim [text-shadow:0_1px_10px_rgba(0,0,0,0.5)]">
             {dataHoje}
@@ -63,21 +65,25 @@ async function ConteudoInicio() {
 
       <section className="flex flex-col gap-3">
         <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Status do dia</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <CardStatus
-            href="/monitor"
-            rotulo="Números OK no último teste"
-            valor={temTeste ? `${resumo.ok}/${resumo.testados}` : "sem teste"}
-            detalhe={temTeste ? undefined : `${numeros.length} números em operação`}
-            alerta={temTeste && resumo.ok < resumo.testados}
-          />
-          <CardStatus
-            href="/monitor"
-            rotulo="BMs com problema"
-            valor={temTeste ? String(bmsComProblema.length) : "sem teste"}
-            detalhe={bmsComProblema.length > 0 ? bmsComProblema.join(", ") : undefined}
-            alerta={bmsComProblema.length > 0}
-          />
+        <div className={cn("grid gap-4 sm:grid-cols-2", admin && "lg:grid-cols-4")}>
+          {admin && (
+            <>
+              <CardStatus
+                href="/monitor"
+                rotulo="Números OK no último teste"
+                valor={temTeste ? `${resumo.ok}/${resumo.testados}` : "sem teste"}
+                detalhe={temTeste ? undefined : `${numeros.length} números em operação`}
+                alerta={temTeste && resumo.ok < resumo.testados}
+              />
+              <CardStatus
+                href="/monitor"
+                rotulo="BMs com problema"
+                valor={temTeste ? String(bmsComProblema.length) : "sem teste"}
+                detalhe={bmsComProblema.length > 0 ? bmsComProblema.join(", ") : undefined}
+                alerta={bmsComProblema.length > 0}
+              />
+            </>
+          )}
           <CardStatus href="/tarefas" rotulo="Tarefas pendentes" valor={String(contagem.pendentes)} />
           <CardStatus
             href="/tarefas?filtro=atrasadas"

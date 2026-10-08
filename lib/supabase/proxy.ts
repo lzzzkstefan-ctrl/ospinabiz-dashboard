@@ -8,10 +8,16 @@ import { hasEnvVars } from "../utils";
 // CRON_SECRET ou usuario logado).
 const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/confirmar", "/erro", "/api"];
 
+// Telas só de admin. Atendente que digitar o endereço volta pro Início.
+// Manter igual aos itens com `admin: true` em components/painel-nav.tsx.
+const ADMIN_PATHS = ["/monitor", "/bms", "/fechamento", "/admin", "/vendas/config", "/vendas/fechamento"];
+
+function comecaCom(pathname: string, caminhos: string[]) {
+  return caminhos.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 function isPublic(pathname: string) {
-  return PUBLIC_PATHS.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
-  );
+  return comecaCom(pathname, PUBLIC_PATHS);
 }
 
 export async function updateSession(request: NextRequest) {
@@ -62,6 +68,14 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isPublic(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
+  const papel = (user?.app_metadata as { papel?: unknown } | undefined)?.papel;
+  if (user && papel !== "admin" && comecaCom(pathname, ADMIN_PATHS)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
     url.search = "";
     return NextResponse.redirect(url);
   }
