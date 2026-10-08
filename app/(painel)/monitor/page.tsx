@@ -1,6 +1,7 @@
 import { EmBreve } from "@/components/em-breve";
 
-// Modulo 1. A implementacao segue docs/monitor.md, depois das pendencias resolvidas.
+// Modulo 1. A implementacao segue docs/modulos/monitor.md, depois das pendencias resolvidas.
+// Pecas visuais so do monitor vao em ./_componentes.
 export default function MonitorPage() {
   return (
     <EmBreve

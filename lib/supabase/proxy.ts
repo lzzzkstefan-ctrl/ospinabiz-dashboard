@@ -3,7 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { hasEnvVars } from "../utils";
 
 // Rotas acessiveis sem login.
-const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/confirmar", "/erro"];
+// /api fica de fora do redirecionamento: quem chama sao maquinas (Meta, pg_cron).
+// Cada rota em app/api TEM que checar sozinha quem chamou (assinatura da Meta,
+// CRON_SECRET ou usuario logado).
+const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/confirmar", "/erro", "/api"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some(

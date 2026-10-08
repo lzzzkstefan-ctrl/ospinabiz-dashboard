@@ -1,14 +1,23 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Activity, BadgeDollarSign, Building2 } from "lucide-react";
+import {
+  Activity,
+  BadgeDollarSign,
+  Building2,
+  CalendarCheck,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const ITENS = [
   { href: "/monitor", label: "Monitor", icon: Activity, emBreve: false },
   { href: "/vendas", label: "Vendas", icon: BadgeDollarSign, emBreve: true },
+  { href: "/fechamento", label: "Fechamento", icon: CalendarCheck, emBreve: true },
   { href: "/bms", label: "BMs", icon: Building2, emBreve: true },
+  // TODO(papeis): mostrar só para admin quando lib/auth/papeis.ts existir.
+  { href: "/admin/usuarios", label: "Usuários", icon: Users, emBreve: true },
 ];
 
 export function PainelNav() {

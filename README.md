@@ -2,7 +2,7 @@
 
 Dashboard interno da Ospinabiz. Next.js + Supabase.
 
-Leia primeiro o `CLAUDE.md`. Contexto do módulo Monitor em `docs/monitor.md`.
+Leia primeiro o `CLAUDE.md`. Contexto do módulo Monitor em `docs/modulos/monitor.md`.
 Onde está cada conta em `docs/contas.md`.
 
 ## Rodar local

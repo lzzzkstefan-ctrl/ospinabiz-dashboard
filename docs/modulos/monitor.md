@@ -66,15 +66,22 @@ Teste 07h30 — 17/18 ok
 
 Estas decisões substituem o que está acima onde houver conflito.
 
-- **Hospedagem:** a dashboard fica na Vercel. O webhook e o agendamento **não** usam a Vercel:
-  - webhook da Meta → Edge Function `meta-webhook` no Supabase;
-  - envio dos testes → Edge Function `run-test`;
-  - agendamento → pg_cron + pg_net no Supabase (UTC: `30 10 * * *` e `0 20 * * *`).
+- **"O Supabase é o relógio, a Vercel faz o trabalho":**
+  - todo o código fica no Next, na Vercel:
+    - `app/api/monitor/webhook` recebe da Meta;
+    - `app/api/monitor/rodar-teste` envia o template;
+    - `app/api/monitor/fechar-teste` decide o resultado e manda o alerta;
+  - o pg_cron + pg_net do Supabase só chama essas rotas no horário exato
+    (UTC: `30 10 * * *` = 7h30 e `0 20 * * *` = 17h; o fechamento roda alguns minutos depois de cada um);
+  - o cron da Vercel **não** é usado: no plano Hobby ele roda no máximo 1x/dia por tarefa e
+    dispara em qualquer minuto da hora marcada (7h00–7h59), sem garantir 7h30.
+  - as chamadas do pg_cron levam `Authorization: Bearer CRON_SECRET`.
 - **Status de cada número num teste:**
   - `delivered` (ou `read`) = OK;
   - `failed` = FALHOU;
   - só `sent`, ou nada, depois do prazo = SEM RESPOSTA.
   - Por isso o teste é "fechado" alguns minutos depois do envio (um job do pg_cron), e só aí o alerta sai.
 - **Webhook:** responde à verificação GET da Meta (`hub.challenge`), confere a assinatura
-  `X-Hub-Signature-256` com o app secret e roda com `verify_jwt = false`.
+  `X-Hub-Signature-256` com o app secret antes de processar qualquer coisa.
+- **Números monitorados:** ficam numa tabela do banco, carregados da planilha. Nunca no código nem no git.
 - **Login:** Supabase Auth, só convite, papéis `admin` e `atendente`.
