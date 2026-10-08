@@ -85,6 +85,12 @@ async function Conteudo({ searchParams }: Props) {
         </nav>
       )}
 
+      {!admin && (
+        <Link href={`/vendas/config?mes=${mes}`} className="-mt-3 self-start text-[13px] text-ink-dim underline underline-offset-4 hover:text-white">
+          Ver configuração e margem do mês
+        </Link>
+      )}
+
       {!geral && (
         <nav className="flex flex-wrap gap-1.5 border-b border-line-soft pb-3" aria-label="Visão">
           {[
@@ -168,6 +174,7 @@ async function Mes({
         tickets={tickets}
         vendas={vendas}
         margemPadrao={margemPadrao}
+        faixaSugerida={margem}
         mes={mes}
         mesAtual={mesAtual}
         ver={ver}

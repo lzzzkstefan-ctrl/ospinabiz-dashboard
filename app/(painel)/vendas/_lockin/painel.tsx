@@ -57,6 +57,7 @@ export function PainelVendas({
   tickets,
   vendas,
   margemPadrao,
+  faixaSugerida,
   mes,
   mesAtual,
   ver,
@@ -71,6 +72,8 @@ export function PainelVendas({
   tickets: TicketLI[];
   vendas: VendaLI[];
   margemPadrao: Faixa;
+  /** % sugerido pela margem do mês (null = faltam valores do mês) */
+  faixaSugerida: Faixa | null;
   mes: string;
   mesAtual: string;
   ver: VerLista;
@@ -198,7 +201,12 @@ export function PainelVendas({
             </button>
           ))}
         </div>
-        {!admin && <span className="text-[11.5px] text-ink-faint">O % que vale é o do fechamento, escolhido pelo admin.</span>}
+        {!admin && (
+          <span className="text-[11.5px] text-ink-faint">
+            O % que vale é o do fechamento, escolhido pelo admin ·{" "}
+            <span className="text-ink">{faixaSugerida ? `sugerido pela margem do mês: ${faixaSugerida}%` : "margem do mês ainda sem sugestão"}</span>
+          </span>
+        )}
       </div>
 
       {/* rosca + resumo por ticket */}

@@ -11,7 +11,8 @@ const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/confirmar", "/erro", "/api",
 
 // Telas só de admin. Atendente que digitar o endereço volta pro Início.
 // Manter igual aos itens com `admin: true` em components/painel-nav.tsx.
-const ADMIN_PATHS = ["/monitor", "/bms", "/fechamento", "/admin", "/vendas/config", "/vendas/fechamento"];
+// /vendas/config fica liberada: atendente vê em modo leitura (a página decide o que mostra).
+const ADMIN_PATHS = ["/monitor", "/bms", "/fechamento", "/admin", "/vendas/fechamento"];
 
 function comecaCom(pathname: string, caminhos: string[]) {
   return caminhos.some((p) => pathname === p || pathname.startsWith(`${p}/`));

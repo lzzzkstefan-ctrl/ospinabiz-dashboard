@@ -169,6 +169,22 @@ export async function faixasSugeridas(ano: number): Promise<Map<string, Faixa | 
   return r;
 }
 
+/** Custos fixos e seus valores, para a tela de configuração em modo leitura (atendente).
+ * As tabelas são só do admin no RLS; aqui o servidor lê com a chave secreta e devolve só
+ * nome, desativação e valores (o mesmo que entra na conta da margem). */
+export async function custosParaLeitura(): Promise<
+  { id: number; nome: string; desativado_desde: string | null; valores: { vigente_desde: string; valor: number | null }[] }[]
+> {
+  const db = createAdminClient();
+  const { data, error } = await db
+    .from("custos_fixos")
+    .select("id, nome, desativado_desde, valores:custos_fixos_valores(vigente_desde, valor)")
+    .order("nome");
+  if (error) throw new Error(`Erro ao carregar custos: ${error.message}`);
+  type Bruto = { id: number; nome: string; desativado_desde: string | null; valores: { vigente_desde: string; valor: string | number | null }[] };
+  return (data as unknown as Bruto[]).map((c) => ({ ...c, valores: c.valores.map((v) => ({ ...v, valor: v.valor === null ? null : Number(v.valor) })) }));
+}
+
 /** WhatsApp do Rodrigo (só admin; para os outros volta null). */
 export async function whatsappFechamento(): Promise<string | null> {
   const supabase = await createClient();

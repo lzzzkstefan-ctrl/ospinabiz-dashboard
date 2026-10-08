@@ -1,8 +1,10 @@
 import { Gaveta } from "@/components/formulario";
 import { Button } from "@/components/ui/button";
 import { Etiqueta } from "@/components/ui/etiqueta";
-import { ehAdmin } from "@/lib/auth/papeis";
-import { listarCustos, listarEventosComErro, listarTickets, margemDoMes } from "@/modulos/vendas/dados";
+import { Input } from "@/components/ui/input";
+import { usuarioLogado } from "@/lib/auth/papeis";
+import { listarCustos, listarEventosComErro, listarTickets, margemDoMes, type MargemDoMes } from "@/modulos/vendas/dados";
+import { custosParaLeitura } from "@/modulos/vendas/tela";
 import { centavos, custosDoMes, diaSP, lerMes, mesDe, nomeDoMes, precoCurto, reais, somarMes } from "@/modulos/vendas/regras";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,8 +14,11 @@ import { FormMes, FormNovoCusto, FormTicket, FormValorCusto } from "../_componen
 
 type Props = { searchParams: Promise<{ mes?: string | string[] }> };
 
-// Configuração de Vendas (só admin): valores do mês e margem, tickets, custos fixos
-// e eventos da Hubla com erro.
+// Configuração de Vendas. Admin: edita valores do mês, custos fixos, tickets e vê eventos
+// da Hubla com erro. Atendente: SÓ LEITURA do mês, dos custos fixos e da conta da margem
+// (campos desabilitados, sem salvar). Gravar continua só do admin: as ações conferem o
+// papel e o RLS do banco não deixa atendente inserir nem editar essas tabelas.
+// O único número da operação que aparece é o líquido total usado na conta.
 export default function ConfigVendasPage({ searchParams }: Props) {
   return (
     <div className="flex flex-col gap-8">
@@ -38,7 +43,9 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 }
 
 async function ConteudoConfig({ searchParams }: Props) {
-  if (!(await ehAdmin())) notFound();
+  const usuario = await usuarioLogado();
+  if (!usuario) notFound();
+  if (usuario.papel !== "admin") return <ConfigLeitura searchParams={searchParams} />;
   const sp = await searchParams;
   const mesAtual = mesDe(diaSP(new Date())!);
   const mes = lerMes(sp.mes, mesAtual);
@@ -54,8 +61,6 @@ async function ConteudoConfig({ searchParams }: Props) {
     custos,
     custos.flatMap((c) => c.valores.map((v) => ({ custo_id: c.id, vigente_desde: v.vigente_desde, valor: v.valor }))),
   );
-  const pct = (n: number) => `${n.toFixed(1).replace(".", ",")}%`;
-
   return (
     <>
       <div className="flex items-center gap-3 text-[13.5px]">
@@ -66,21 +71,7 @@ async function ConteudoConfig({ searchParams }: Props) {
 
       <Secao titulo="Margem do mês">
         <FormMes mes={mes} gasto={margem.entradas.gastoAnuncios} imposto={margem.entradas.impostoMeta} mensagens={margem.entradas.custoMensagens} />
-        <div className="glass-lite glass-static grid gap-1 p-4 text-[13.5px] tabular-nums">
-          <p>Faturamento líquido (operação): <b className="text-white">{reais(margem.liquido)}</b></p>
-          <p>− Gasto em anúncios: {margem.entradas.gastoAnuncios === null ? "não informado" : reais(margem.entradas.gastoAnuncios)}</p>
-          <p>− Imposto Meta: {margem.entradas.impostoMeta === null ? "não informado" : reais(margem.entradas.impostoMeta)}</p>
-          <p>− Custos fixos: {reais(margem.custosFixos)}{margem.custosSemValor.length > 0 && <span className="text-[rgb(var(--tag-laranja))]"> (sem valor: {margem.custosSemValor.join(", ")})</span>}</p>
-          <p>− Custo de mensagens: {margem.entradas.custoMensagens === null ? "não informado" : reais(margem.entradas.custoMensagens)}</p>
-          <p className="mt-1 border-t border-line-soft pt-2">
-            {margem.completa && margem.lucro !== null && margem.margemPct !== null ? (
-              <>Lucro {reais(margem.lucro)} · Margem <b className="text-white">{pct(margem.margemPct)}</b> → comissão <b className="text-white">{margem.faixa}%</b></>
-            ) : (
-              <>Comissão em <b className="text-white">prévia</b>: preencha os três valores acima{margem.liquido <= 0 ? " (e ainda não há faturamento no mês)" : ""}.</>
-            )}
-          </p>
-          <p className="text-[12px] text-ink-faint">Faixas: abaixo de 10% → 6% · 10% a 20% → 7% · 20% a 35% → 8% · 35% a 50% → 9% · acima de 50% → 10%. A comissão não entra na margem.</p>
-        </div>
+        <ContaDaMargem margem={margem} />
       </Secao>
 
       <Secao titulo="Custos fixos">
@@ -161,6 +152,91 @@ async function ConteudoConfig({ searchParams }: Props) {
             </ul>
           </>
         )}
+      </Secao>
+    </>
+  );
+}
+
+const pct = (n: number) => `${n.toFixed(1).replace(".", ",")}%`;
+
+/** A conta da margem (igual para admin e atendente). Único número da operação: o líquido total. */
+function ContaDaMargem({ margem }: { margem: MargemDoMes }) {
+  return (
+    <div className="glass-lite glass-static grid gap-1 p-4 text-[13.5px] tabular-nums">
+      <p>Faturamento líquido (operação): <b className="text-white">{reais(margem.liquido)}</b></p>
+      <p>− Gasto em anúncios: {margem.entradas.gastoAnuncios === null ? "não informado" : reais(margem.entradas.gastoAnuncios)}</p>
+      <p>− Imposto Meta: {margem.entradas.impostoMeta === null ? "não informado" : reais(margem.entradas.impostoMeta)}</p>
+      <p>− Custos fixos: {reais(margem.custosFixos)}{margem.custosSemValor.length > 0 && <span className="text-[rgb(var(--tag-laranja))]"> (sem valor: {margem.custosSemValor.join(", ")})</span>}</p>
+      <p>− Custo de mensagens: {margem.entradas.custoMensagens === null ? "não informado" : reais(margem.entradas.custoMensagens)}</p>
+      <p className="mt-1 border-t border-line-soft pt-2">
+        {margem.completa && margem.lucro !== null && margem.margemPct !== null ? (
+          <>Lucro {reais(margem.lucro)} · Margem <b className="text-white">{pct(margem.margemPct)}</b> → comissão sugerida <b className="text-white">{margem.faixa}%</b></>
+        ) : (
+          <>Comissão em <b className="text-white">prévia</b>: faltam valores do mês{margem.liquido <= 0 ? " (e ainda não há faturamento no mês)" : ""}.</>
+        )}
+      </p>
+      <p className="text-[12px] text-ink-faint">Faixas: abaixo de 10% → 6% · 10% a 20% → 7% · 20% a 35% → 8% · 35% a 50% → 9% · acima de 50% → 10%. A comissão não entra na margem. O % que vale é o do fechamento, escolhido pelo admin.</p>
+    </div>
+  );
+}
+
+const valorCampo = (c: number | null) => (c === null ? "" : (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
+function CampoLeitura({ rotulo, valor }: { rotulo: string; valor: number | null }) {
+  return (
+    <label className="flex flex-col gap-1.5 text-[13px] text-ink-dim">
+      {rotulo}
+      <Input value={valorCampo(valor)} placeholder="não informado" disabled readOnly className="tabular-nums" />
+    </label>
+  );
+}
+
+/** Atendente: a mesma tela em modo leitura (sem tickets nem eventos da Hubla). */
+async function ConfigLeitura({ searchParams }: Props) {
+  const sp = await searchParams;
+  const mesAtual = mesDe(diaSP(new Date())!);
+  const mes = lerMes(sp.mes, mesAtual);
+  const [margem, custos] = await Promise.all([margemDoMes(mes), custosParaLeitura()]);
+  const doMes = custosDoMes(
+    mes,
+    custos,
+    custos.flatMap((c) => c.valores.map((v) => ({ custo_id: c.id, vigente_desde: v.vigente_desde, valor: v.valor }))),
+  );
+
+  return (
+    <>
+      <p className="-mt-4 text-[12.5px] text-ink-faint">Só leitura: quem edita estes valores é o admin.</p>
+      <div className="flex items-center gap-3 text-[13.5px]">
+        <Link href={`/vendas/config?mes=${somarMes(mes, -1)}`} className="rounded-full px-3 py-1.5 text-ink-dim hover:bg-bg-raised-2 hover:text-white">←</Link>
+        <span className="font-semibold capitalize text-white">{nomeDoMes(mes)}</span>
+        <Link href={`/vendas/config?mes=${somarMes(mes, 1)}`} className="rounded-full px-3 py-1.5 text-ink-dim hover:bg-bg-raised-2 hover:text-white">→</Link>
+      </div>
+
+      <Secao titulo="Margem do mês">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <CampoLeitura rotulo="Gasto em anúncios (R$)" valor={margem.entradas.gastoAnuncios} />
+          <CampoLeitura rotulo="Imposto Meta (R$)" valor={margem.entradas.impostoMeta} />
+          <CampoLeitura rotulo="Custo de mensagens (R$)" valor={margem.entradas.custoMensagens} />
+        </div>
+        <ContaDaMargem margem={margem} />
+      </Secao>
+
+      <Secao titulo="Custos fixos">
+        <ul className="flex flex-col">
+          {custos.map((c) => {
+            const atual = doMes.find((d) => d.id === c.id);
+            return (
+              <li key={c.id} className="flex flex-wrap items-center gap-3 border-b border-line-soft py-2 last:border-b-0">
+                <span className="w-32 text-[14px] text-white">{c.nome}</span>
+                {atual ? (
+                  <Input value={valorCampo(atual.valor)} placeholder="sem valor" disabled readOnly className="w-36 tabular-nums" aria-label={`Valor de ${c.nome}`} />
+                ) : (
+                  <Etiqueta cor="cinza">{c.desativado_desde && `${mes}-01` >= c.desativado_desde ? `desativado desde ${c.desativado_desde.slice(0, 7)}` : "sem valor neste mês"}</Etiqueta>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       </Secao>
     </>
   );
