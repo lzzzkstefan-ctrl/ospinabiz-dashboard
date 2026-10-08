@@ -7,7 +7,8 @@ import type { VendaPublica } from "@/modulos/vendas/tela";
 import { cn } from "@/lib/utils";
 import { Check, Copy, Download, Search } from "lucide-react";
 import { useMemo, useState } from "react";
-import { PlataformaTag, StatusTag } from "../../(painel)/vendas/_lockin/base";
+import { PlataformasContexto, PlataformaTag, StatusTag } from "../../(painel)/vendas/_lockin/base";
+import type { PlataformaLI } from "@/modulos/vendas/lock-in";
 
 const campo =
   "rounded-[10px] border border-line bg-bg-raised-2 px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none";
@@ -116,11 +117,11 @@ function Lista({ vendas, vazio }: { vendas: VendaPublica[]; vazio: string }) {
   );
 }
 
-function baixarCsv(nome: string, vendas: VendaPublica[]) {
+function baixarCsv(nome: string, vendas: VendaPublica[], plataformas: PlataformaLI[]) {
   const cab = ["Data e hora", "Cliente", "Ticket", "Plataforma", "Status", "ID da fatura", "Comissão"];
   const cel = (x: string) => `"${x.replace(/"/g, '""')}"`;
   const linhas = vendas.map((v) =>
-    [dataHora(v), v.cliente, v.ticket ?? v.oferta ?? "sem ticket", v.plataforma === "kirvano" ? "Kirvano" : "Hubla", NOME_STATUS[v.status] ?? v.status, v.idFatura, v.ticket ? "sim" : v.produto ? "não (produto)" : "não definida"]
+    [dataHora(v), v.cliente, v.ticket ?? v.oferta ?? "sem ticket", plataformas.find((p) => p.slug === v.plataforma)?.nome ?? v.plataforma, NOME_STATUS[v.status] ?? v.status, v.idFatura, v.ticket ? "sim" : v.produto ? "não (produto)" : "não definida"]
       .map(cel)
       .join(";"),
   );
@@ -133,7 +134,7 @@ function baixarCsv(nome: string, vendas: VendaPublica[]) {
   URL.revokeObjectURL(url);
 }
 
-export function ListaPublica({ vendas, nomeArquivo }: { vendas: VendaPublica[]; nomeArquivo: string }) {
+export function ListaPublica({ vendas, nomeArquivo, plataformas }: { vendas: VendaPublica[]; nomeArquivo: string; plataformas: PlataformaLI[] }) {
   const [busca, setBusca] = useState("");
   const [ticket, setTicket] = useState("");
   const [status, setStatus] = useState("");
@@ -145,7 +146,7 @@ export function ListaPublica({ vendas, nomeArquivo }: { vendas: VendaPublica[]; 
   const produtos = vendas.filter((v) => v.produto && passa(v));
 
   return (
-    <>
+    <PlataformasContexto.Provider value={plataformas}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <label className="relative min-w-[180px] flex-1">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" aria-hidden />
@@ -169,7 +170,7 @@ export function ListaPublica({ vendas, nomeArquivo }: { vendas: VendaPublica[]; 
         </select>
         <button
           type="button"
-          onClick={() => baixarCsv(nomeArquivo, vendas)}
+          onClick={() => baixarCsv(nomeArquivo, vendas, plataformas)}
           className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-[12.5px] text-ink-dim transition-colors hover:border-accent hover:text-white"
         >
           <Download size={13} /> Baixar CSV
@@ -196,6 +197,6 @@ export function ListaPublica({ vendas, nomeArquivo }: { vendas: VendaPublica[]; 
           <Lista vendas={produtos} vazio="Nenhuma venda com esse filtro." />
         </section>
       )}
-    </>
+    </PlataformasContexto.Provider>
   );
 }

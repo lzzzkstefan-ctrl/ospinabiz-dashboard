@@ -4,11 +4,11 @@
 // janela, botão de confirmação, etiquetas de ticket/status/plataforma e a rosca.
 
 import { Etiqueta, type CorEtiqueta } from "@/components/ui/etiqueta";
-import { COR_PRODUTO, COR_REVISAR } from "@/modulos/vendas/cores";
-import type { LinhaTicket, TicketLI } from "@/modulos/vendas/lock-in";
+import { COR_NEUTRA, COR_PRODUTO, COR_REVISAR } from "@/modulos/vendas/cores";
+import type { LinhaTicket, PlataformaLI, TicketLI } from "@/modulos/vendas/lock-in";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useTransition, type ReactNode } from "react";
 
 export const campo =
   "w-full rounded-[10px] border border-line bg-bg-raised-2 px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none";
@@ -177,12 +177,22 @@ export function StatusTag({ status }: { status: string }) {
   return <Etiqueta cor={COR_STATUS[status] ?? "cinza"}>{NOME_STATUS[status] ?? status}</Etiqueta>;
 }
 
-const COR_PLATAFORMA: Record<string, CorEtiqueta> = { hubla: "verde", kirvano: "roxo" };
-const NOME_PLATAFORMA: Record<string, string> = { hubla: "Hubla", kirvano: "Kirvano" };
+/** Plataformas cadastradas (nome e cor), dadas pela página que monta a tela. */
+export const PlataformasContexto = createContext<PlataformaLI[]>([]);
 
-/** Plataforma da venda (como no Lock in: Hubla verde, Kirvano roxo). */
+/** Chip da plataforma da venda, na cor cadastrada em Configuração de vendas. */
 export function PlataformaTag({ plataforma }: { plataforma: string }) {
-  return <Etiqueta cor={COR_PLATAFORMA[plataforma] ?? "cinza"}>{NOME_PLATAFORMA[plataforma] ?? plataforma}</Etiqueta>;
+  const p = useContext(PlataformasContexto).find((x) => x.slug === plataforma);
+  const cor = p?.cor ?? COR_NEUTRA;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[12px] text-ink"
+      style={{ borderColor: `${cor}80`, background: `${cor}1f` }}
+    >
+      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: cor }} aria-hidden />
+      {p?.nome ?? plataforma}
+    </span>
+  );
 }
 
 // ---------- rosca ----------

@@ -4,7 +4,8 @@ import { Etiqueta } from "@/components/ui/etiqueta";
 import { Input } from "@/components/ui/input";
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { listarCustos, listarEventosComErro, listarTickets, margemDoMes, type MargemDoMes } from "@/modulos/vendas/dados";
-import { custosParaLeitura } from "@/modulos/vendas/tela";
+import { custosParaLeitura, listarPlataformas } from "@/modulos/vendas/tela";
+import { Plataformas } from "./plataformas";
 import { centavos, custosDoMes, diaSP, lerMes, mesDe, nomeDoMes, precoCurto, reais, somarMes } from "@/modulos/vendas/regras";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -50,11 +51,12 @@ async function ConteudoConfig({ searchParams }: Props) {
   const mesAtual = mesDe(diaSP(new Date())!);
   const mes = lerMes(sp.mes, mesAtual);
 
-  const [margem, tickets, custos, eventos] = await Promise.all([
+  const [margem, tickets, custos, eventos, plataformas] = await Promise.all([
     margemDoMes(mes),
     listarTickets(),
     listarCustos(),
     listarEventosComErro(),
+    listarPlataformas(),
   ]);
   const doMes = custosDoMes(
     mes,
@@ -98,6 +100,10 @@ async function ConteudoConfig({ searchParams }: Props) {
           })}
         </ul>
         <FormNovoCusto mes={mes} />
+      </Secao>
+
+      <Secao titulo="Plataformas">
+        <Plataformas lista={plataformas} />
       </Secao>
 
       <Secao titulo="Tickets">

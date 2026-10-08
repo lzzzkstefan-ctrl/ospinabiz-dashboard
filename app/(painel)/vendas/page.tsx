@@ -8,6 +8,7 @@ import {
   faixasSugeridas,
   listarAdiantamentos,
   listarFechamentosLI,
+  listarPlataformas,
   listarTicketsLI,
   mesDoVendedor,
   whatsappFechamento,
@@ -151,7 +152,7 @@ async function Mes({
 }) {
   const ano = Number(mes.slice(0, 4));
   const fim = `${somarMes(mes, 1)}-01`;
-  const [tickets, vendas, margem, mesVend, adiantamentos, fechamentos, whatsapp] = await Promise.all([
+  const [tickets, vendas, margem, mesVend, adiantamentos, fechamentos, whatsapp, plataformas] = await Promise.all([
     listarTicketsLI(),
     carregarVendas(vendedor?.id ?? null, `${mes}-01`, fim),
     // só a faixa sugerida sai daqui (a margem e os custos ficam no servidor)
@@ -160,6 +161,7 @@ async function Mes({
     vendedor ? listarAdiantamentos(vendedor.id, ano) : [],
     vendedor ? listarFechamentosLI(vendedor.id, ano) : [],
     admin && vendedor ? whatsappFechamento() : null,
+    listarPlataformas(),
   ]);
   const fechado = fechamentos.find((f) => f.mes === mes) ?? null;
   const margemPadrao: Faixa = fechado?.faixa ?? margem ?? 10;
@@ -171,6 +173,7 @@ async function Mes({
         admin={admin}
         vendedor={vendedor}
         vendedores={opcoes}
+        plataformas={plataformas}
         tickets={tickets}
         vendas={vendas}
         margemPadrao={margemPadrao}

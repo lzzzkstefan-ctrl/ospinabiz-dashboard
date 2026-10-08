@@ -22,10 +22,21 @@ export type TicketLI = {
   comissao_10: number;
 };
 
-/** Plataforma da venda (coluna vendas.plataforma). Só a Hubla tem webhook. */
-export const PLATAFORMAS = ["hubla", "kirvano"] as const;
-export type Plataforma = (typeof PLATAFORMAS)[number];
-export const NOME_PLATAFORMA: Record<Plataforma, string> = { hubla: "Hubla", kirvano: "Kirvano" };
+/** Plataforma da venda: vendas.plataforma = código (slug) em public.plataformas.
+ * Cadastradas na Configuração de vendas (admin). Só a Hubla tem webhook. */
+export type Plataforma = string;
+export type PlataformaLI = { slug: string; nome: string; cor: string; ativa: boolean; ordem: number };
+
+/** "Eduzz Pro" → "eduzz-pro" */
+export function slugDe(nome: string): string {
+  return nome
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
 
 /** Venda como a tela usa. cliente = "Nome -1234" (primeiro nome + final), "" se não puder ver. */
 export type VendaLI = {

@@ -7,7 +7,7 @@
 import { ehAdmin, usuarioLogado } from "@/lib/auth/papeis";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { analisarCsv, PLATAFORMAS, resumirLI, type LinhaImportacao, type Plataforma } from "@/modulos/vendas/lock-in";
+import { analisarCsv, resumirLI, slugDe, type LinhaImportacao, type Plataforma } from "@/modulos/vendas/lock-in";
 import { FAIXAS, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
 import { carregarVendas, listarTicketsLI } from "@/modulos/vendas/tela";
 import { refresh } from "next/cache";
@@ -23,6 +23,41 @@ async function vendedorExiste(id: number): Promise<boolean> {
   const supabase = await createClient();
   const { data } = await supabase.from("vendedores").select("equipe_id").eq("equipe_id", id).maybeSingle();
   return !!data;
+}
+
+/** A plataforma existe (e, para venda nova, está ativa)? */
+async function plataformaOk(slug: string, exigirAtiva: boolean): Promise<boolean> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("plataformas").select("ativa").eq("slug", slug).maybeSingle();
+  return !!data && (!exigirAtiva || data.ativa);
+}
+
+// ---------- plataformas (Configuração de vendas, só admin) ----------
+export async function criarPlataforma(nome: string, cor: string): Promise<Resultado> {
+  if (!(await ehAdmin())) return SO_ADMIN;
+  const n = nome.trim().replace(/\s+/g, " ");
+  const slug = slugDe(n);
+  if (!n || !slug) return { erro: "Digite o nome da plataforma." };
+  if (!/^#[0-9a-f]{6}$/i.test(cor)) return { erro: "Cor inválida." };
+  const supabase = await createClient();
+  const { data: ultima } = await supabase.from("plataformas").select("ordem").order("ordem", { ascending: false }).limit(1).maybeSingle();
+  const { error } = await supabase.from("plataformas").insert({ slug, nome: n, cor: cor.toLowerCase(), ordem: (ultima?.ordem ?? 0) + 1 });
+  if (error) return { erro: error.code === "23505" ? "Já existe uma plataforma com esse nome." : "Não deu para salvar." };
+  refresh();
+  return {};
+}
+
+export async function editarPlataforma(slug: string, campos: { cor?: string; ativa?: boolean }): Promise<Resultado> {
+  if (!(await ehAdmin())) return SO_ADMIN;
+  if (campos.cor !== undefined && !/^#[0-9a-f]{6}$/i.test(campos.cor)) return { erro: "Cor inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("plataformas")
+    .update({ ...(campos.cor !== undefined ? { cor: campos.cor.toLowerCase() } : {}), ...(campos.ativa !== undefined ? { ativa: campos.ativa } : {}) })
+    .eq("slug", slug);
+  if (error) return { erro: "Não deu para salvar." };
+  refresh();
+  return {};
 }
 
 // ---------- mês do vendedor: observações e link público ----------
@@ -140,7 +175,6 @@ function validar(v: VendaInput): string | null {
   if (v.digitos && !/^\d{4}$/.test(v.digitos)) return "Os dígitos do telefone são 4 números.";
   if (!["pago", "reembolso", "chargeback"].includes(v.status)) return "Status inválido.";
   if (!dataOk(v.data)) return "Data inválida.";
-  if (!PLATAFORMAS.includes(v.plataforma)) return "Plataforma inválida.";
   return null;
 }
 
@@ -149,6 +183,7 @@ export async function criarVenda(v: VendaInput): Promise<Resultado> {
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const erro = validar(v);
   if (erro) return { erro };
+  if (!(await plataformaOk(v.plataforma, true))) return { erro: "Plataforma inválida ou desativada." };
   if (!v.vendedorId || !(await vendedorExiste(v.vendedorId))) return { erro: "Escolha o vendedor." };
   const db = createAdminClient();
   const agora = new Date().toISOString();
@@ -188,6 +223,7 @@ export async function editarVenda(id: number, v: VendaInput & { semVendedor: boo
   if (!idOk(id)) return { erro: "Venda não encontrada." };
   const erro = validar(v);
   if (erro) return { erro };
+  if (!(await plataformaOk(v.plataforma, false))) return { erro: "Plataforma inválida." };
   if (v.vendedorId && !(await vendedorExiste(v.vendedorId))) return { erro: "Vendedor inválido." };
 
   const db = createAdminClient();

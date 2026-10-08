@@ -60,7 +60,7 @@ async function Conteudo({ params }: { params: Promise<{ codigo: string }> }) {
         Vendas aprovadas = pagas no mês
         {r.semTicketProduto > 0 && ` (inclui ${r.semTicketProduto} sem comissão, listadas no fim)`}. Reembolso e chargeback não contam venda nem comissão.
       </p>
-      <ListaPublica vendas={dados.publicas} nomeArquivo={`vendas-${dados.mes}.csv`} />
+      <ListaPublica vendas={dados.publicas} nomeArquivo={`vendas-${dados.mes}.csv`} plataformas={dados.plataformas} />
     </>
   );
 }

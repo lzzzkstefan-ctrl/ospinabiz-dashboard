@@ -11,10 +11,9 @@ import {
   liquidoVenda,
   resumirLI,
   textoResumo,
-  NOME_PLATAFORMA,
-  PLATAFORMAS,
   type LinhaImportacao,
   type Plataforma,
+  type PlataformaLI,
   type TicketLI,
   type VendaLI,
 } from "@/modulos/vendas/lock-in";
@@ -23,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { ArrowDown, ArrowUp, Check, Copy, Plus, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { useContext, useMemo, useState, useTransition, type ReactNode } from "react";
 import {
   botaoPrimario,
   botaoSecundario,
@@ -35,6 +34,7 @@ import {
   Rosca,
   SemComissaoTag,
   StatusTag,
+  PlataformasContexto,
   TicketTag,
 } from "./base";
 import { Fechamento } from "./fechamento";
@@ -58,6 +58,7 @@ export function PainelVendas({
   admin,
   vendedor,
   vendedores,
+  plataformas,
   tickets,
   vendas: todas,
   margemPadrao,
@@ -73,6 +74,8 @@ export function PainelVendas({
   /** null = visão Geral (admin) */
   vendedor: VendedorOpcao | null;
   vendedores: VendedorOpcao[];
+  /** plataformas cadastradas (nome, cor, ativa) */
+  plataformas: PlataformaLI[];
   tickets: TicketLI[];
   vendas: VendaLI[];
   margemPadrao: Faixa;
@@ -94,6 +97,9 @@ export function PainelVendas({
   const [copiado, setCopiado] = useState(false);
   const [filtro, setFiltro] = useState<FiltroVendas>("todas");
   const [plataforma, setPlataforma] = useState<Plataforma | "todas">("todas");
+  const nomePlataforma = (slug: string) => plataformas.find((p) => p.slug === slug)?.nome ?? slug;
+  // no filtro: as ativas e as que têm venda no mês
+  const opcoesPlataforma = plataformas.filter((p) => p.ativa || todas.some((v) => v.plataforma === p.slug)).map((p) => p.slug);
 
   // filtro por plataforma: muda os cards, a rosca, o resumo e a lista. O fechamento usa
   // sempre o mês inteiro (todas as plataformas), porque é o que vai pro Rodrigo.
@@ -123,6 +129,7 @@ export function PainelVendas({
     cn("rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition-colors", ativo ? "bg-accent/15 text-white" : "text-ink-dim hover:bg-bg-raised-2 hover:text-white");
 
   return (
+    <PlataformasContexto.Provider value={plataformas}>
     <div className="flex flex-col gap-6">
       {/* período + ações */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -171,7 +178,7 @@ export function PainelVendas({
       <div className="-mt-2 flex flex-wrap items-center gap-2">
         <span className="text-[12.5px] text-ink-dim">Plataforma</span>
         <div role="radiogroup" aria-label="Filtrar por plataforma" className="flex flex-wrap gap-1.5">
-          {(["todas", ...PLATAFORMAS] as const).map((p) => {
+          {["todas", ...opcoesPlataforma].map((p) => {
             const n = p === "todas" ? todas.length : todas.filter((v) => v.plataforma === p).length;
             return (
               <button
@@ -185,12 +192,12 @@ export function PainelVendas({
                   plataforma === p ? "border-accent bg-accent/15 text-white" : "border-line text-ink-dim hover:border-accent hover:text-white",
                 )}
               >
-                {p === "todas" ? "Todas" : NOME_PLATAFORMA[p]} <span className="tabular-nums text-ink-faint">{n}</span>
+                {p === "todas" ? "Todas" : nomePlataforma(p)} <span className="tabular-nums text-ink-faint">{n}</span>
               </button>
             );
           })}
         </div>
-        {plataforma !== "todas" && <span className="text-[11.5px] text-ink-faint">números só da {NOME_PLATAFORMA[plataforma]}; o fechamento continua com o mês inteiro</span>}
+        {plataforma !== "todas" && <span className="text-[11.5px] text-ink-faint">números só da {nomePlataforma(plataforma)}; o fechamento continua com o mês inteiro</span>}
       </div>
 
       {/* totais */}
@@ -393,7 +400,7 @@ export function PainelVendas({
 
       {modal === "nova" && (
         <Janela titulo="Nova venda" onFechar={() => setModal(null)}>
-          <VendaForm tickets={tickets} vendedores={vendedores} vendedorInicial={vendedor?.id ?? null} hoje={hoje} onSalvo={() => setModal(null)} />
+          <VendaForm tickets={tickets} vendedores={vendedores} plataformas={plataformas} vendedorInicial={vendedor?.id ?? null} hoje={hoje} onSalvo={() => setModal(null)} />
         </Janela>
       )}
       {modal === "importar" && <ImportarCsv vendedores={vendedores} vendedorInicial={vendedor?.id ?? null} onFechar={() => setModal(null)} />}
@@ -410,6 +417,7 @@ export function PainelVendas({
         />
       )}
     </div>
+    </PlataformasContexto.Provider>
   );
 }
 
@@ -595,6 +603,7 @@ function DetalheVenda({
   onFechar: () => void;
 }) {
   const t = v.ticket_id ? tickets.find((x) => x.id === v.ticket_id) : undefined;
+  const plataformas = useContext(PlataformasContexto);
   return (
     <Janela titulo={v.cliente} onFechar={onFechar}>
       <div className="-mt-2 mb-3 flex flex-wrap gap-1.5">
@@ -628,7 +637,7 @@ function DetalheVenda({
         </div>
       )}
       <p className="mb-4 text-[11.5px] text-ink-faint">Fatura {v.id_fatura}</p>
-      {admin && <VendaForm tickets={tickets} vendedores={vendedores} venda={v} vendedorInicial={v.vendedor_id} hoje={hoje} onSalvo={onFechar} />}
+      {admin && <VendaForm tickets={tickets} vendedores={vendedores} plataformas={plataformas} venda={v} vendedorInicial={v.vendedor_id} hoje={hoje} onSalvo={onFechar} />}
     </Janela>
   );
 }
@@ -691,6 +700,7 @@ const NOME_STATUS: Record<StatusVenda, string> = { pago: "Pago", reembolso: "Ree
 function VendaForm({
   tickets,
   vendedores,
+  plataformas,
   venda,
   vendedorInicial,
   hoje,
@@ -698,6 +708,7 @@ function VendaForm({
 }: {
   tickets: TicketLI[];
   vendedores: VendedorOpcao[];
+  plataformas: PlataformaLI[];
   venda?: VendaLI;
   vendedorInicial: number | null;
   hoje: string;
@@ -793,7 +804,14 @@ function VendaForm({
 
       <div className="text-xs text-ink-dim">
         <div className="mb-1.5">Plataforma</div>
-        <Botoes opcoes={PLATAFORMAS} valor={plataforma} onEscolher={setPlataforma} rotulo="Plataforma" render={(p) => NOME_PLATAFORMA[p]} />
+        <Botoes
+          opcoes={plataformas.filter((p) => p.ativa || p.slug === venda?.plataforma).map((p) => p.slug)}
+          valor={plataforma}
+          onEscolher={setPlataforma}
+          rotulo="Plataforma"
+          cor={(s) => plataformas.find((p) => p.slug === s)?.cor ?? COR_NEUTRA}
+          render={(s) => <Bolinha cor={plataformas.find((p) => p.slug === s)?.cor ?? COR_NEUTRA}>{plataformas.find((p) => p.slug === s)?.nome ?? s}</Bolinha>}
+        />
       </div>
 
       {!nova && (

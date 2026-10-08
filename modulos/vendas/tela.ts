@@ -10,7 +10,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { corDoTicket } from "./cores";
-import { type TicketLI, type VendaLI } from "./lock-in";
+import { type PlataformaLI, type TicketLI, type VendaLI } from "./lock-in";
 import { calcularMargem, centavos, custosDoMes, resumir, type Faixa, type Ticket, type Venda } from "./regras";
 
 const COLUNAS =
@@ -46,6 +46,14 @@ export async function listarTicketsLI(): Promise<TicketLI[]> {
     comissao_9: Number(t.comissao_9),
     comissao_10: Number(t.comissao_10),
   }));
+}
+
+/** Plataformas cadastradas, na ordem da tela (todo logado lê). */
+export async function listarPlataformas(): Promise<PlataformaLI[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("plataformas").select("slug, nome, cor, ativa, ordem").order("ordem").order("nome");
+  if (error) throw new Error(`Erro ao carregar plataformas: ${error.message}`);
+  return data;
 }
 
 /** "Lucas -1389": primeiro nome + final. */
@@ -223,13 +231,14 @@ export async function buscarMesPublico(codigo: string) {
   const [a, m] = mes.split("-").map(Number);
   const fim = new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10);
 
-  const [vendas, ticketsQ, fechamento, adiant] = await Promise.all([
+  const [vendas, ticketsQ, fechamento, adiant, plataformasQ] = await Promise.all([
     todas<Omit<VendaLI, "cliente">>((de, ate) =>
       db.from("vendas").select(COLUNAS).eq("vendedor_id", vendedorId).gte("data", `${mes}-01`).lt("data", fim).order("data").order("pago_em").range(de, ate).returns<Omit<VendaLI, "cliente">[]>(),
     ),
     db.from("tickets").select("*").order("ordem"),
     db.from("vendas_fechamentos").select("faixa").eq("mes", `${mes}-01`).eq("vendedor_id", vendedorId).maybeSingle(),
     db.from("vendas_adiantamentos").select("valor, data").eq("vendedor_id", vendedorId).eq("mes", `${mes}-01`),
+    db.from("plataformas").select("slug, nome, cor, ativa, ordem"),
   ]);
   const nomes = new Map<number, string | null>();
   const ids = vendas.map((v) => v.id);
@@ -254,6 +263,7 @@ export async function buscarMesPublico(codigo: string) {
     margem: (fechamento.data?.faixa ?? null) as Faixa | null,
     vendas: lista,
     tickets,
+    plataformas: (plataformasQ.data ?? []) as PlataformaLI[],
     adiantamentos: (adiant.data ?? []).map((x) => ({ valor: centavos(x.valor), data: String(x.data) })),
     publicas: lista.map((v): VendaPublica => {
       const t = v.ticket_id ? porId.get(v.ticket_id) : undefined;
