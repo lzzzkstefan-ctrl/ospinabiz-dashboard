@@ -5,8 +5,8 @@ Onde está cada conta e quem é o dono. **Só nomes e URLs. Nunca senhas, tokens
 | Serviço | O quê | Nome / URL | Dono | Plano | Criado em |
 |---|---|---|---|---|---|
 | GitHub | Repositório privado | [lzzzkstefan-ctrl/ospinabiz-dashboard](https://github.com/lzzzkstefan-ctrl/ospinabiz-dashboard) | Conta pessoal do Davi (`lzzzkstefan-ctrl`) | Free | 2026-10-08 |
-| Supabase | Organização | _a criar_ | Davi | Free | |
-| Supabase | Projeto (sa-east-1) | _a criar_ | (organização) | Free | |
+| Supabase | Organização | Ospinabiz | Davi | Free | 2026-10-08 |
+| Supabase | Projeto (sa-east-1) | ID `ihxevdaaxzamqzawzgmd` ([painel](https://supabase.com/dashboard/project/ihxevdaaxzamqzawzgmd)) | Organização Ospinabiz | Free | 2026-10-08 |
 | Vercel | Projeto | _a criar_ | Conta pessoal do Davi | Hobby | |
 | SMTP (e-mails de convite) | _a definir_ | | | | |
 | Meta | BM do monitor + número remetente | _pendente_ | | | |

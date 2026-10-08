@@ -8,6 +8,8 @@ escolhas em português simples.
 
 ## Regras
 
+- A pasta oficial do projeto é `C:\dev\ospinabiz-dashboard`. Código não fica no OneDrive: ele sincroniza
+  o `.env.local` para a nuvem e trava arquivos do `node_modules` e do `.next`.
 - Nunca ler, copiar ou referenciar nada de `C:\dev\masterview` (código, `.env.local`, Supabase, `.vercel`).
 - Todos os tokens em variáveis de ambiente (`.env.local` local, Vercel em produção). Nunca no código.
   `.env.example` tem só os nomes.
