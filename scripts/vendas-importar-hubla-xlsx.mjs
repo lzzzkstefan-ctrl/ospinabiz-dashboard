@@ -207,8 +207,9 @@ try {
     const oferta = String(l[C.oferta] ?? "").trim();
     const produto = String(l[C.produto] ?? "").trim();
     const bumpsBrutos = String(l[C.bump] ?? "").split(",").map((b) => b.trim()).filter(Boolean);
-    const candidatos = [oferta, produto && oferta ? `${produto} - ${oferta}` : produto, ...bumpsBrutos].filter(Boolean);
-    const item = candidatos.find((n) => ehItemDeTicket(n) && precoDoNome(n) !== null);
+    // Ticket só pelo "Nome da oferta" (formatos "Ticket - R$238,00", "Ticket- R$248,00",
+    // "Ticket - R$338"). Order bump, combo e outros produtos ficam sem ticket.
+    const item = ehItemDeTicket(oferta) && precoDoNome(oferta) !== null ? oferta : null;
     const preco = item ? precoDoNome(item) : null;
     const ticket = preco === null ? null : tickets.find((t) => cents(t.valor_bruto) === preco) ?? null;
     const motivo = ticket
