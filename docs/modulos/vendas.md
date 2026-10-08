@@ -24,10 +24,18 @@ Venda aprovada na Hubla
 
 ## Ticket, bump e valores
 
-- Ticket = item com "Game Changer Society" ou "Ticket - R$…" no nome; o preço vem do nome e
-  casa com um ticket **ativo** da tabela. O resto é order bump e nunca conta.
-- Sem ticket ativo → a venda é criada **sem ticket**, com o motivo, e vai para **A revisar**.
-  Nunca é descartada. Conta só na quantidade até o admin escolher o ticket.
+- Comissão **só do produto principal**; order bump nunca conta (nem venda, nem bruto, nem
+  comissão). O nome do bump fica em `vendas.bumps` só para aparecer no card.
+- Principal = oferta com `isOrderBump = false` (webhook) ou "Nome do produto"/"Nome da oferta"
+  (planilha). Se ela é de ticket ("Ticket - R$…" / "Game Changer Society"):
+  - preço no nome ≠ valor cobrado → **A revisar**, motivo "oferta diz R$238, cobrou R$100";
+  - iguais → ticket com esse valor (webhook: ativo; planilha: ativo ou inativo, preço da época);
+  - sem ticket com esse valor → **A revisar** com o motivo.
+- Principal combo, Nexus PGC, Acesso Vitalício etc. → **sem comissão (produto)**, mesmo com
+  "Protocolo Game Changer" no bump.
+- Venda nunca é descartada: sem ticket, conta só na quantidade até o admin escolher o ticket.
+- **Planilha da Hubla:** não traz valor por item, então o cobrado do principal = valor do
+  produto − preços dos bumps (`BUMPS` em `scripts/vendas-planilha-hubla.mjs`).
 - **Snapshot:** ao criar a venda (ou trocar o ticket dela), o banco copia para a venda o bruto, o
   líquido e as 5 comissões do ticket (`vendas.snap_*`, trigger `vendas_snapshot_ticket`).
   Os totais somam essa cópia. Mudar ou desativar ticket não muda venda antiga.

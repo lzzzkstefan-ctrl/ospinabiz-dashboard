@@ -2,6 +2,21 @@
 
 Registro curto do que foi decidido e por quê. Decisão nova entra no topo.
 
+## 2026-10-08: Ticket só do produto principal; nome ≠ cobrado vai para "A revisar"
+
+- **Comissão só do produto principal; order bump nunca entra.** Principal combo, Nexus PGC,
+  Acesso Vitalício etc. = "sem comissão (produto)", **mesmo com "Protocolo Game Changer" no
+  bump** (decisão do Davi, conferida nas vendas de junho). Substitui uma versão anterior, não
+  publicada, que procurava o ticket também no bump.
+- **Preço no nome da oferta ≠ valor cobrado do principal → não escolhe ticket:** a venda vai
+  para "A revisar" com o motivo ("oferta diz R$238, cobrou R$100") e o admin escolhe na mão.
+  Vale no webhook (`ticketDoPrincipal`) e na importação da planilha (`classificar` em
+  `scripts/vendas-planilha-hubla.mjs`; cobrado = valor do produto − preços dos bumps).
+- **Vendas já gravadas não mudaram.** A regra vale para o que entrar daqui em diante.
+
+**Por quê:** na Hubla o nome da oferta nem sempre é o preço cobrado; escolher um dos dois
+sozinho dava comissão errada sem ninguém ver.
+
 ## 2026-10-08: Tela de Vendas igual ao Lock in, por vendedor
 
 - **Mesma tela do Lock in** (masterview, só o visual e as regras): período, 4 cards, margem,

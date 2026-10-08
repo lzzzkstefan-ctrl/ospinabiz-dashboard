@@ -118,48 +118,56 @@ export function precoDoNome(nome: string): number | null {
   return Number.isFinite(valor) && valor > 0 ? valor : null;
 }
 
-export function ticketDosItens(
-  itens: string[],
-  tickets: Ticket[],
-): { ticketId: number | null; bumps: string[]; motivo: string | null } {
+type TicketDaVenda = { ticketId: number | null; principalProduto: boolean; motivo: string | null; bumps: string[] };
+
+/** Payload sem a marca isOrderBump: ticket pelo nome dos itens; sem item de ticket → produto. */
+export function ticketDosItens(itens: string[], tickets: Ticket[]): TicketDaVenda {
   const nomes = itens.map((n) => n.trim()).filter(Boolean);
   const item = nomes.find(ehItemDeTicket);
   const bumps = nomes.filter((n) => n !== item);
-  if (!item) return { ticketId: null, bumps, motivo: "fatura sem item de ticket" };
+  if (!nomes.length) return { ticketId: null, principalProduto: false, bumps, motivo: "fatura sem itens" };
+  if (!item) return { ticketId: null, principalProduto: true, bumps: nomes.slice(1), motivo: `produto sem comissão: ${nomes[0]}` };
 
   const preco = precoDoNome(item);
-  if (preco === null) return { ticketId: null, bumps, motivo: `item sem preço no nome: ${item}` };
+  if (preco === null) return { ticketId: null, principalProduto: false, bumps, motivo: `item sem preço no nome: ${item}` };
 
   const ticket = tickets.find((t) => t.ativo && centavos(t.valor_bruto) === preco);
   return ticket
-    ? { ticketId: ticket.id, bumps, motivo: null }
-    : { ticketId: null, bumps, motivo: `ticket de ${precoCurto(preco)} não está na tabela` };
+    ? { ticketId: ticket.id, principalProduto: false, bumps, motivo: null }
+    : { ticketId: null, principalProduto: false, bumps, motivo: `ticket de ${precoCurto(preco)} não está na tabela` };
 }
 
 /**
- * Ticket pela oferta PRINCIPAL da fatura (isOrderBump = false). Order bump nunca conta.
- * - principal é ticket ("Ticket - R$…" / "Game Changer Society"): ticket ATIVO com o valor
- *   cobrado na oferta (como no Lock in); sem esse, o do preço escrito no nome; sem os dois,
- *   "a revisar" com o motivo;
- * - principal é outro produto (combo, Nexus…): sem ticket e "sem comissão (produto)".
+ * Ticket da fatura (regra do Davi, 08/10/2026). Comissão só do produto PRINCIPAL
+ * (isOrderBump = false); order bump nunca conta, só tem o nome guardado para o card.
+ * - principal é oferta de ticket ("Ticket - R$…" / "Game Changer Society"):
+ *   - preço escrito no nome ≠ valor cobrado → NÃO escolhe: "a revisar" com o motivo
+ *     ("oferta diz R$238, cobrou R$100"); o admin escolhe na mão;
+ *   - iguais (ou só um dos dois conhecido) → ticket ATIVO com esse valor; sem → "a revisar";
+ * - principal é combo, Nexus, Acesso Vitalício etc. → "sem comissão (produto)", mesmo com
+ *   "Protocolo Game Changer" no bump.
  */
 export function ticketDoPrincipal(
-  principais: { nome: string; valorCentavos: number | null }[],
+  principais: { produto: string | null; nome: string; valorCentavos: number | null }[],
+  ofertasBump: { produto: string | null; nome: string; valorCentavos: number | null }[],
   tickets: Ticket[],
-): { ticketId: number | null; principalProduto: boolean; motivo: string | null } {
+): TicketDaVenda {
   const item = principais.find((p) => ehItemDeTicket(p.nome));
+  const bumps = [...principais.filter((p) => p !== item && item), ...ofertasBump].map((p) => p.produto ?? p.nome);
   if (!item) {
     const nome = principais[0]?.nome ?? null;
-    return { ticketId: null, principalProduto: true, motivo: `produto sem comissão${nome ? `: ${nome}` : ""}` };
+    return { ticketId: null, principalProduto: true, bumps: ofertasBump.map((p) => p.produto ?? p.nome), motivo: `produto sem comissão${nome ? `: ${nome}` : ""}` };
   }
-  const ativos = tickets.filter((t) => t.ativo);
-  const porValor = item.valorCentavos === null ? undefined : ativos.find((t) => centavos(t.valor_bruto) === item.valorCentavos);
-  const precoNome = precoDoNome(item.nome);
-  const porNome = precoNome === null ? undefined : ativos.find((t) => centavos(t.valor_bruto) === precoNome);
-  const t = porValor ?? porNome;
-  if (t) return { ticketId: t.id, principalProduto: false, motivo: null };
-  const cobrado = item.valorCentavos === null ? "valor não veio" : `cobrado ${precoCurto(item.valorCentavos)}`;
-  return { ticketId: null, principalProduto: false, motivo: `sem ticket ativo (${cobrado}; nome: ${item.nome})`.slice(0, 200) };
+  const doNome = precoDoNome(item.nome);
+  const cobrado = item.valorCentavos;
+  if (doNome !== null && cobrado !== null && doNome !== cobrado) {
+    return { ticketId: null, principalProduto: false, bumps, motivo: `oferta diz ${precoCurto(doNome)}, cobrou ${precoCurto(cobrado)}` };
+  }
+  const valor = cobrado ?? doNome;
+  const t = valor === null ? undefined : tickets.find((x) => x.ativo && centavos(x.valor_bruto) === valor);
+  if (t) return { ticketId: t.id, principalProduto: false, bumps, motivo: null };
+  const motivo = valor === null ? `oferta de ticket sem valor nem preço no nome: ${item.nome}` : `sem ticket ativo de ${precoCurto(valor)} (${item.nome})`;
+  return { ticketId: null, principalProduto: false, bumps, motivo: motivo.slice(0, 200) };
 }
 
 // ---------------------------------------------------------------------------

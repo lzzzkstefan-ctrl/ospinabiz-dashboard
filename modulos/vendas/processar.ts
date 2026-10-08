@@ -99,10 +99,11 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
   if (reembolsoAntes.error) throw new Error(`erro ao ler eventos: ${reembolsoAntes.error.message}`);
 
   const vendedorId = vendedorDoUtm(f.utmTerm, vendedores.data);
-  // ticket só da oferta principal; payload sem a marca isOrderBump cai na regra antiga (pelos nomes)
+  // ticket só da oferta principal (nome ≠ cobrado → a revisar); payload sem a marca
+  // isOrderBump cai na regra pelos nomes
   const ticket = f.principais.length
-    ? { ...ticketDoPrincipal(f.principais, tickets.data as Ticket[]), bumps: f.bumps }
-    : { ...ticketDosItens(f.itens, tickets.data as Ticket[]), principalProduto: false };
+    ? ticketDoPrincipal(f.principais, f.ofertasBump, tickets.data as Ticket[])
+    : ticketDosItens(f.itens, tickets.data as Ticket[]);
   const jaReembolsada = reembolsoAntes.data.length > 0;
   const agora = new Date().toISOString();
 

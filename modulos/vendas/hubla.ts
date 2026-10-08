@@ -4,6 +4,9 @@
 
 export type TipoEvento = "pagamento" | "reembolso" | "outro";
 
+/** nome = "<produto> - <oferta>"; produto = nome do produto (o que aparece como bump) */
+export type OfertaHubla = { produto: string | null; nome: string; valorCentavos: number | null };
+
 export type FaturaHubla = {
   tipoBruto: string;
   tipo: TipoEvento;
@@ -11,8 +14,10 @@ export type FaturaHubla = {
   utmTerm: string | null;
   utmContent: string | null;
   itens: string[];
-  /** ofertas principais (isOrderBump = false): é só daqui que sai o ticket */
-  principais: { nome: string; valorCentavos: number | null }[];
+  /** ofertas principais (isOrderBump = false): o ticket só sai daqui */
+  principais: OfertaHubla[];
+  /** ofertas marcadas como order bump (isOrderBump = true): nunca contam, só o nome no card */
+  ofertasBump: OfertaHubla[];
   /** nomes dos order bumps (isOrderBump = true): só para mostrar, nunca contam */
   bumps: string[];
   valorPagoCentavos: number | null; // só referência
@@ -43,22 +48,26 @@ export function lerFatura(payload: unknown): FaturaHubla {
   // nomes dos itens: "<produto> - <oferta>" (ou só o produto, se não vier oferta)
   // principal x order bump: pela marca isOrderBump de cada oferta
   const itens: string[] = [];
-  const principais: FaturaHubla["principais"] = [];
+  const principais: OfertaHubla[] = [];
+  const ofertasBump: OfertaHubla[] = [];
   const bumps: string[] = [];
   for (const p of lista(evento.products)) {
     const produto = texto(obj(p).name);
     const ofertas = lista(obj(p).offers);
     if (ofertas.length === 0 && produto) {
       itens.push(produto);
-      principais.push({ nome: produto, valorCentavos: null });
+      principais.push({ produto, nome: produto, valorCentavos: null });
     }
     for (const o of ofertas) {
       const oferta = texto(obj(o).name);
       const nome = [produto, oferta].filter(Boolean).join(" - ");
       if (!nome) continue;
       itens.push(nome);
-      if (obj(o).isOrderBump === true) bumps.push(produto ?? nome);
-      else principais.push({ nome, valorCentavos: numero(obj(o).amountCents) });
+      const item = { produto, nome, valorCentavos: numero(obj(o).amountCents) };
+      if (obj(o).isOrderBump === true) {
+        bumps.push(produto ?? nome);
+        ofertasBump.push(item);
+      } else principais.push(item);
     }
   }
 
@@ -75,6 +84,7 @@ export function lerFatura(payload: unknown): FaturaHubla {
     utmContent: texto(utm.content) ?? texto(utmPrimeira.content),
     itens,
     principais,
+    ofertasBump,
     bumps,
     valorPagoCentavos: numero(valor.subtotalCents) ?? numero(valor.totalCents),
     pagoEm: texto(pago?.when) ?? texto(fatura.saleDate),
