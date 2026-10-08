@@ -136,6 +136,32 @@ export function ticketDosItens(
     : { ticketId: null, bumps, motivo: `ticket de ${precoCurto(preco)} não está na tabela` };
 }
 
+/**
+ * Ticket pela oferta PRINCIPAL da fatura (isOrderBump = false). Order bump nunca conta.
+ * - principal é ticket ("Ticket - R$…" / "Game Changer Society"): ticket ATIVO com o valor
+ *   cobrado na oferta (como no Lock in); sem esse, o do preço escrito no nome; sem os dois,
+ *   "a revisar" com o motivo;
+ * - principal é outro produto (combo, Nexus…): sem ticket e "sem comissão (produto)".
+ */
+export function ticketDoPrincipal(
+  principais: { nome: string; valorCentavos: number | null }[],
+  tickets: Ticket[],
+): { ticketId: number | null; principalProduto: boolean; motivo: string | null } {
+  const item = principais.find((p) => ehItemDeTicket(p.nome));
+  if (!item) {
+    const nome = principais[0]?.nome ?? null;
+    return { ticketId: null, principalProduto: true, motivo: `produto sem comissão${nome ? `: ${nome}` : ""}` };
+  }
+  const ativos = tickets.filter((t) => t.ativo);
+  const porValor = item.valorCentavos === null ? undefined : ativos.find((t) => centavos(t.valor_bruto) === item.valorCentavos);
+  const precoNome = precoDoNome(item.nome);
+  const porNome = precoNome === null ? undefined : ativos.find((t) => centavos(t.valor_bruto) === precoNome);
+  const t = porValor ?? porNome;
+  if (t) return { ticketId: t.id, principalProduto: false, motivo: null };
+  const cobrado = item.valorCentavos === null ? "valor não veio" : `cobrado ${precoCurto(item.valorCentavos)}`;
+  return { ticketId: null, principalProduto: false, motivo: `sem ticket ativo (${cobrado}; nome: ${item.nome})`.slice(0, 200) };
+}
+
 // ---------------------------------------------------------------------------
 // "A revisar" (só admin): venda sem dono, ou venda nova paga sem ticket.
 // Venda importada sem ticket (produto, combo do histórico) não entra: já foi

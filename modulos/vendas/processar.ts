@@ -8,7 +8,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerFatura, type FaturaHubla } from "./hubla";
-import { diaSP, finalDoLead, ticketDosItens, vendedorDoUtm, type Ticket } from "./regras";
+import { diaSP, finalDoLead, ticketDoPrincipal, ticketDosItens, vendedorDoUtm, type Ticket } from "./regras";
 
 type Db = ReturnType<typeof createAdminClient>;
 type Conclusao = { resultado: string; vendaId?: number | null };
@@ -99,7 +99,10 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
   if (reembolsoAntes.error) throw new Error(`erro ao ler eventos: ${reembolsoAntes.error.message}`);
 
   const vendedorId = vendedorDoUtm(f.utmTerm, vendedores.data);
-  const ticket = ticketDosItens(f.itens, tickets.data as Ticket[]);
+  // ticket só da oferta principal; payload sem a marca isOrderBump cai na regra antiga (pelos nomes)
+  const ticket = f.principais.length
+    ? { ...ticketDoPrincipal(f.principais, tickets.data as Ticket[]), bumps: f.bumps }
+    : { ...ticketDosItens(f.itens, tickets.data as Ticket[]), principalProduto: false };
   const jaReembolsada = reembolsoAntes.data.length > 0;
   const agora = new Date().toISOString();
 
@@ -113,7 +116,9 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
       utm_term: f.utmTerm,
       ticket_id: ticket.ticketId,
       motivo_sem_ticket: ticket.motivo,
-      itens: f.itens,
+      principal_produto: ticket.principalProduto,
+      // principal primeiro (a tela mostra itens[0] como a oferta); bumps à parte, só para ver
+      itens: f.principais.length ? [...f.principais.map((p) => p.nome), ...f.itens.filter((i) => !f.principais.some((p) => p.nome === i))] : f.itens,
       bumps: ticket.bumps,
       valor_pago: f.valorPagoCentavos === null ? null : f.valorPagoCentavos / 100,
       status: jaReembolsada ? "reembolso" : "pago",
