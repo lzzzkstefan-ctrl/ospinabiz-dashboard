@@ -6,7 +6,8 @@ import { hasEnvVars } from "../utils";
 // /api fica de fora do redirecionamento: quem chama sao maquinas (Meta, pg_cron).
 // Cada rota em app/api TEM que checar sozinha quem chamou (assinatura da Meta,
 // CRON_SECRET ou usuario logado).
-const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/confirmar", "/erro", "/api"];
+// /r = link público do mês de vendas (só leitura; a página só mostra campos escolhidos).
+const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/confirmar", "/erro", "/api", "/r"];
 
 // Telas só de admin. Atendente que digitar o endereço volta pro Início.
 // Manter igual aos itens com `admin: true` em components/painel-nav.tsx.
