@@ -20,6 +20,8 @@ repositório, Supabase, Vercel e credenciais próprios.
 - Supabase: Auth (convite só por e-mail, cadastro público desligado), Postgres com RLS,
   Edge Functions, pg_cron + pg_net. Região sa-east-1.
 - Supabase CLI via `npx supabase` (devDependency).
+- Skills oficiais do Supabase em `.claude/skills/` (`supabase`, `supabase-postgres-best-practices`),
+  instaladas com `npx skills add supabase/agent-skills`. Versões travadas em `skills-lock.json`.
 - Hospedagem: Vercel (Hobby, conta pessoal do Davi por enquanto; projeto pensado para transferir a um time).
 
 ## Estrutura
