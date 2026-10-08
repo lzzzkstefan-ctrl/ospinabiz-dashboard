@@ -2,6 +2,17 @@
 
 Registro curto do que foi decidido e por quê. Decisão nova entra no topo.
 
+## 2026-10-08: Tarefas
+
+- **"Atrasada" é calculada, não guardada:** pendente com prazo antes de hoje (horário de Brasília).
+- **Qualquer usuário logado** cria, edita, conclui e reabre. **Ninguém apaga** (sem delete no RLS).
+- **`concluida_em`, `criado_por` e `criado_em`** são cuidados por gatilho no banco: a tela não
+  consegue preencher errado nem trocar quem criou.
+- **Vínculo opcional com uma BM ou um número**, nunca os dois.
+
+**Por quê:** status guardado como "atrasada" ficaria errado no dia seguinte sem ninguém mexer.
+Sem delete, o histórico da operação não se perde.
+
 ## 2026-10-08: Organização das BMs (equipe, final, situação)
 
 - **Tabela `equipe`:** responsáveis por números e tarefas. `usuario_id` é opcional, para alguém

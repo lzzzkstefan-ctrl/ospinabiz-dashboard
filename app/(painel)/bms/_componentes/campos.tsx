@@ -1,20 +1,8 @@
+import { Campo, classeOpcao, classeSelect } from "@/components/formulario";
 import { Input } from "@/components/ui/input";
 import { LIMITES, formatarLimite, type Bm, type Numero, type Pessoa } from "@/modulos/bms/regras";
 
-// Peças dos formulários da tela de BMs.
-
-export const classeSelect =
-  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm text-ink shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-const classeOpcao = "bg-[#0a1418]";
-
-export function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1.5 text-[13px] text-ink-dim">
-      {rotulo}
-      {children}
-    </label>
-  );
-}
+// Campos do formulário de número da tela de BMs.
 
 /** Campos de um número (cadastro e edição). `numero` preenche os valores atuais. */
 export function CamposNumero({

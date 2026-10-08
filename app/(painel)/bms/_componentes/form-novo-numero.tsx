@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { Bm, Pessoa } from "@/modulos/bms/regras";
 import { useActionState } from "react";
 import { criarNumero, type EstadoForm } from "../acoes";
-import { Aviso } from "./aviso";
+import { Aviso } from "@/components/formulario";
 import { CamposNumero } from "./campos";
 
 export function FormNovoNumero({ bms, equipe }: { bms: Pick<Bm, "id" | "nome">[]; equipe: Pessoa[] }) {

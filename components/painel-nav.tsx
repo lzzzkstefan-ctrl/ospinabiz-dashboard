@@ -7,6 +7,7 @@ import {
   BadgeDollarSign,
   Building2,
   CalendarCheck,
+  ListChecks,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -16,6 +17,7 @@ import { usePathname } from "next/navigation";
 // ícones flutuante embaixo (celular). Módulo novo = um item aqui.
 const ITENS = [
   { href: "/monitor", label: "Monitor", icon: Activity, emBreve: false },
+  { href: "/tarefas", label: "Tarefas", icon: ListChecks, emBreve: false },
   { href: "/vendas", label: "Vendas", icon: BadgeDollarSign, emBreve: true },
   { href: "/fechamento", label: "Fechamento", icon: CalendarCheck, emBreve: true },
   { href: "/bms", label: "BMs", icon: Building2, emBreve: false },

@@ -4,8 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useActionState } from "react";
 import { criarBm, type EstadoForm } from "../acoes";
-import { Aviso } from "./aviso";
-import { Campo } from "./campos";
+import { Aviso, Campo } from "@/components/formulario";
 
 export function FormNovaBm() {
   const [estado, acao, salvando] = useActionState<EstadoForm, FormData>(criarBm, {});
