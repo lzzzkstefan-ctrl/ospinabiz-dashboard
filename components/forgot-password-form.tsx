@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
   CardContent,
   CardDescription,
   CardHeader,
@@ -49,9 +48,9 @@ export function ForgotPasswordForm({
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       {success ? (
-        <Card>
+        <div className="glass">
           <CardHeader>
-            <CardTitle className="text-2xl">Confira seu e-mail</CardTitle>
+            <CardTitle className="text-[24px] text-white">Confira seu e-mail</CardTitle>
             <CardDescription>Instruções enviadas</CardDescription>
           </CardHeader>
           <CardContent>
@@ -60,11 +59,11 @@ export function ForgotPasswordForm({
               para criar uma nova senha.
             </p>
           </CardContent>
-        </Card>
+        </div>
       ) : (
-        <Card>
+        <div className="glass">
           <CardHeader>
-            <CardTitle className="text-2xl">Recuperar senha</CardTitle>
+            <CardTitle className="text-[24px] text-white">Recuperar senha</CardTitle>
             <CardDescription>
               Digite seu e-mail e enviaremos um link para criar uma nova senha.
             </CardDescription>
@@ -83,7 +82,7 @@ export function ForgotPasswordForm({
                     onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
+                {error && <p className="text-[13px] text-accent-3">{error}</p>}
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Enviando..." : "Enviar link"}
                 </Button>
@@ -95,7 +94,7 @@ export function ForgotPasswordForm({
               </div>
             </form>
           </CardContent>
-        </Card>
+        </div>
       )}
     </div>
   );

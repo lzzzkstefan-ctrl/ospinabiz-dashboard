@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
   CardContent,
   CardDescription,
   CardHeader,
@@ -47,9 +46,9 @@ export function UpdatePasswordForm({
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
+      <div className="glass">
         <CardHeader>
-          <CardTitle className="text-2xl">Definir senha</CardTitle>
+          <CardTitle className="text-[24px] text-white">Definir senha</CardTitle>
           <CardDescription>Crie a senha que você vai usar para entrar.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -68,14 +67,14 @@ export function UpdatePasswordForm({
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {error && <p className="text-[13px] text-accent-3">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Salvando..." : "Salvar senha"}
               </Button>
             </div>
           </form>
         </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }

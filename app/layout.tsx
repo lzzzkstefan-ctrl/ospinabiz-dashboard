@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
-import { ThemeProvider } from "next-themes";
+import { Outfit } from "next/font/google";
+import { PausarBrilhoForaDaTela } from "@/components/pausar-brilho";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -14,10 +14,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfit = Outfit({
+  variable: "--font-outfit",
   display: "swap",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800"],
 });
 
 export default function RootLayout({
@@ -26,16 +27,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
-      <body className={`${geistSans.className} antialiased`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
+    <html lang="pt-BR">
+      <body className={`${outfit.variable} font-sans antialiased overflow-x-clip`}>
+        <div className="aurora-bg" aria-hidden>
+          <div className="blob blob-1" />
+          <div className="blob blob-2" />
+          <div className="blob blob-3" />
+        </div>
+        {children}
+        <PausarBrilhoForaDaTela />
       </body>
     </html>
   );

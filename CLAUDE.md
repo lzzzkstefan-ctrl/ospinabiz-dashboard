@@ -1,4 +1,4 @@
-ESTE É O DASHBOARD DA EMPRESA, NÃO O MASTERVIEW PESSOAL. Nunca usar credenciais ou caminhos de C:\dev\masterview.
+ESTE É O DASHBOARD DA EMPRESA, NÃO O MASTERVIEW PESSOAL. Nunca usar credenciais, Supabase ou dados do masterview (só o visual pode ser copiado; ver Regras).
 
 # Ospinabiz Dashboard
 
@@ -10,7 +10,13 @@ escolhas em português simples.
 
 - A pasta oficial do projeto é `C:\dev\ospinabiz-dashboard`. Código não fica no OneDrive: ele sincroniza
   o `.env.local` para a nuvem e trava arquivos do `node_modules` e do `.next`.
-- Nunca ler, copiar ou referenciar nada de `C:\dev\masterview` (código, `.env.local`, Supabase, `.vercel`).
+- Nunca ler, copiar ou referenciar nada do masterview (código, `.env.local`, Supabase, `.vercel`).
+  Ele fica em `D:\ARQUIVOS\Documents\GitHub\masterview` (`C:\dev\masterview` não existe).
+  **Exceção: o design visual segue o masterview; credenciais, Supabase e dados nunca.**
+  Pode ler (só leitura) estilos e aparência: `globals.css`, `tailwind.config.ts`, fontes, cores,
+  componentes visuais (botões, cards, menu, layout). Continua proibido: `.env*`, chaves,
+  `lib/supabase`, rotas de API, banco e dados. Nunca alterar nada lá; o visual é copiado para
+  dentro deste projeto, sem importar arquivos de lá.
 - Todos os tokens em variáveis de ambiente (`.env.local` local, Vercel em produção). Nunca no código.
   `.env.example` tem só os nomes.
 - Dados reais (telefones dos números monitorados, clientes) ficam no banco, nunca no código nem no git.
@@ -23,7 +29,7 @@ escolhas em português simples.
 ```
 app/                          tudo que vira endereço (URL)
   (auth)/                     telas públicas: login, esqueci-senha, definir-senha, confirmar, erro
-  (painel)/                   telas com login; layout.tsx = menu lateral
+  (painel)/                   telas com login; layout.tsx = menu em pílula (topo) + barra de ícones (celular)
     <modulo>/page.tsx         tela do módulo (monitor, vendas, fechamento, bms)
     <modulo>/_componentes/    peças visuais usadas só por esse módulo
     admin/usuarios/           convites e papéis (só admin)

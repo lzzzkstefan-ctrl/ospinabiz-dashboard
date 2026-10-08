@@ -2,59 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Visual copiado do masterview (só o design; nada de dados, rotas ou credenciais).
+   Tema único escuro: o vidro e a aurora foram feitos para fundo escuro. */
+
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
-  }
-  .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    color-scheme: dark;
+    --bg: #000607;
+    --bg-raised: rgba(147, 186, 222, 0.07);
+    --bg-raised-2: rgba(147, 186, 222, 0.12);
+    --ink: #ededed;
+    --ink-dim: rgba(237, 237, 237, 0.62);
+    --ink-faint: rgba(237, 237, 237, 0.38);
+    --accent: #93bade;
+    --accent-2: #8abede;
+    --accent-3: #93cedc;
+    /* mesmos tons em canais R G B: o Tailwind v3 só aplica opacidade
+       (bg-accent/15, border-accent/40…) em cores nesse formato */
+    --bg-rgb: 0 6 7;
+    --accent-rgb: 147 186 222;
+    --accent-3-rgb: 147 206 220;
+    /* etiquetas de status, canais R G B: contraste >= 3:1 no fundo escuro */
+    --tag-verde: 63 185 80;
+    --tag-roxo: 163 113 247;
+    --tag-azul: 88 166 255;
+    --tag-laranja: 232 145 45;
+    --tag-vermelho: 242 86 110;
+    --tag-cinza: 139 148 158;
+    --line: rgba(255, 255, 255, 0.16);
+    --line-soft: rgba(255, 255, 255, 0.08);
+    --radius: 20px;
   }
 }
 
@@ -62,7 +45,225 @@
   * {
     @apply border-border;
   }
+  html,
   body {
-    @apply bg-background text-foreground;
+    background: var(--bg);
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-sans font-semibold tracking-tight;
+    color: #fff;
+  }
+  ::placeholder {
+    color: var(--ink-faint);
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
+
+@layer components {
+  /* ---------- fundo aurora ---------- */
+  .aurora-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -10;
+    overflow: hidden;
+    background: var(--bg);
+  }
+  .aurora-bg .blob {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0.4;
+    /* Sem blur nem animação de propósito: o radial-gradient já termina em
+       transparent e o vidro por cima refaria o desfoque a cada quadro. */
+  }
+  .aurora-bg .blob-1 {
+    top: -10%;
+    left: -8%;
+    width: 46vw;
+    height: 46vw;
+    background: radial-gradient(circle, var(--accent), transparent 70%);
+  }
+  .aurora-bg .blob-2 {
+    top: 20%;
+    right: -12%;
+    width: 40vw;
+    height: 40vw;
+    background: radial-gradient(circle, var(--accent-3), transparent 70%);
+  }
+  .aurora-bg .blob-3 {
+    bottom: -14%;
+    left: 20%;
+    width: 38vw;
+    height: 38vw;
+    background: radial-gradient(circle, var(--accent-2), transparent 70%);
+  }
+
+  /* ---------- vidro líquido ---------- */
+  .glass {
+    position: relative;
+    background: linear-gradient(165deg, rgba(147, 186, 222, 0.12), rgba(147, 186, 222, 0.03));
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 0 40px rgba(147, 186, 222, 0.04),
+      0 12px 40px rgba(0, 6, 7, 0.5);
+  }
+  /* brilho que gira pela borda */
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: conic-gradient(
+      from var(--angle),
+      transparent 0deg,
+      rgba(255, 255, 255, 0.85) 12deg,
+      transparent 45deg,
+      transparent 315deg,
+      rgba(255, 255, 255, 0.5) 348deg,
+      transparent 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: spin-border 7s linear infinite;
+    pointer-events: none;
+    will-change: transform;
+  }
+  /* fora da tela ninguém vê a borda girar: pausa (components/pausar-brilho.tsx) */
+  .glass.glass-fora-da-tela::before {
+    animation-play-state: paused;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .glass::before {
+      animation: none;
+    }
+  }
+
+  /* vidro leve para itens repetidos (cards de números, listas): sem a borda girando */
+  .glass-lite {
+    position: relative;
+    background: linear-gradient(165deg, rgba(147, 186, 222, 0.12), rgba(147, 186, 222, 0.04));
+    backdrop-filter: blur(14px) saturate(150%);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+    border: 1px solid var(--line-soft);
+    border-radius: 18px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 8px 24px rgba(0, 6, 7, 0.4);
+    transition:
+      transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.2s ease;
+  }
+  .glass-lite:hover {
+    transform: translateY(-3px);
+    border-color: var(--line);
+  }
+  .glass-lite.glass-static:hover {
+    transform: none;
+  }
+
+  /* vidro com borda em degradê azul, para o destaque da página */
+  .glass-destaque {
+    background: linear-gradient(160deg, rgba(147, 206, 220, 0.14), rgba(147, 186, 222, 0.03) 55%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 0 28px rgba(147, 206, 220, 0.08),
+      0 10px 30px rgba(0, 6, 7, 0.45);
+  }
+  .glass-destaque::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      rgba(147, 206, 220, 0.75),
+      rgba(147, 186, 222, 0.08) 40%,
+      rgba(147, 186, 222, 0.08) 65%,
+      rgba(147, 206, 220, 0.45)
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* rolagem fina e escura, no lugar da barra branca padrão */
+  .rolagem-fina {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(147, 186, 222, 0.35) transparent;
+  }
+  .rolagem-fina::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+  .rolagem-fina::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .rolagem-fina::-webkit-scrollbar-thumb {
+    background: rgba(147, 186, 222, 0.3);
+    border-radius: 999px;
+  }
+  .rolagem-fina::-webkit-scrollbar-thumb:hover {
+    background: rgba(147, 186, 222, 0.55);
+  }
+}
+
+@keyframes spin-border {
+  to {
+    --angle: 360deg;
+  }
+}
+
+/* Etiqueta estilo Notion: pílula translúcida + bolinha colorida + texto claro.
+   Fora de @layer de propósito: etiqueta-${cor} é montada dinamicamente e o
+   Tailwind apagaria classes de camada que não acha escritas no código. */
+.etiqueta {
+  --tag: var(--tag-cinza);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  border-radius: 9999px;
+  border: 1px solid rgb(var(--tag) / 0.35);
+  background: rgb(var(--tag) / 0.14);
+  padding: 1px 8px 1px 7px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--ink);
+}
+.etiqueta::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: rgb(var(--tag));
+}
+.etiqueta-verde { --tag: var(--tag-verde); }
+.etiqueta-roxo { --tag: var(--tag-roxo); }
+.etiqueta-azul { --tag: var(--tag-azul); }
+.etiqueta-laranja { --tag: var(--tag-laranja); }
+.etiqueta-vermelho { --tag: var(--tag-vermelho); }
+.etiqueta-cinza { --tag: var(--tag-cinza); }

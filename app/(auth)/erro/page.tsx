@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { Suspense } from "react";
 
@@ -24,9 +24,9 @@ export default function Page({
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
-        <Card>
+        <div className="glass">
           <CardHeader>
-            <CardTitle className="text-2xl">Algo deu errado</CardTitle>
+            <CardTitle className="text-[24px] text-white">Algo deu errado</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Suspense>
@@ -39,7 +39,7 @@ export default function Page({
               Voltar para o login
             </Link>
           </CardContent>
-        </Card>
+        </div>
       </div>
     </div>
   );

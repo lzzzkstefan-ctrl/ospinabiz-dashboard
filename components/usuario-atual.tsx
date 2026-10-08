@@ -8,8 +8,8 @@ export async function UsuarioAtual() {
   if (!email) return null;
 
   return (
-    <p className="truncate text-xs text-muted-foreground" title={email}>
+    <span className="max-w-[180px] shrink truncate px-2 text-[12px] text-ink-faint" title={email}>
       {email}
-    </p>
+    </span>
   );
 }

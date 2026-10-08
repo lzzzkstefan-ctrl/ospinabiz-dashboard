@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
   CardContent,
   CardDescription,
   CardHeader,
@@ -48,9 +47,9 @@ export function LoginForm({
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
+      <div className="glass">
         <CardHeader>
-          <CardTitle className="text-2xl">Entrar</CardTitle>
+          <CardTitle className="text-[24px] text-white">Entrar</CardTitle>
           <CardDescription>
             Acesso só por convite. Use o e-mail em que você recebeu o convite.
           </CardDescription>
@@ -88,14 +87,14 @@ export function LoginForm({
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {error && <p className="text-[13px] text-accent-3">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Entrando..." : "Entrar"}
               </Button>
             </div>
           </form>
         </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }
