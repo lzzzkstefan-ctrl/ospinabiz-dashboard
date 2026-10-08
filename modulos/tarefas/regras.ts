@@ -73,7 +73,7 @@ export function formatarData(data: string, hoje: string): string {
   return ano === hoje.slice(0, 4) ? `${dia}/${mes}` : `${dia}/${mes}/${ano}`;
 }
 
-/** Texto do vínculo: "BM 01" ou "5887 · BM 01". */
+/** Texto do vínculo: "BM 01" ou "1234 · BM 01". */
 export function textoVinculo(tarefa: Pick<Tarefa, "bm" | "numero">): string | null {
   if (tarefa.numero) return [tarefa.numero.final, tarefa.numero.bm?.nome].filter(Boolean).join(" · ");
   return tarefa.bm?.nome ?? null;

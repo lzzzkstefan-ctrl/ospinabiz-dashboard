@@ -26,7 +26,7 @@ export function formatarLimite(limite: number | null): string {
 
 /**
  * Deixa o telefone no formato do banco: só dígitos, com código do país.
- * Aceita "(11) 99999-0348", "+55 11 99999-0348", "5511999990348"...
+ * Aceita "(11) 99999-1234", "+55 11 99999-1234", "5511999991234"...
  * Com 10 ou 11 dígitos (DDD + número), assume Brasil e coloca o 55 na frente,
  * a não ser que comece com "+" (aí o código do país já veio junto).
  * Devolve null se não der um telefone válido (10 a 15 dígitos, igual à regra do banco).
@@ -38,7 +38,7 @@ export function normalizarTelefone(texto: string): string | null {
   return /^[0-9]{10,15}$/.test(digitos) ? digitos : null;
 }
 
-/** Mostra o telefone do banco de um jeito legível: +55 11 99999-0348. */
+/** Mostra o telefone do banco de um jeito legível: +55 11 99999-1234. */
 export function formatarTelefone(telefone: string): string {
   const m = telefone.match(/^55(\d{2})(\d{4,5})(\d{4})$/);
   return m ? `+55 ${m[1]} ${m[2]}-${m[3]}` : `+${telefone}`;
@@ -108,7 +108,7 @@ export function lerCamposNumero(
 
   const textoTelefone = limparTexto(form.get("telefone"), 30);
   const telefone = textoTelefone ? normalizarTelefone(textoTelefone) : null;
-  if (textoTelefone && !telefone) return { erro: "Telefone inválido. Use DDD + número, ex.: (11) 99999-0348." };
+  if (textoTelefone && !telefone) return { erro: "Telefone inválido. Use DDD + número, ex.: (11) 99999-1234." };
 
   let final = limparTexto(form.get("final"), 4);
   if (!final && telefone) final = telefone.slice(-4);

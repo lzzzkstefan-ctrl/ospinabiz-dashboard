@@ -29,10 +29,10 @@ export function CamposNumero({
         </select>
       </Campo>
       <Campo rotulo="Final (4 dígitos)">
-        <Input name="final" inputMode="numeric" maxLength={4} placeholder="0348" defaultValue={numero?.final} />
+        <Input name="final" inputMode="numeric" maxLength={4} placeholder="1234" defaultValue={numero?.final} />
       </Campo>
       <Campo rotulo="Telefone completo (opcional)">
-        <Input name="telefone" inputMode="tel" placeholder="(11) 99999-0348" defaultValue={numero?.telefone ?? ""} />
+        <Input name="telefone" inputMode="tel" placeholder="(11) 99999-1234" defaultValue={numero?.telefone ?? ""} />
       </Campo>
       <Campo rotulo="Apelido na Data Crazy">
         <Input name="apelido" maxLength={60} placeholder="automático: final + BM" defaultValue={numero?.apelido} />
