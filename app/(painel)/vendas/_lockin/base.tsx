@@ -177,9 +177,12 @@ export function StatusTag({ status }: { status: string }) {
   return <Etiqueta cor={COR_STATUS[status] ?? "cinza"}>{NOME_STATUS[status] ?? status}</Etiqueta>;
 }
 
-/** Todas as vendas daqui vêm da Hubla (webhook ou planilha). */
-export function PlataformaTag() {
-  return <Etiqueta cor="verde">Hubla</Etiqueta>;
+const COR_PLATAFORMA: Record<string, CorEtiqueta> = { hubla: "verde", kirvano: "roxo" };
+const NOME_PLATAFORMA: Record<string, string> = { hubla: "Hubla", kirvano: "Kirvano" };
+
+/** Plataforma da venda (como no Lock in: Hubla verde, Kirvano roxo). */
+export function PlataformaTag({ plataforma }: { plataforma: string }) {
+  return <Etiqueta cor={COR_PLATAFORMA[plataforma] ?? "cinza"}>{NOME_PLATAFORMA[plataforma] ?? plataforma}</Etiqueta>;
 }
 
 // ---------- rosca ----------

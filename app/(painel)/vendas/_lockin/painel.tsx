@@ -11,7 +11,10 @@ import {
   liquidoVenda,
   resumirLI,
   textoResumo,
+  NOME_PLATAFORMA,
+  PLATAFORMAS,
   type LinhaImportacao,
+  type Plataforma,
   type TicketLI,
   type VendaLI,
 } from "@/modulos/vendas/lock-in";
@@ -439,7 +442,7 @@ function Grade({ vendas, ticketDe, onAbrir, vazio }: { vendas: VendaLI[]; ticket
             </span>
             <span className="flex flex-wrap gap-1.5">
               {t ? <TicketTag ticket={t} /> : <SemComissaoTag oferta={ofertaDe(v)} produto={v.principal_produto} />}
-              <PlataformaTag />
+              <PlataformaTag plataforma={v.plataforma} />
               <StatusTag status={v.status} />
             </span>
           </button>
@@ -560,7 +563,7 @@ function DetalheVenda({
   return (
     <Janela titulo={v.cliente} onFechar={onFechar}>
       <div className="-mt-2 mb-3 flex flex-wrap gap-1.5">
-        <PlataformaTag />
+        <PlataformaTag plataforma={v.plataforma} />
         <StatusTag status={v.status} />
         <span className="text-[12px] text-ink-faint">{dataBR(v.data)}</span>
       </div>
@@ -675,6 +678,7 @@ function VendaForm({
     venda ? (venda.ticket_id ?? (venda.principal_produto ? "produto" : "revisar")) : (tickets.find((t) => t.ativo)?.id ?? "revisar"),
   );
   const [status, setStatus] = useState<StatusVenda>(venda?.status ?? "pago");
+  const [plataforma, setPlataforma] = useState<Plataforma>(venda?.plataforma ?? "hubla");
   const [data, setData] = useState(venda?.data ?? hoje);
   const [dono, setDono] = useState<number | "nenhum" | null>(venda?.sem_vendedor ? "nenhum" : vendedorInicial);
   const [erro, setErro] = useState<string | null>(null);
@@ -690,6 +694,7 @@ function VendaForm({
       ticketId: typeof ticket === "number" ? ticket : null,
       principalProduto: ticket === "produto",
       status,
+      plataforma,
       data,
     };
     startTransition(async () => {
@@ -749,6 +754,11 @@ function VendaForm({
             )
           }
         />
+      </div>
+
+      <div className="text-xs text-ink-dim">
+        <div className="mb-1.5">Plataforma</div>
+        <Botoes opcoes={PLATAFORMAS} valor={plataforma} onEscolher={setPlataforma} rotulo="Plataforma" render={(p) => NOME_PLATAFORMA[p]} />
       </div>
 
       {!nova && (

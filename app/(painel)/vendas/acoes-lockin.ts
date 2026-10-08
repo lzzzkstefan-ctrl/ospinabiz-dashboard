@@ -7,7 +7,7 @@
 import { ehAdmin, usuarioLogado } from "@/lib/auth/papeis";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { analisarCsv, resumirLI, type LinhaImportacao } from "@/modulos/vendas/lock-in";
+import { analisarCsv, PLATAFORMAS, resumirLI, type LinhaImportacao, type Plataforma } from "@/modulos/vendas/lock-in";
 import { FAIXAS, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
 import { carregarVendas, listarTicketsLI } from "@/modulos/vendas/tela";
 import { refresh } from "next/cache";
@@ -131,6 +131,7 @@ export type VendaInput = {
   ticketId: number | null;
   principalProduto: boolean;
   status: StatusVenda;
+  plataforma: Plataforma;
   data: string;
 };
 
@@ -139,6 +140,7 @@ function validar(v: VendaInput): string | null {
   if (v.digitos && !/^\d{4}$/.test(v.digitos)) return "Os dígitos do telefone são 4 números.";
   if (!["pago", "reembolso", "chargeback"].includes(v.status)) return "Status inválido.";
   if (!dataOk(v.data)) return "Data inválida.";
+  if (!PLATAFORMAS.includes(v.plataforma)) return "Plataforma inválida.";
   return null;
 }
 
@@ -167,6 +169,7 @@ export async function criarVenda(v: VendaInput): Promise<Resultado> {
       reembolsado_em: v.status === "pago" ? null : agora,
       data: v.data,
       final_lead: v.digitos || null,
+      plataforma: v.plataforma,
       origem: "manual",
     })
     .select("id")
@@ -202,6 +205,7 @@ export async function editarVenda(id: number, v: VendaInput & { semVendedor: boo
       reembolsado_em: v.status === "pago" ? null : antes.status === v.status ? antes.reembolsado_em : agora,
       data: v.data,
       final_lead: v.digitos || null,
+      plataforma: v.plataforma,
       ...(mudouDono
         ? {
             vendedor_id: v.semVendedor ? null : v.vendedorId,

@@ -14,7 +14,7 @@ import { type TicketLI, type VendaLI } from "./lock-in";
 import { calcularMargem, centavos, custosDoMes, resumir, type Faixa, type Ticket, type Venda } from "./regras";
 
 const COLUNAS =
-  "id, id_fatura, vendedor_id, sem_vendedor, ticket_id, principal_produto, motivo_sem_ticket, itens, bumps, status, data, pago_em, final_lead, origem, " +
+  "id, id_fatura, vendedor_id, sem_vendedor, ticket_id, principal_produto, motivo_sem_ticket, itens, bumps, status, data, pago_em, final_lead, origem, plataforma, " +
   "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10";
 
 async function todas<T>(pagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
@@ -208,6 +208,7 @@ export type VendaPublica = {
   data: string;
   pagoEm: string | null;
   idFatura: string;
+  plataforma: string;
 };
 
 const FORMATO_CODIGO = /^[A-Za-z0-9_-]{32,64}$/;
@@ -267,6 +268,7 @@ export async function buscarMesPublico(codigo: string) {
         data: v.data,
         pagoEm: v.pago_em,
         idFatura: v.id_fatura,
+        plataforma: v.plataforma,
       };
     }),
   };

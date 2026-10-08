@@ -22,6 +22,11 @@ export type TicketLI = {
   comissao_10: number;
 };
 
+/** Plataforma da venda (coluna vendas.plataforma). Só a Hubla tem webhook. */
+export const PLATAFORMAS = ["hubla", "kirvano"] as const;
+export type Plataforma = (typeof PLATAFORMAS)[number];
+export const NOME_PLATAFORMA: Record<Plataforma, string> = { hubla: "Hubla", kirvano: "Kirvano" };
+
 /** Venda como a tela usa. cliente = "Nome -1234" (primeiro nome + final), "" se não puder ver. */
 export type VendaLI = {
   id: number;
@@ -38,6 +43,7 @@ export type VendaLI = {
   pago_em: string | null;
   final_lead: string | null;
   origem: "webhook" | "importacao" | "manual";
+  plataforma: Plataforma;
   snap_bruto: number | string | null;
   snap_liquido: number | string | null;
   snap_comissao_6: number | string | null;

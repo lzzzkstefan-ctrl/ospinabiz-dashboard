@@ -83,7 +83,7 @@ function Lista({ vendas, vazio }: { vendas: VendaPublica[]; vazio: string }) {
                   <TicketCelula v={v} />
                 </td>
                 <td className="px-3 py-2">
-                  <PlataformaTag />
+                  <PlataformaTag plataforma={v.plataforma} />
                 </td>
                 <td className="px-3 py-2">
                   <StatusTag status={v.status} />
@@ -105,7 +105,7 @@ function Lista({ vendas, vazio }: { vendas: VendaPublica[]; vazio: string }) {
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <TicketCelula v={v} />
-              <PlataformaTag />
+              <PlataformaTag plataforma={v.plataforma} />
               <StatusTag status={v.status} />
             </div>
             <IdFatura id={v.idFatura} />
@@ -120,7 +120,7 @@ function baixarCsv(nome: string, vendas: VendaPublica[]) {
   const cab = ["Data e hora", "Cliente", "Ticket", "Plataforma", "Status", "ID da fatura", "Comissão"];
   const cel = (x: string) => `"${x.replace(/"/g, '""')}"`;
   const linhas = vendas.map((v) =>
-    [dataHora(v), v.cliente, v.ticket ?? v.oferta ?? "sem ticket", "Hubla", NOME_STATUS[v.status] ?? v.status, v.idFatura, v.ticket ? "sim" : v.produto ? "não (produto)" : "não definida"]
+    [dataHora(v), v.cliente, v.ticket ?? v.oferta ?? "sem ticket", v.plataforma === "kirvano" ? "Kirvano" : "Hubla", NOME_STATUS[v.status] ?? v.status, v.idFatura, v.ticket ? "sim" : v.produto ? "não (produto)" : "não definida"]
       .map(cel)
       .join(";"),
   );
