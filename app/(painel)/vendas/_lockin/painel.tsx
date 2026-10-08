@@ -385,7 +385,7 @@ export function PainelVendas({
         </nav>
         <FiltroChips vendas={vendas} filtro={filtro} onFiltro={setFiltro} />
         {ver === "tabela" ? (
-          <TabelaVendas vendas={filtrar(vendas, filtro)} ticketDe={ticketDe} margem={margem} onAbrir={setAberta} mostrarVendedor={!vendedor} vendedores={vendedores} />
+          <TabelaVendas vendas={filtrar(vendas, filtro)} ticketDe={ticketDe} margem={margem} onAbrir={setAberta} mostrarVendedor={admin} vendedores={vendedores} />
         ) : (
           <Grade vendas={filtrar(ver === "pago" ? pagas : naoContam, filtro)} ticketDe={ticketDe} onAbrir={setAberta} vazio={ver} />
         )}
