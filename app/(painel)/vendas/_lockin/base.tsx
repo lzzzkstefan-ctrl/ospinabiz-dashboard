@@ -4,6 +4,7 @@
 // janela, botão de confirmação, etiquetas de ticket/status/plataforma e a rosca.
 
 import { Etiqueta, type CorEtiqueta } from "@/components/ui/etiqueta";
+import { COR_PRODUTO, COR_REVISAR } from "@/modulos/vendas/cores";
 import type { LinhaTicket, TicketLI } from "@/modulos/vendas/lock-in";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
@@ -152,14 +153,17 @@ export function TicketTag({ ticket, solto }: { ticket: TicketLI; solto?: boolean
 
 /** Venda sem ticket: "sem comissão (produto)" ou "a revisar", com a oferta. */
 export function SemComissaoTag({ oferta, solto, produto }: { oferta: string | null; solto?: boolean; produto?: boolean }) {
+  const cor = produto ? COR_PRODUTO : COR_REVISAR;
   return (
     <span
       title={oferta ?? undefined}
       className={cn(
         "inline-flex max-w-[16rem] items-center gap-1.5 truncate whitespace-nowrap text-[12px] text-ink-dim",
-        !solto && "rounded-full border border-dashed border-line px-2 py-0.5",
+        !solto && "rounded-full border border-dashed px-2 py-0.5",
       )}
+      style={solto ? undefined : { borderColor: `${cor}80` }}
     >
+      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: cor }} aria-hidden />
       {produto ? "sem comissão (produto)" : "a revisar"}
       {oferta ? ` · ${oferta}` : ""}
     </span>
@@ -183,8 +187,8 @@ const R = 52;
 const ESPESSURA = 16;
 const C = 2 * Math.PI * R;
 const RESPIRO = 2;
-const PRODUTO = { id: "sem-ticket-produto", nome: "sem comissão (produto)", cor: "#6b7280" };
-const SEM_TICKET = { id: "sem-ticket", nome: "sem comissão definida", cor: "#a3a3a3" };
+const PRODUTO = { id: "sem-ticket-produto", nome: "sem comissão (produto)", cor: COR_PRODUTO };
+const SEM_TICKET = { id: "sem-ticket", nome: "sem comissão definida", cor: COR_REVISAR };
 
 /** Rosca das vendas pagas por ticket. Centro: total pago, ou o ticket sob o mouse. */
 export function Rosca({

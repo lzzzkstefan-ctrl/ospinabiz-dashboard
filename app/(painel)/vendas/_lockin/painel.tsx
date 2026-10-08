@@ -35,6 +35,7 @@ import {
   TicketTag,
 } from "./base";
 import { Fechamento } from "./fechamento";
+import { COR_NEUTRA, COR_PRODUTO, COR_REVISAR, FUNDO_SELECIONADO } from "@/modulos/vendas/cores";
 
 export type VerLista = "pago" | "reembolso" | "tabela";
 export type VendedorOpcao = { id: number; nome: string };
@@ -601,31 +602,48 @@ function Botoes<T extends string | number>({
   onEscolher,
   rotulo,
   render,
+  cor,
 }: {
   opcoes: readonly T[];
   valor: T | null;
   onEscolher: (v: T) => void;
   rotulo: string;
   render?: (v: T) => ReactNode;
+  /** cor da opção: selecionada, a borda fica nessa cor e o fundo com ela bem suave */
+  cor?: (v: T) => string;
 }) {
   return (
     <div role="radiogroup" aria-label={rotulo} className="flex flex-wrap gap-1.5">
-      {opcoes.map((o) => (
-        <button
-          key={String(o)}
-          type="button"
-          role="radio"
-          aria-checked={valor === o}
-          onClick={() => onEscolher(o)}
-          className={cn(
-            "rounded-full border px-3 py-1.5 text-[13px] transition-colors",
-            valor === o ? "border-accent bg-accent/15 text-white" : "border-line text-ink-dim hover:border-accent hover:text-white",
-          )}
-        >
-          {render ? render(o) : String(o)}
-        </button>
-      ))}
+      {opcoes.map((o) => {
+        const sel = valor === o;
+        const c = cor?.(o);
+        return (
+          <button
+            key={String(o)}
+            type="button"
+            role="radio"
+            aria-checked={sel}
+            onClick={() => onEscolher(o)}
+            style={sel && c ? { borderColor: c, background: `${c}${FUNDO_SELECIONADO}` } : undefined}
+            className={cn(
+              "rounded-full border px-3 py-1.5 text-[13px] transition-colors",
+              sel ? (c ? "text-white" : "border-accent bg-accent/15 text-white") : "border-line text-ink-dim hover:border-accent hover:text-white",
+            )}
+          >
+            {render ? render(o) : String(o)}
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+function Bolinha({ cor, children }: { cor: string; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink">
+      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: cor }} aria-hidden />
+      {children}
+    </span>
   );
 }
 
@@ -720,8 +738,15 @@ function VendaForm({
           valor={ticket}
           onEscolher={setTicket}
           rotulo="Ticket"
+          cor={(o) => (o === "produto" ? COR_PRODUTO : o === "revisar" ? COR_REVISAR : (tickets.find((t) => t.id === o)?.cor ?? COR_NEUTRA))}
           render={(o) =>
-            o === "produto" ? "sem comissão (produto)" : o === "revisar" ? "a revisar" : <TicketTag ticket={tickets.find((t) => t.id === o)!} solto />
+            o === "produto" ? (
+              <Bolinha cor={COR_PRODUTO}>sem comissão (produto)</Bolinha>
+            ) : o === "revisar" ? (
+              <Bolinha cor={COR_REVISAR}>a revisar</Bolinha>
+            ) : (
+              <TicketTag ticket={tickets.find((t) => t.id === o)!} solto />
+            )
           }
         />
       </div>

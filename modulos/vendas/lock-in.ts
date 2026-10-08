@@ -48,8 +48,7 @@ export type VendaLI = {
   cliente: string;
 };
 
-/** cor neutra para ticket sem cor cadastrada */
-export const COR_NEUTRA = "#8a96a3";
+export { COR_NEUTRA } from "./cores";
 
 const zero = (): Record<Faixa, number> => ({ 6: 0, 7: 0, 8: 0, 9: 0, 10: 0 });
 

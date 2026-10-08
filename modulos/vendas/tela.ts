@@ -9,7 +9,8 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { COR_NEUTRA, type TicketLI, type VendaLI } from "./lock-in";
+import { corDoTicket } from "./cores";
+import { type TicketLI, type VendaLI } from "./lock-in";
 import { calcularMargem, centavos, custosDoMes, resumir, type Faixa, type Ticket, type Venda } from "./regras";
 
 const COLUNAS =
@@ -33,7 +34,7 @@ export async function listarTicketsLI(): Promise<TicketLI[]> {
   return data.map((t) => ({
     id: Number(t.id),
     nome: t.nome ?? `R$ ${Number(t.valor_bruto).toLocaleString("pt-BR")}`,
-    cor: t.cor ?? COR_NEUTRA,
+    cor: corDoTicket(centavos(t.valor_bruto), t.cor),
     ordem: Number(t.ordem ?? 0),
     provisorio: Boolean(t.provisorio),
     ativo: Boolean(t.ativo),
@@ -239,7 +240,7 @@ export async function buscarMesPublico(codigo: string) {
     ...t,
     id: Number(t.id),
     nome: t.nome ?? `R$ ${Number(t.valor_bruto)}`,
-    cor: t.cor ?? COR_NEUTRA,
+    cor: corDoTicket(centavos(t.valor_bruto), t.cor),
     ordem: Number(t.ordem ?? 0),
     provisorio: Boolean(t.provisorio),
     valor_bruto: Number(t.valor_bruto),
