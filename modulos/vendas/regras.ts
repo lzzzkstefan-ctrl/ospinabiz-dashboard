@@ -35,6 +35,15 @@ export type Venda = {
   data: string;
   reembolsado_em: string | null;
   final_lead: string | null;
+  origem: "webhook" | "importacao" | "manual";
+  /** cópia dos valores do ticket no momento da venda (trigger no banco); null = sem ticket */
+  snap_bruto: number | string | null;
+  snap_liquido: number | string | null;
+  snap_comissao_6: number | string | null;
+  snap_comissao_7: number | string | null;
+  snap_comissao_8: number | string | null;
+  snap_comissao_9: number | string | null;
+  snap_comissao_10: number | string | null;
 };
 
 export const centavos = (valor: number | string | null | undefined): number => Math.round(Number(valor ?? 0) * 100);
@@ -128,9 +137,28 @@ export function ticketDosItens(
 }
 
 // ---------------------------------------------------------------------------
-// Totais e comissão: só venda "pago" conta. Comissão = soma das comissões
-// unitárias da faixa (nunca porcentagem calculada na hora).
+// "A revisar" (só admin): venda sem dono, ou venda nova paga sem ticket.
+// Venda importada sem ticket (produto, combo do histórico) não entra: já foi
+// conferida na origem e fica só na lista do mês, com o motivo.
 // ---------------------------------------------------------------------------
+export function precisaRevisar(v: Venda): boolean {
+  const semDono = v.vendedor_id === null && !v.sem_vendedor;
+  const semTicket = v.status === "pago" && v.ticket_id === null && v.origem !== "importacao";
+  return semDono || semTicket;
+}
+
+// ---------------------------------------------------------------------------
+// Totais e comissão: só venda "pago" conta. Os valores vêm da cópia guardada
+// em cada venda (snapshot), nunca do ticket atual: mudar ou desativar ticket
+// não recalcula venda antiga.
+// ---------------------------------------------------------------------------
+
+/** Comissão de UMA venda: líquido × %, meio centavo pra cima, só com inteiros
+ * (14905 × 10 = 149050 → (149050 + 50) / 100 = 1491). Usada pra gerar e conferir
+ * a tabela de tickets; a soma do mês usa o valor já guardado em cada venda. */
+export function comissaoDe(liquidoCentavos: number, pct: Faixa): number {
+  return Math.floor((liquidoCentavos * pct + 50) / 100);
+}
 export type Resumo = {
   qtd: number; // vendas pagas com ticket
   semTicket: number; // vendas pagas sem ticket identificado (sem valor nem comissão)
@@ -144,6 +172,18 @@ export type Resumo = {
 
 export function comissaoUnit(t: Ticket, faixa: Faixa): number {
   return centavos(t[`comissao_${faixa}`]);
+}
+
+/** Valores de uma venda paga com ticket: a cópia guardada nela; sem cópia, o ticket. */
+function valoresDaVenda(v: Venda, t: Ticket) {
+  if (v.snap_bruto !== null) {
+    return {
+      bruto: centavos(v.snap_bruto),
+      liquido: centavos(v.snap_liquido),
+      comissao: (f: Faixa) => centavos(v[`snap_comissao_${f}`]),
+    };
+  }
+  return { bruto: centavos(t.valor_bruto), liquido: centavos(t.valor_liquido), comissao: (f: Faixa) => comissaoUnit(t, f) };
 }
 
 export function resumir(vendas: Venda[], tickets: Ticket[]): Resumo {
@@ -169,10 +209,11 @@ export function resumir(vendas: Venda[], tickets: Ticket[]): Resumo {
       r.semTicket += 1;
       continue;
     }
+    const valores = valoresDaVenda(v, t);
     r.qtd += 1;
-    r.bruto += centavos(t.valor_bruto);
-    r.liquido += centavos(t.valor_liquido);
-    for (const f of FAIXAS) r.comissao[f] += comissaoUnit(t, f);
+    r.bruto += valores.bruto;
+    r.liquido += valores.liquido;
+    for (const f of FAIXAS) r.comissao[f] += valores.comissao(f);
     const linha = porTicket.get(t.id) ?? { ticketId: t.id, bruto: centavos(t.valor_bruto), qtd: 0 };
     linha.qtd += 1;
     porTicket.set(t.id, linha);

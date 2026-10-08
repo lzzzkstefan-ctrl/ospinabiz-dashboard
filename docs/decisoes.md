@@ -2,6 +2,30 @@
 
 Registro curto do que foi decidido e por quê. Decisão nova entra no topo.
 
+## 2026-10-08: Vendas por vendedor (Davi e Vyenna), snapshot e fechamento
+
+Substitui, onde houver conflito, a entrada "Vendas (Hubla, atribuição e comissão)" abaixo.
+
+- **% da comissão escolhido no fechamento, por vendedor** (`vendas_fechamentos`). A margem da
+  operação continua sendo calculada, mas só **sugere** a faixa; o % gravado no fechamento é o
+  que vale. Os totais ficam congelados no fechamento; se uma venda mudar depois, a tela avisa
+  e a exportação só sai depois de atualizar.
+- **Snapshot por venda:** cada venda guarda bruto, líquido e as 5 comissões do ticket no
+  momento da venda (trigger no banco). Mudar ou desativar ticket nunca recalcula venda antiga.
+- **Vendedor vê só o que é dele**, garantido pelo RLS: saiu o "A atribuir" do vendedor e o
+  botão "É minha". Venda sem dono ou nova sem ticket vai para **"A revisar"**, só do admin.
+  O e-mail de acesso fica em `vendedores.email`, coluna que o vendedor não consegue ler.
+- **Webhook continua no Next** (`/api/vendas/hubla`), não em Edge Function: já estava pronto e
+  a regra fica num lugar só (ver "Supabase é o relógio, a Vercel faz o trabalho").
+- **Exportação:** CSV (separador `;`, abre certo no Excel) e PDF pela impressão do navegador
+  (`/vendas/fechamento`), sem biblioteca nova. Só de mês fechado.
+- **Histórico:** importado com `origem = 'importacao'`. O do Davi vem do backup do Lock in
+  (`scripts/vendas-importar-masterview.mjs`, confere os totais com o masterview); o da Vyenna,
+  da planilha da Hubla (`scripts/vendas-importar-hubla-xlsx.mjs`), e só vale depois de ela conferir.
+- **Convite sem depender de SMTP:** `scripts/vendas-convidar.mjs` gera o link de convite para
+  mandar no WhatsApp (sem SMTP próprio, o e-mail padrão do Supabase pode não chegar a quem
+  não é da equipe do projeto no Supabase).
+
 ## 2026-10-08: Vendas (Hubla, atribuição e comissão)
 
 - **Toda venda aprovada vira registro na hora, mesmo sem dono.** No Lock in a venda só nascia

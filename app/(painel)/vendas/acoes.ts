@@ -1,15 +1,17 @@
 "use server";
 
 // Ações do módulo Vendas. Toda ação confere quem está pedindo ANTES de gravar:
-// - "É minha": vendedor ativo, e só se a venda ainda estiver sem dono (trava no próprio update);
-// - correções de venda, tickets, custos, valores do mês e reprocessar: só admin.
+// atribuição, correções de venda, fechamento do mês, tickets, custos, valores do mês
+// e reprocessar: só admin. O vendedor só lê (e só o que é dele, pelo RLS).
 // Vendas são gravadas com a chave secreta (o RLS não deixa ninguém gravar direto).
 
 import type { EstadoForm } from "@/components/formulario";
 import { ehAdmin, usuarioLogado } from "@/lib/auth/papeis";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { dadosDoFechamento } from "@/modulos/vendas/fechamento";
 import { processarEvento } from "@/modulos/vendas/processar";
+import { FAIXAS, type Faixa } from "@/modulos/vendas/regras";
 import { refresh } from "next/cache";
 
 const SO_ADMIN: EstadoForm = { erro: "Só admin pode alterar." };
@@ -36,41 +38,6 @@ function mesDoForm(form: FormData): string | null {
 // ---------------------------------------------------------------------------
 // Atribuição
 // ---------------------------------------------------------------------------
-export async function eMinha(form: FormData): Promise<void> {
-  const usuario = await usuarioLogado();
-  const vendaId = id(form);
-  if (!usuario || !vendaId) return;
-
-  const db = createAdminClient();
-  const { data: eu } = await db
-    .from("vendedores")
-    .select("equipe_id, ativo, equipe!inner(usuario_id)")
-    .eq("equipe.usuario_id", usuario.id)
-    .eq("ativo", true)
-    .maybeSingle();
-  if (!eu) return;
-
-  // só pega se ainda estiver sem dono: dois cliques ao mesmo tempo, só um ganha
-  const { data } = await db
-    .from("vendas")
-    .update({
-      vendedor_id: eu.equipe_id,
-      forma_atribuicao: "manual",
-      atribuida_por: usuario.id,
-      atribuida_em: new Date().toISOString(),
-      atualizado_em: new Date().toISOString(),
-    })
-    .eq("id", vendaId)
-    .is("vendedor_id", null)
-    .eq("sem_vendedor", false)
-    .select("id");
-
-  if (data?.length) {
-    await db.from("vendas_atribuicoes").insert({ venda_id: vendaId, para_vendedor_id: eu.equipe_id, forma: "e_minha", por: usuario.id });
-  }
-  refresh();
-}
-
 /** Admin: muda o dono. destino = "<equipe_id>", "a_atribuir" ou "ninguem" (não é de nenhum vendedor). */
 export async function atribuirVenda(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
   const usuario = await usuarioLogado();
@@ -137,6 +104,42 @@ export async function corrigirVenda(_anterior: EstadoForm, form: FormData): Prom
   if (error) return { erro: "Não deu para salvar." };
   refresh();
   return { ok: "Salvo." };
+}
+
+// ---------------------------------------------------------------------------
+// Fechamento do mês por vendedor (só admin): grava o % escolhido e congela os totais.
+// Fechar de novo o mesmo mês atualiza (ex.: depois de corrigir uma venda).
+// ---------------------------------------------------------------------------
+export async function fecharMes(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return SO_ADMIN;
+  const mes = mesDoForm(form);
+  const vendedorId = id(form, "vendedor_id");
+  const faixa = Number(form.get("faixa")) as Faixa;
+  if (!mes || !vendedorId) return { erro: "Mês ou vendedor inválido." };
+  if (!FAIXAS.includes(faixa)) return { erro: "Escolha o % (6 a 10)." };
+
+  const d = await dadosDoFechamento(mes.slice(0, 7), vendedorId);
+  const r = d.resumo;
+  const supabase = await createClient();
+  const { error } = await supabase.from("vendas_fechamentos").upsert({
+    mes,
+    vendedor_id: vendedorId,
+    faixa,
+    faixa_sugerida: d.faixaSugerida,
+    qtd: r.qtd,
+    sem_ticket: r.semTicket,
+    bruto: r.bruto / 100,
+    liquido: r.liquido / 100,
+    comissao: r.comissao[faixa] / 100,
+    reembolsos: r.reembolsos,
+    chargebacks: r.chargebacks,
+    fechado_em: new Date().toISOString(),
+    fechado_por: usuario.id,
+  });
+  if (error) return { erro: "Não deu para salvar." };
+  refresh();
+  return { ok: `Mês fechado em ${faixa}%.` };
 }
 
 // ---------------------------------------------------------------------------

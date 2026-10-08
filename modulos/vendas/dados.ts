@@ -1,5 +1,5 @@
 // Leitura do módulo Vendas para as telas.
-// - Vendas: cliente do usuário logado (o RLS mostra ao vendedor só as dele e as "A atribuir").
+// - Vendas: cliente do usuário logado (o RLS mostra ao vendedor só as dele; o resto, só ao admin).
 // - Margem do mês: chave secreta no servidor, porque usa o faturamento da operação
 //   inteira; para o vendedor a tela passa só a faixa, nunca a margem nem os custos.
 
@@ -10,8 +10,11 @@ import {
   centavos,
   custosDoMes,
   intervaloMes,
+  mesDe,
   resumir,
   type EntradasMes,
+  type Faixa,
+  type Resumo,
   type Margem,
   type Ticket,
   type Venda,
@@ -19,8 +22,20 @@ import {
 
 export type Vendedor = { equipe_id: number; nome: string; utm_term: string; ativo: boolean; usuario_id: string | null };
 
-const COLUNAS_VENDA =
-  "id, id_fatura, vendedor_id, sem_vendedor, forma_atribuicao, atribuida_em, utm_term, ticket_id, motivo_sem_ticket, itens, bumps, valor_pago, status, pago_em, data, reembolsado_em, final_lead";
+export const COLUNAS_VENDA =
+  "id, id_fatura, vendedor_id, sem_vendedor, forma_atribuicao, atribuida_em, utm_term, ticket_id, motivo_sem_ticket, itens, bumps, valor_pago, status, pago_em, data, reembolsado_em, final_lead, origem, " +
+  "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10";
+
+/** Supabase devolve no máximo 1000 linhas por consulta: busca em páginas. */
+async function todasAsPaginas<T>(pagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+  const tudo: T[] = [];
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await pagina(de, de + 999);
+    if (error) throw new Error(`Erro ao carregar vendas: ${error.message}`);
+    tudo.push(...(data ?? []));
+    if (!data || data.length < 1000) return tudo;
+  }
+}
 
 function normalizarTicket(t: Record<string, unknown>): Ticket {
   return {
@@ -57,37 +72,109 @@ export type DadosPainel = {
   vendasMes: Venda[];
   vendasHoje: Venda[];
   reembolsosHoje: Venda[];
-  aAtribuir: Venda[];
+  /** só admin: sem dono ou nova paga sem ticket (para o vendedor, sempre vazio) */
+  aRevisar: Venda[];
 };
 
-/** Vendas que a pessoa logada pode ver: do mês, de hoje, reembolsadas hoje e "A atribuir". */
-export async function carregarPainel(mes: string, hoje: string): Promise<DadosPainel> {
+/** Vendas que a pessoa logada pode ver: do mês, de hoje, reembolsadas hoje e (admin) "A revisar". */
+export async function carregarPainel(mes: string, hoje: string, admin: boolean): Promise<DadosPainel> {
   const supabase = await createClient();
   const { inicio, fim } = intervaloMes(mes);
   const ontemUtc = new Date(Date.now() - 36 * 3600 * 1000).toISOString();
 
-  const [mesQ, hojeQ, reembQ, atribQ] = await Promise.all([
-    supabase.from("vendas").select(COLUNAS_VENDA).gte("data", inicio).lt("data", fim).order("pago_em", { ascending: false }),
-    supabase.from("vendas").select(COLUNAS_VENDA).eq("data", hoje),
-    supabase.from("vendas").select(COLUNAS_VENDA).gte("reembolsado_em", ontemUtc),
-    supabase
-      .from("vendas")
-      .select(COLUNAS_VENDA)
-      .is("vendedor_id", null)
-      .eq("sem_vendedor", false)
-      .order("pago_em", { ascending: false }),
+  const [vendasMes, hojeQ, reembQ, revisarQ] = await Promise.all([
+    todasAsPaginas<Venda>((de, ate) =>
+      supabase.from("vendas").select(COLUNAS_VENDA).gte("data", inicio).lt("data", fim).order("pago_em", { ascending: false }).order("id").range(de, ate).returns<Venda[]>(),
+    ),
+    supabase.from("vendas").select(COLUNAS_VENDA).eq("data", hoje).returns<Venda[]>(),
+    supabase.from("vendas").select(COLUNAS_VENDA).gte("reembolsado_em", ontemUtc).returns<Venda[]>(),
+    admin
+      ? supabase
+          .from("vendas")
+          .select(COLUNAS_VENDA)
+          .or("and(vendedor_id.is.null,sem_vendedor.eq.false),and(status.eq.pago,ticket_id.is.null,origem.neq.importacao)")
+          .order("pago_em", { ascending: false })
+          .returns<Venda[]>()
+      : null,
   ]);
-  for (const q of [mesQ, hojeQ, reembQ, atribQ]) if (q.error) throw new Error(`Erro ao carregar vendas: ${q.error.message}`);
+  for (const q of [hojeQ, reembQ, revisarQ]) if (q?.error) throw new Error(`Erro ao carregar vendas: ${q.error.message}`);
 
   const diaDoReembolso = (v: Venda) =>
     v.reembolsado_em ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(v.reembolsado_em)) : null;
 
   return {
-    vendasMes: mesQ.data as Venda[],
-    vendasHoje: hojeQ.data as Venda[],
-    reembolsosHoje: (reembQ.data as Venda[]).filter((v) => diaDoReembolso(v) === hoje),
-    aAtribuir: atribQ.data as Venda[],
+    vendasMes,
+    vendasHoje: hojeQ.data ?? [],
+    reembolsosHoje: (reembQ.data ?? []).filter((v) => diaDoReembolso(v) === hoje),
+    aRevisar: revisarQ?.data ?? [],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Fechamento do mês (por vendedor) e histórico
+// ---------------------------------------------------------------------------
+export type Fechamento = {
+  mes: string; // "AAAA-MM"
+  vendedor_id: number;
+  faixa: Faixa;
+  faixa_sugerida: Faixa | null;
+  qtd: number;
+  sem_ticket: number;
+  bruto: number; // centavos
+  liquido: number;
+  comissao: number;
+  reembolsos: number;
+  chargebacks: number;
+  fechado_em: string;
+};
+
+function normalizarFechamento(f: Record<string, unknown>): Fechamento {
+  return {
+    mes: String(f.mes).slice(0, 7),
+    vendedor_id: Number(f.vendedor_id),
+    faixa: Number(f.faixa) as Faixa,
+    faixa_sugerida: f.faixa_sugerida == null ? null : (Number(f.faixa_sugerida) as Faixa),
+    qtd: Number(f.qtd),
+    sem_ticket: Number(f.sem_ticket),
+    bruto: centavos(f.bruto as string),
+    liquido: centavos(f.liquido as string),
+    comissao: centavos(f.comissao as string),
+    reembolsos: Number(f.reembolsos),
+    chargebacks: Number(f.chargebacks),
+    fechado_em: String(f.fechado_em),
+  };
+}
+
+/** Fechamentos que a pessoa logada pode ver (o RLS mostra ao vendedor só os dele). mes = "AAAA-MM" ou todos. */
+export async function listarFechamentos(mes?: string): Promise<Fechamento[]> {
+  const supabase = await createClient();
+  let q = supabase.from("vendas_fechamentos").select("*").order("mes", { ascending: false });
+  if (mes) q = q.eq("mes", `${mes}-01`);
+  const { data, error } = await q;
+  if (error) throw new Error(`Erro ao carregar fechamentos: ${error.message}`);
+  return data.map(normalizarFechamento);
+}
+
+export type MesHistorico = { mes: string; resumo: Resumo; fechamento: Fechamento | null };
+
+/** Histórico mês a mês de um vendedor (o RLS garante que o vendedor só vê o dele). */
+export async function historicoDoVendedor(vendedorId: number, tickets: Ticket[]): Promise<MesHistorico[]> {
+  const supabase = await createClient();
+  const [vendas, fechamentos] = await Promise.all([
+    todasAsPaginas<Venda>((de, ate) =>
+      supabase.from("vendas").select(COLUNAS_VENDA).eq("vendedor_id", vendedorId).order("id").range(de, ate).returns<Venda[]>(),
+    ),
+    listarFechamentos(),
+  ]);
+  const meses = new Map<string, Venda[]>();
+  for (const v of vendas) meses.set(mesDe(v.data), [...(meses.get(mesDe(v.data)) ?? []), v]);
+  return [...meses.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([mes, doMes]) => ({
+      mes,
+      resumo: resumir(doMes, tickets),
+      fechamento: fechamentos.find((f) => f.mes === mes && f.vendedor_id === vendedorId) ?? null,
+    }));
 }
 
 /** Nome dos clientes (só admin consegue ler; para os outros volta vazio). */
@@ -110,7 +197,7 @@ export async function margemDoMes(mes: string): Promise<MargemDoMes> {
   const { inicio, fim } = intervaloMes(mes);
 
   const [vendas, tickets, mesQ, custos, valores] = await Promise.all([
-    db.from("vendas").select(COLUNAS_VENDA).gte("data", inicio).lt("data", fim),
+    db.from("vendas").select(COLUNAS_VENDA).gte("data", inicio).lt("data", fim).returns<Venda[]>(),
     db.from("tickets").select("*"),
     db.from("vendas_meses").select("gasto_anuncios, imposto_meta, custo_mensagens").eq("mes", inicio).maybeSingle(),
     db.from("custos_fixos").select("id, nome, desativado_desde"),
@@ -118,7 +205,7 @@ export async function margemDoMes(mes: string): Promise<MargemDoMes> {
   ]);
   for (const q of [vendas, tickets, mesQ, custos, valores]) if (q.error) throw new Error(`Erro ao calcular a margem: ${q.error.message}`);
 
-  const resumo = resumir(vendas.data as Venda[], (tickets.data ?? []).map(normalizarTicket));
+  const resumo = resumir(vendas.data ?? [], (tickets.data ?? []).map(normalizarTicket));
   const doMes = custosDoMes(
     mes,
     custos.data ?? [],

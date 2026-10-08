@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { atribuirVenda, corrigirVenda, criarCusto, eMinha, salvarMes, salvarTicket, valorDoCusto } from "../acoes";
+import { atribuirVenda, corrigirVenda, criarCusto, fecharMes, salvarMes, salvarTicket, valorDoCusto } from "../acoes";
 
 // Formulários da aba Vendas (os que mostram mensagem de resultado ou precisam do navegador).
 
@@ -36,19 +36,41 @@ export function CopiarResumo({ texto }: { texto: string }) {
   );
 }
 
-export function BotaoEMinha({ vendaId }: { vendaId: number }) {
+/** Admin: fecha o mês de um vendedor no % escolhido (a faixa sugerida vem marcada). */
+export function FecharMes({
+  mes,
+  vendedorId,
+  faixaAtual,
+  faixaSugerida,
+}: {
+  mes: string;
+  vendedorId: number;
+  faixaAtual: number | null;
+  faixaSugerida: number | null;
+}) {
+  const [estado, acao] = useActionState<EstadoForm, FormData>(fecharMes, {});
   return (
-    <form action={eMinha}>
-      <input type="hidden" name="id" value={vendaId} />
-      <BotaoEMinhaEnviar />
+    <form action={acao} className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="mes" value={mes} />
+      <input type="hidden" name="vendedor_id" value={vendedorId} />
+      <select name="faixa" defaultValue={faixaAtual ?? faixaSugerida ?? 6} className={`${classeSelect} h-9 w-auto`} aria-label="Margem de comissão">
+        {[6, 7, 8, 9, 10].map((f) => (
+          <option key={f} value={f} className={classeOpcao}>
+            {f}%{f === faixaSugerida ? " (sugerida pela margem)" : ""}
+          </option>
+        ))}
+      </select>
+      <Salvar texto={faixaAtual ? "Atualizar fechamento" : "Fechar mês"} />
+      <Aviso estado={estado} />
     </form>
   );
 }
-function BotaoEMinhaEnviar() {
-  const { pending } = useFormStatus();
+
+/** Abre a janela de impressão do navegador (dali sai o PDF). */
+export function BotaoImprimir() {
   return (
-    <Button type="submit" size="sm" disabled={pending}>
-      {pending ? "..." : "É minha"}
+    <Button type="button" onClick={() => window.print()}>
+      Imprimir / salvar PDF
     </Button>
   );
 }

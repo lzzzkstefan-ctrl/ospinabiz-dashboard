@@ -11,12 +11,17 @@ escolhas em português simples.
 - A pasta oficial do projeto é `C:\dev\ospinabiz-dashboard`. Código não fica no OneDrive: ele sincroniza
   o `.env.local` para a nuvem e trava arquivos do `node_modules` e do `.next`.
 - Nunca ler, copiar ou referenciar nada do masterview (código, `.env.local`, Supabase, `.vercel`).
-  Ele fica em `D:\ARQUIVOS\Documents\GitHub\masterview` (`C:\dev\masterview` não existe).
+  Ele fica em `C:\dev\masterview` (desde 08/10/2026). As cópias antigas em
+  `D:\ARQUIVOS\Documents\GitHub\masterview` e na pasta do OneDrive não são mais usadas.
   **Exceção: o design visual segue o masterview; credenciais, Supabase e dados nunca.**
   Pode ler (só leitura) estilos e aparência: `globals.css`, `tailwind.config.ts`, fontes, cores,
   componentes visuais (botões, cards, menu, layout). Continua proibido: `.env*`, chaves,
   `lib/supabase`, rotas de API, banco e dados. Nunca alterar nada lá; o visual é copiado para
   dentro deste projeto, sem importar arquivos de lá.
+  **Exceção 2 (08/10/2026, autorizada pelo Davi): a lógica do Lock in.** Pode ler (só leitura)
+  `docs/lock-in.md` e o código da aba Lock in (regras, webhook, scripts de importação) para
+  reaproveitar a lógica no módulo Vendas. Continua proibido: `.env*`, chaves e o Supabase de lá.
+  O histórico do Davi entra só pelo backup CSV em `C:\dev\backups\masterview\`.
 - Todos os tokens em variáveis de ambiente (`.env.local` local, Vercel em produção). Nunca no código.
   `.env.example` tem só os nomes.
 - Dados reais (telefones dos números monitorados, clientes) ficam no banco, nunca no código nem no git.

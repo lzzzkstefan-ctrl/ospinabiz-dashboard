@@ -9,15 +9,20 @@ export default function PainelLayout({
 }) {
   return (
     <>
-      <PainelNav
-        usuario={
-          <Suspense>
-            <UsuarioAtual />
-          </Suspense>
-        }
-      />
-      <main className="mx-auto max-w-[1180px] px-6 pb-28 pt-8 md:pb-16 md:pt-24">{children}</main>
-      <PainelNavMobile />
+      {/* na impressão (relatório de fechamento em PDF) o menu some */}
+      <div className="print:hidden">
+        <PainelNav
+          usuario={
+            <Suspense>
+              <UsuarioAtual />
+            </Suspense>
+          }
+        />
+      </div>
+      <main className="mx-auto max-w-[1180px] px-6 pb-28 pt-8 md:pb-16 md:pt-24 print:max-w-none print:p-0">{children}</main>
+      <div className="print:hidden">
+        <PainelNavMobile />
+      </div>
     </>
   );
 }
