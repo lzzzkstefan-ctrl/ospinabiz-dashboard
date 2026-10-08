@@ -2,6 +2,22 @@
 
 Registro curto do que foi decidido e por quê. Decisão nova entra no topo.
 
+## 2026-10-08: Organização das BMs (equipe, final, situação)
+
+- **Tabela `equipe`:** responsáveis por números e tarefas. `usuario_id` é opcional, para alguém
+  ser responsável antes de ter login.
+- **Número identificado pelo `final` (4 dígitos):** o telefone completo é opcional e, quando
+  preenchido, tem que terminar com o final. O mesmo final não se repete na mesma BM.
+- **`situacao` (operação/desconectado) × `ativo`:** situação diz se o número está em uso;
+  `ativo = não` é "arquivado" (sai da tela principal, fica no histórico). Nada é apagado.
+- **O monitor só testa:** situação = operação, ativo, BM ativa e telefone completo preenchido.
+- **Limite como número inteiro** (250, 1000, 2000…): aceita novos degraus da Meta sem migration.
+- **Dados reais (BMs, finais, equipe) entram direto no banco**, nunca na migration nem no git.
+
+**Por quê:** a lista da operação vem só com os 4 finais; o telefone completo é preenchido
+depois pela tela. Separar situação de arquivado permite tirar um número do teste sem perder
+o histórico dele.
+
 ## 2026-10-08: Relógio do monitor no pg_cron, segredos no Vault
 
 O pg_cron chama `rodar-teste` às 7h30 e 17h e `fechar-teste` 10 minutos depois de cada um
