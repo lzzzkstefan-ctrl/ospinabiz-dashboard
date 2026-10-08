@@ -11,12 +11,12 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const token_hash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const nextParam = searchParams.get("next") ?? "/monitor";
+  const nextParam = searchParams.get("next") ?? "/";
   // So aceita caminho interno, pra o link nao virar redirecionamento pra fora.
   const next =
     nextParam.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam
-      : "/monitor";
+      : "/";
 
   if (token_hash && type) {
     const supabase = await createClient();

@@ -7,6 +7,7 @@ import {
   BadgeDollarSign,
   Building2,
   CalendarCheck,
+  House,
   ListChecks,
   Users,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { usePathname } from "next/navigation";
 // Menu no estilo do masterview: pílula de vidro no topo (computador) e barra de
 // ícones flutuante embaixo (celular). Módulo novo = um item aqui.
 const ITENS = [
+  { href: "/", label: "Início", icon: House, emBreve: false },
   { href: "/monitor", label: "Monitor", icon: Activity, emBreve: false },
   { href: "/tarefas", label: "Tarefas", icon: ListChecks, emBreve: false },
   { href: "/vendas", label: "Vendas", icon: BadgeDollarSign, emBreve: true },
@@ -26,6 +28,7 @@ const ITENS = [
 ];
 
 function estaAtivo(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

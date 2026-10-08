@@ -2,6 +2,15 @@
 
 Registro curto do que foi decidido e por quê. Decisão nova entra no topo.
 
+## 2026-10-08: Página inicial e capa
+
+- **Capa no Storage, bucket `capas` com leitura pública:** é só uma imagem decorativa; pública,
+  ela carrega direto pelo endereço. Só admin envia, troca ou apaga (RLS no `storage.objects`).
+- **Envio direto do navegador para o Storage:** evita o limite de tamanho das Server Actions.
+  Depois o servidor confere se é admin e grava o caminho em `config_painel`; a imagem antiga é apagada.
+- **"Status do dia" lê as mesmas regras das abas** (monitor e tarefas), sem copiar cálculo.
+- **Depois do login, a pessoa cai no Início** (antes: Monitor).
+
 ## 2026-10-08: Tarefas
 
 - **"Atrasada" é calculada, não guardada:** pendente com prazo antes de hoje (horário de Brasília).

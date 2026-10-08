@@ -30,6 +30,7 @@ escolhas em português simples.
 app/                          tudo que vira endereço (URL)
   (auth)/                     telas públicas: login, esqueci-senha, definir-senha, confirmar, erro
   (painel)/                   telas com login; layout.tsx = menu em pílula (topo) + barra de ícones (celular)
+    page.tsx                  Início: capa editável + "Status do dia" (resumo das outras abas)
     <modulo>/page.tsx         tela do módulo (monitor, vendas, fechamento, bms)
     <modulo>/_componentes/    peças visuais usadas só por esse módulo
     admin/usuarios/           convites e papéis (só admin)

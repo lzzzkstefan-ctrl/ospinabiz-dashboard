@@ -109,6 +109,20 @@
     background: radial-gradient(circle, var(--accent-2), transparent 70%);
   }
 
+  /* fundo da capa quando ainda não tem imagem */
+  .aurora-soft {
+    background:
+      radial-gradient(circle at 30% 30%, rgba(147, 186, 222, 0.35), transparent 60%),
+      radial-gradient(circle at 75% 70%, rgba(147, 206, 220, 0.25), transparent 55%),
+      var(--bg-raised-2);
+  }
+
+  /* capa "sem caixa": a imagem some no fundo da página em vez de terminar numa borda */
+  .cover-bleed-mask {
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 45%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 45%, transparent 100%);
+  }
+
   /* ---------- vidro líquido ---------- */
   .glass {
     position: relative;

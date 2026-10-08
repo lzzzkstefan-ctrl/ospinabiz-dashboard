@@ -5,7 +5,7 @@ Criar um sistema que testa automaticamente, 2x por dia, se os números de WhatsA
 
 ## Cenário da operação
 - Operação de vendas via WhatsApp (X1), com leads vindos de tráfego frio do Facebook Ads.
-- **18 números** de WhatsApp Cloud API (oficial), distribuídos em **várias BMs** (ex.: "BM 01", "BM ALEMÃO").
+- **18 números** de WhatsApp Cloud API (oficial), distribuídos em **várias BMs** (ex.: "BM 01", "BM X").
 - Todos os números estão conectados no CRM **Data Crazy**.
 - **Quando uma BM cai, todos os números dela caem juntos.** Mas um número também pode cair sozinho (ban do número, restrição por qualidade, instabilidade).
 - **Não temos mais acesso de admin a algumas BMs**, então não dá para consultar o status pelo token de cada BM.
@@ -26,7 +26,7 @@ Alternativa descartada por enquanto: chip comum conectado por ferramenta não of
 - Fuso horário: America/Sao_Paulo.
 
 ## O que a dashboard deve mostrar
-- Um card por número, **agrupado por BM**, com: nome/apelido do canal (ex.: "0348 BM ALEMÃO"), status do último teste (OK / FALHOU / SEM RESPOSTA) e horário do último teste.
+- Um card por número, **agrupado por BM**, com: nome/apelido do canal (ex.: "1234 BM X"), status do último teste (OK / FALHOU / SEM RESPOSTA) e horário do último teste.
 - Um destaque no topo: "18/18 ok" ou a lista do que caiu.
 - **Regra de BM:** se todos os números de uma BM falharem no mesmo teste, mostrar "BM X caiu" em vez de listar número por número.
 - **Regra do remetente:** se todos os 18 falharem ao mesmo tempo, o problema provavelmente está no remetente. Mostrar "verificar número remetente" em vez de "18 números caíram".
@@ -37,7 +37,7 @@ Alternativa descartada por enquanto: chip comum conectado por ferramenta não of
 Mensagem curta, problemas primeiro. Exemplo:
 ```
 Teste 07h30 — 17/18 ok
-❌ BM ALEMÃO caiu (0348)
+❌ BM X caiu (1234)
 ```
 
 ## Dados de entrada necessários

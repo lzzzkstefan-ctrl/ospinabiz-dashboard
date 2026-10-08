@@ -37,7 +37,7 @@ export function LoginForm({
         password,
       });
       if (error) throw error;
-      router.push("/monitor");
+      router.push("/");
     } catch {
       setError("E-mail ou senha incorretos.");
     } finally {
