@@ -2,6 +2,24 @@
 
 Registro curto do que foi decidido e por quê. Decisão nova entra no topo.
 
+## 2026-10-08: Tela de Vendas igual ao Lock in, por vendedor
+
+- **Mesma tela do Lock in** (masterview, só o visual e as regras): período, 4 cards, margem,
+  rosca, resumo por ticket, comissão em cada margem, fechamento, lista Pago/Reembolso/Tabela,
+  resumo anual e link público `/r/<código>`. Admin escolhe **Davi | Vyenna | Geral**; o vendedor
+  vê a mesma tela só com o que é dele (RLS) e sem os botões que gravam.
+- **"Total de vendas" = todas as pagas** (como no Lock in), não só as com ticket. Sem ticket conta
+  só na quantidade ("sem comissão (produto)" ou "a revisar", campo `principal_produto`).
+- **% que vale = o do fechamento**, gravado pelo admin no "Enviar pro Rodrigo". Antes disso a tela
+  abre no % sugerido pela margem do mês (ou 10% sem sugestão); o seletor só muda a visualização.
+- **Cliente: primeiro nome + 4 dígitos** para o vendedor (das vendas dele) e no link público. O
+  servidor lê `vendas_clientes` com a chave secreta só das vendas que o RLS já liberou.
+- **Ticket do histórico = valor cobrado** (como no Lock in), não o preço escrito no nome da oferta:
+  na planilha da Hubla, "Ticket - R$238,00" cobrava R$ 100,00. Os tickets do backup do masterview
+  são os valores cobrados. O webhook ainda liga pelo nome: conferir com a primeira venda real.
+- **Adiantamentos, observações e link** por vendedor e mês (`vendas_adiantamentos`,
+  `vendas_meses_vendedor`); WhatsApp do Rodrigo em `vendas_config` (só admin).
+
 ## 2026-10-08: Webhook da Hubla pela Edge Function
 
 Substitui o item "Webhook continua no Next" abaixo.
