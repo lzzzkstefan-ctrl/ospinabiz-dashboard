@@ -34,7 +34,7 @@ export function UpdatePasswordForm({
     try {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
-      router.push("/monitor");
+      router.push("/");
     } catch (error: unknown) {
       setError(
         error instanceof Error ? error.message : "Não foi possível salvar a senha.",
