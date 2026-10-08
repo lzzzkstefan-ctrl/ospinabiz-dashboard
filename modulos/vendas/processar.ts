@@ -32,6 +32,9 @@ export async function processarEvento(eventoId: number): Promise<void> {
       .from("hubla_eventos")
       .update({
         processado: true,
+        // a Edge Function grava só o bruto: tipo e fatura são preenchidos aqui
+        tipo: fatura.tipoBruto,
+        id_fatura: fatura.idFatura,
         resultado: fim.resultado,
         erro: null,
         venda_id: fim.vendaId ?? null,
