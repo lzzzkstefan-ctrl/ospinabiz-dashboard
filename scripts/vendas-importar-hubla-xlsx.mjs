@@ -1,9 +1,12 @@
 // Vendas: importa o histórico de UM vendedor a partir da exportação XLSX da Hubla
 // (uma linha por fatura). Uso pensado para o histórico da Vyenna (utm "vyenna").
 // - só as linhas com "UTM Termo" = utm informado; status "Paga" e "Reembolsada";
-// - ticket: o item com "Game Changer Society" ou "Ticket - R$…" no nome (oferta, produto
-//   ou order bump), pelo preço escrito no nome, contra QUALQUER ticket (ativo ou inativo:
-//   no histórico valem os preços da época). Sem isso: venda sem ticket, com o motivo;
+// - ticket: pelo VALOR COBRADO ("Valor do produto"), como no Lock in do masterview, e não
+//   pelo preço escrito no nome da oferta (ex.: "Ticket - R$238,00" cobrava R$ 100,00).
+//   Só para oferta de ticket ("Ticket - R$…" ou "Game Changer Society"). Com order bump o
+//   valor vem somado, então vale o valor das vendas da mesma oferta SEM bump. Casa com
+//   QUALQUER ticket (ativo ou inativo: no histórico valem os preços da época);
+// - outra oferta (combo, produto): sem ticket e "sem comissão (produto)";
 // - origem = 'importacao'; fatura que já existe aqui é pulada (não duplica);
 // - a prévia mostra os totais por mês nas 5 faixas, pra conferir com o vendedor ANTES
 //   de fechar qualquer mês. Os meses importados ficam abertos até o admin fechar.
@@ -172,6 +175,7 @@ try {
     oferta: col("Nome da oferta"),
     produto: col("Nome do produto"),
     bump: col("Nome do produto de orderbump"),
+    valorProduto: col("Valor do produto"),
   };
   const faltando = Object.entries(C).filter(([, i]) => i < 0).map(([k]) => k);
   if (faltando.length) throw new Error(`colunas não encontradas: ${faltando.join(", ")}. Cabeçalho da aba "${aba}": ${cab.join(" | ")}`);
@@ -187,6 +191,19 @@ try {
     data.forEach((v) => existentes.add(v.id_fatura));
     if (data.length < 1000) break;
   }
+
+  // valor cobrado de cada oferta SEM order bump (o mais comum), para as vendas com bump
+  const doUtm = (l) => String(l[C.termo] ?? "").toLowerCase().replace(/\s+/g, "") === utm;
+  const contagem = new Map();
+  for (const l of corpo) {
+    if (!doUtm(l) || String(l[C.bump] ?? "").trim()) continue;
+    const oferta = String(l[C.oferta] ?? "").trim();
+    const m = contagem.get(oferta) ?? new Map();
+    const v = cents(l[C.valorProduto]);
+    m.set(v, (m.get(v) ?? 0) + 1);
+    contagem.set(oferta, m);
+  }
+  const baseDaOferta = new Map([...contagem].map(([o, m]) => [o, [...m].sort((a, b) => b[1] - a[1])[0][0]]));
 
   const cont = { linhas: corpo.length, outro: 0, statusIgnorado: new Map(), semId: 0, semData: 0, jaExiste: 0 };
   const novas = [];
@@ -207,16 +224,18 @@ try {
     const oferta = String(l[C.oferta] ?? "").trim();
     const produto = String(l[C.produto] ?? "").trim();
     const bumpsBrutos = String(l[C.bump] ?? "").split(",").map((b) => b.trim()).filter(Boolean);
-    // Ticket só pelo "Nome da oferta" (formatos "Ticket - R$238,00", "Ticket- R$248,00",
-    // "Ticket - R$338"). Order bump, combo e outros produtos ficam sem ticket.
-    const item = ehItemDeTicket(oferta) && precoDoNome(oferta) !== null ? oferta : null;
-    const preco = item ? precoDoNome(item) : null;
+    // Ticket pelo valor cobrado da oferta de ticket; com bump, o valor da oferta sem bump.
+    const ehTicket = ehItemDeTicket(oferta);
+    const preco = !ehTicket ? null : bumpsBrutos.length ? (baseDaOferta.get(oferta) ?? null) : cents(l[C.valorProduto]);
     const ticket = preco === null ? null : tickets.find((t) => cents(t.valor_bruto) === preco) ?? null;
+    const principalProduto = !ehTicket;
     const motivo = ticket
       ? null
-      : preco !== null
-        ? `ticket de R$ ${brl(preco)} não está na tabela`
-        : `sem item de ticket com preço no nome${oferta ? `: ${oferta}` : ""}`;
+      : principalProduto
+        ? `produto sem comissão${oferta ? `: ${oferta}` : ""}`
+        : preco !== null
+          ? `cobrado R$ ${brl(preco)}, sem ticket desse valor (${oferta})`
+          : `oferta de ticket sem valor sem bump para comparar: ${oferta}`;
 
     novas.push({
       venda: {
@@ -234,7 +253,9 @@ try {
         data: data.dia,
         final_lead: finalDoLead(l[C.conteudo], l[C.telefone]),
         origem: "importacao",
+        principal_produto: principalProduto,
       },
+      oferta,
       cliente: { nome: String(l[C.nome] ?? "").trim() || null, telefone: String(l[C.telefone] ?? "").trim() || null },
       ticket,
     });
@@ -269,6 +290,14 @@ try {
         FAIXAS.map((f) => brl(t.com[f]).padStart(10)).join(" "),
     );
   }
+  const ligacao = new Map();
+  for (const n of novas) {
+    const k = `${n.oferta || "(sem oferta)"} → ${n.ticket ? `ticket ${n.ticket.nome ?? brl(cents(n.ticket.valor_bruto))}` : n.venda.principal_produto ? "sem comissão (produto)" : "a revisar"}`;
+    ligacao.set(k, (ligacao.get(k) ?? 0) + 1);
+  }
+  console.log("\nComo cada oferta foi ligada (pagas + reembolsos):");
+  for (const [k, q] of [...ligacao].sort()) console.log(`  ${String(q).padStart(4)}x ${k}`);
+
   const semTicket = novas.filter((n) => !n.ticket && n.venda.status === "pago");
   if (semTicket.length) {
     const motivos = new Map();
