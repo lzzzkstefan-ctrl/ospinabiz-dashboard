@@ -14,9 +14,10 @@ export type FaturaHubla = {
   utmTerm: string | null;
   utmContent: string | null;
   itens: string[];
-  /** ofertas principais (isOrderBump = false): o ticket só sai daqui */
+  /** ofertas principais (isOrderBump = false) */
   principais: OfertaHubla[];
-  /** ofertas marcadas como order bump (isOrderBump = true): nunca contam, só o nome no card */
+  /** ofertas marcadas como order bump (isOrderBump = true). O Protocolo (ticket) pode vir
+   * aqui; o resto nunca conta, só o nome no card (regra A, regras.ts) */
   ofertasBump: OfertaHubla[];
   /** nomes dos order bumps (isOrderBump = true): só para mostrar, nunca contam */
   bumps: string[];

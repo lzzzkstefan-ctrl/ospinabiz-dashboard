@@ -2,20 +2,27 @@
 
 Registro curto do que foi decidido e por quê. Decisão nova entra no topo.
 
-## 2026-10-08: Ticket só do produto principal; nome ≠ cobrado vai para "A revisar"
+## 2026-10-08: Regra A — Protocolo na venda = ticket, pelo valor cobrado
 
-- **Comissão só do produto principal; order bump nunca entra.** Principal combo, Nexus PGC,
-  Acesso Vitalício etc. = "sem comissão (produto)", **mesmo com "Protocolo Game Changer" no
-  bump** (decisão do Davi, conferida nas vendas de junho). Substitui uma versão anterior, não
-  publicada, que procurava o ticket também no bump.
-- **Preço no nome da oferta ≠ valor cobrado do principal → não escolhe ticket:** a venda vai
-  para "A revisar" com o motivo ("oferta diz R$238, cobrou R$100") e o admin escolhe na mão.
-  Vale no webhook (`ticketDoPrincipal`) e na importação da planilha (`classificar` em
-  `scripts/vendas-planilha-hubla.mjs`; cobrado = valor do produto − preços dos bumps).
-- **Vendas já gravadas não mudaram.** A regra vale para o que entrar daqui em diante.
+Substitui as versões do mesmo dia ("só o principal" e "nome ≠ cobrado vai para A revisar").
 
-**Por quê:** na Hubla o nome da oferta nem sempre é o preço cobrado; escolher um dos dois
-sozinho dava comissão errada sem ninguém ver.
+- **"Protocolo Game Changer" (ou "Game Changer Society") na venda, como principal OU como
+  order bump → venda de ticket.** Nexus PGC, Combo, Acesso Vitalício e templates nunca entram
+  na comissão; sem Protocolo na venda → "sem comissão (produto)".
+- **Ticket pelo VALOR cobrado do item Protocolo**, como no Lock in. O nome da oferta é
+  ignorado ("Ticket - R$208" cobra R$ 288). Webhook: `amountCents` da oferta do Protocolo
+  (`ticketDoPrincipal` em `modulos/vendas/regras.ts`). Planilha: valor do produto − preços
+  dos outros itens (`classificar` em `scripts/vendas-planilha-hubla.mjs`); ex.: 346,90 −
+  58,90 (Nexus) = 288 → ticket R$ 288.
+- **Valor que não bate com nenhum ticket → "A revisar"** com o motivo.
+- **Vendas antigas:** `scripts/vendas-corrigir-produto.mjs` compara cada venda com a regra A
+  (prévia por vendedor e mês; grava um mês de um vendedor por vez, só com OK do Davi).
+  **26 vendas do Davi já foram alteradas** de "sem comissão (produto)" para ticket (pela
+  outra sessão, 08/10/2026), o que mudou julho/2026 do Davi de R$ 3.169,98 para
+  R$ 3.213,26 a 10%; o masterview precisa da mesma correção para os meses baterem.
+
+**Por quê:** a Hubla põe o ticket ora como produto, ora como order bump; e o nome da oferta
+não é o preço. O valor cobrado do Protocolo é o que o Lock in sempre usou.
 
 ## 2026-10-08: Tela de Vendas igual ao Lock in, por vendedor
 

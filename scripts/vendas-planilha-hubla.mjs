@@ -132,26 +132,25 @@ export function finalDoLead(utmConteudo, telefone) {
   return digitos.length >= 4 ? digitos.slice(-4) : null;
 }
 
-// ---------- ticket x order bump ----------
-// Regra do Davi (08/10/2026): comissão só do produto PRINCIPAL; order bump nunca entra.
-// - principal = "Nome do produto" / "Nome da oferta". Se a oferta é de ticket ("Ticket - R$…"
-//   ou "Game Changer Society"), a venda é de ticket. Se o principal é combo, Nexus, Acesso
-//   Vitalício etc., é "sem comissão (produto)" MESMO com "Protocolo Game Changer" no bump.
-// - valor cobrado do principal = "Valor do produto" − preços dos bumps (BUMPS), porque a
-//   planilha soma tudo e não traz o valor de cada item.
-// - preço escrito no nome ≠ valor cobrado → NÃO escolhe ticket: vai para "a revisar" com o
-//   motivo ("oferta diz R$238, cobrou R$100") e o Davi escolhe na mão.
-// - nome e cobrado iguais (ou nome sem preço): ticket com esse valor, ativo ou inativo (no
-//   histórico vale o preço da época); sem ticket com esse valor → "a revisar".
+// ---------- ticket x order bump: REGRA A (Davi, 08/10/2026) ----------
+// - "Protocolo Game Changer" (ou "Game Changer Society") na venda, como produto principal OU
+//   como orderbump → a venda é de ticket. Nexus PGC, Combo, Acesso Vitalício e templates
+//   nunca entram na comissão (sem Protocolo na venda → "sem comissão (produto)").
+// - ticket pelo VALOR cobrado do item Protocolo; o nome da oferta é ignorado ("Ticket -
+//   R$208" cobra R$ 288). A planilha soma tudo em "Valor do produto", então:
+//   valor do Protocolo = valor do produto − preços dos outros itens (BUMPS).
+//   Ex.: 346,90 − 58,90 (Nexus) = 288 → ticket R$ 288.
+// - valor que não bate com nenhum ticket (ativo ou inativo: no histórico vale o preço da
+//   época) → "a revisar" com o motivo.
 
-/** preço de checkout de cada produto quando entra como order bump (centavos) */
+/** preço de checkout de cada produto quando entra junto do ticket (centavos) */
 export const BUMPS = new Map([
   ["50 templates de copys para stories validadas do ruyter", 2890],
   ["acesso vitalício", 4890],
   ["combo game changer", 9890],
   ["nexus pgc", 5890],
-  ["protocolo game changer", 29890],
 ]);
+const ITENS_TICKET = new Set(["protocolo game changer", "game changer society"]);
 const baixa = (s) => String(s ?? "").trim().toLowerCase();
 const precoCurto = (c) => `R$${Math.floor(c / 100).toLocaleString("pt-BR")}${c % 100 ? `,${String(c % 100).padStart(2, "0")}` : ""}`;
 
@@ -159,21 +158,18 @@ const precoCurto = (c) => `R$${Math.floor(c / 100).toLocaleString("pt-BR")}${c %
 export const itensDaLinha = (produto, orderbumps) =>
   [String(produto ?? "").trim(), ...String(orderbumps ?? "").split(",").map((b) => b.trim())].filter(Boolean);
 
-/** nomes = [Nome do produto, ...orderbumps] → { ticket, produto, motivo, bumps } */
+/** nomes = [Nome do produto, ...orderbumps] → { ticket, produto, motivo, bumps, valorTicket } */
 export function classificar(oferta, nomes, valorProduto, tickets) {
-  const principal = nomes[0] ?? "";
-  const bumps = nomes.slice(1);
-  const ehTicket = ehItemDeTicket(oferta) || ehItemDeTicket(principal);
-  if (!ehTicket) return { ticket: null, produto: true, bumps, motivo: `produto sem comissão${oferta ? `: ${oferta}` : ""}` };
+  // o item do ticket: Protocolo/Society em qualquer coluna (ou, sem eles, oferta "Ticket - R$…")
+  let idx = nomes.findIndex((n) => ITENS_TICKET.has(baixa(n)));
+  if (idx < 0 && ehItemDeTicket(oferta)) idx = 0;
+  if (idx < 0) return { ticket: null, produto: true, bumps: nomes.slice(1), motivo: `produto sem comissão${oferta ? `: ${oferta}` : ""}`, valorTicket: null };
 
+  const bumps = nomes.filter((_, i) => i !== idx);
   const semPreco = bumps.filter((n) => !BUMPS.has(baixa(n)));
-  if (semPreco.length) return { ticket: null, produto: false, bumps, motivo: `bump sem preço conhecido (${semPreco.join(", ")}): escolher o ticket na mão` };
-  const cobrado = cents(valorProduto) - bumps.reduce((soma, n) => soma + BUMPS.get(baixa(n)), 0);
-  const doNome = precoDoNome(oferta);
-  if (doNome !== null && doNome !== cobrado) {
-    return { ticket: null, produto: false, bumps, motivo: `oferta diz ${precoCurto(doNome)}, cobrou ${precoCurto(cobrado)}` };
-  }
-  const t = tickets.find((x) => x.ativo && cents(x.valor_bruto) === cobrado) ?? tickets.find((x) => cents(x.valor_bruto) === cobrado) ?? null;
-  if (t) return { ticket: t, produto: false, bumps, motivo: null };
-  return { ticket: null, produto: false, bumps, motivo: `cobrou ${precoCurto(cobrado)}, sem ticket desse valor (${oferta})` };
+  if (semPreco.length) return { ticket: null, produto: false, bumps, motivo: `item sem preço conhecido (${semPreco.join(", ")}): escolher o ticket na mão`, valorTicket: null };
+  const valorTicket = cents(valorProduto) - bumps.reduce((soma, n) => soma + BUMPS.get(baixa(n)), 0);
+  const t = tickets.find((x) => x.ativo && cents(x.valor_bruto) === valorTicket) ?? tickets.find((x) => cents(x.valor_bruto) === valorTicket) ?? null;
+  if (t) return { ticket: t, produto: false, bumps, motivo: null, valorTicket };
+  return { ticket: null, produto: false, bumps, motivo: `Protocolo cobrou ${precoCurto(valorTicket)}, sem ticket desse valor (${oferta})`, valorTicket };
 }

@@ -24,18 +24,19 @@ Venda aprovada na Hubla
 
 ## Ticket, bump e valores
 
-- Comissão **só do produto principal**; order bump nunca conta (nem venda, nem bruto, nem
-  comissão). O nome do bump fica em `vendas.bumps` só para aparecer no card.
-- Principal = oferta com `isOrderBump = false` (webhook) ou "Nome do produto"/"Nome da oferta"
-  (planilha). Se ela é de ticket ("Ticket - R$…" / "Game Changer Society"):
-  - preço no nome ≠ valor cobrado → **A revisar**, motivo "oferta diz R$238, cobrou R$100";
-  - iguais → ticket com esse valor (webhook: ativo; planilha: ativo ou inativo, preço da época);
-  - sem ticket com esse valor → **A revisar** com o motivo.
-- Principal combo, Nexus PGC, Acesso Vitalício etc. → **sem comissão (produto)**, mesmo com
-  "Protocolo Game Changer" no bump.
+- **Regra A:** "Protocolo Game Changer" (ou "Game Changer Society") na venda, como principal
+  OU como order bump → venda de **ticket**. Nexus PGC, Combo, Acesso Vitalício e templates
+  nunca entram (nem venda com ticket, nem bruto, nem comissão); o nome deles fica em
+  `vendas.bumps` só para o card. Sem Protocolo na venda → **sem comissão (produto)**.
+- **Ticket pelo valor cobrado do Protocolo**, nunca pelo nome da oferta ("Ticket - R$208"
+  cobra R$ 288): ticket ativo com esse valor; senão, inativo (preço da época). Não bate com
+  nenhum → **A revisar** com o motivo.
+- Webhook: valor = `amountCents` da oferta do Protocolo (`ticketDoPrincipal`, `regras.ts`).
+- **Planilha da Hubla:** não traz valor por item, então valor do Protocolo = valor do
+  produto − preços dos outros itens (`BUMPS` em `scripts/vendas-planilha-hubla.mjs`).
 - Venda nunca é descartada: sem ticket, conta só na quantidade até o admin escolher o ticket.
-- **Planilha da Hubla:** não traz valor por item, então o cobrado do principal = valor do
-  produto − preços dos bumps (`BUMPS` em `scripts/vendas-planilha-hubla.mjs`).
+- **Vendas antigas:** `scripts/vendas-corrigir-produto.mjs` (prévia por vendedor e mês; grava
+  um mês de um vendedor por vez, mês fechado só com `--fechado-ok`).
 - **Snapshot:** ao criar a venda (ou trocar o ticket dela), o banco copia para a venda o bruto, o
   líquido e as 5 comissões do ticket (`vendas.snap_*`, trigger `vendas_snapshot_ticket`).
   Os totais somam essa cópia. Mudar ou desativar ticket não muda venda antiga.
