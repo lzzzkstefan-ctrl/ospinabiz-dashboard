@@ -2,6 +2,21 @@
 
 Registro curto do que foi decidido e por quê. Decisão nova entra no topo.
 
+## 2026-10-08: Vendas (Hubla, atribuição e comissão)
+
+- **Toda venda aprovada vira registro na hora, mesmo sem dono.** No Lock in a venda só nascia
+  depois do "É minha", e o reembolso que chegava antes se perdia (a venda nascia "Pago").
+- **Evento gravado antes de processar**, com reprocessar pela tela: se o processamento falhar
+  depois do 200, nada se perde.
+- **Dados de cliente em tabela separada, só admin** (`vendas_clientes`), e payload bruto só admin.
+- **"É minha" e correções gravam com a chave secreta no servidor**, depois de conferir quem pede;
+  o "É minha" só pega venda ainda sem dono (dois cliques ao mesmo tempo: um ganha).
+- **Margem calculada sobre a operação inteira**; o vendedor recebe só a faixa.
+- **Comparação de token ignora espaço/Enter nas pontas** (`lib/auth/segredo.ts`), para cron e
+  Hubla: token colado na Vercel com Enter dava 401 no Lock in.
+
+Detalhes em `docs/modulos/vendas.md`.
+
 ## 2026-10-08: Página inicial e capa
 
 - **Capa no Storage, bucket `capas` com leitura pública:** é só uma imagem decorativa; pública,

@@ -12,6 +12,7 @@ Onde está cada conta e quem é o dono. **Só nomes e URLs. Nunca senhas, tokens
 | SMTP (e-mails de convite) | _a definir_ | | | | |
 | Meta | BM do monitor + número remetente | _pendente_ | | | |
 | Telegram | Bot de alertas | _pendente_ | | | |
+| Hubla | Webhook de vendas → `/api/vendas/hubla` (ao lado do Metrito) | _a cadastrar_ (token em `HUBLA_WEBHOOK_TOKEN`) | | | |
 
 ## Observações
 

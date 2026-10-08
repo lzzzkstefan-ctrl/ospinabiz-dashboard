@@ -20,7 +20,7 @@ const ITENS = [
   { href: "/", label: "Início", icon: House, emBreve: false },
   { href: "/monitor", label: "Monitor", icon: Activity, emBreve: false },
   { href: "/tarefas", label: "Tarefas", icon: ListChecks, emBreve: false },
-  { href: "/vendas", label: "Vendas", icon: BadgeDollarSign, emBreve: true },
+  { href: "/vendas", label: "Vendas", icon: BadgeDollarSign, emBreve: false },
   { href: "/fechamento", label: "Fechamento", icon: CalendarCheck, emBreve: true },
   { href: "/bms", label: "BMs", icon: Building2, emBreve: false },
   // TODO(papeis): mostrar só para admin quando lib/auth/papeis.ts existir.
