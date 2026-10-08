@@ -59,7 +59,7 @@ export function PainelVendas({
   vendedor,
   vendedores,
   tickets,
-  vendas,
+  vendas: todas,
   margemPadrao,
   faixaSugerida,
   mes,
@@ -93,8 +93,13 @@ export function PainelVendas({
   const [aberta, setAberta] = useState<number | null>(null);
   const [copiado, setCopiado] = useState(false);
   const [filtro, setFiltro] = useState<FiltroVendas>("todas");
+  const [plataforma, setPlataforma] = useState<Plataforma | "todas">("todas");
 
+  // filtro por plataforma: muda os cards, a rosca, o resumo e a lista. O fechamento usa
+  // sempre o mês inteiro (todas as plataformas), porque é o que vai pro Rodrigo.
+  const vendas = useMemo(() => (plataforma === "todas" ? todas : todas.filter((v) => v.plataforma === plataforma)), [todas, plataforma]);
   const resumo = useMemo(() => resumirLI(vendas, tickets), [vendas, tickets]);
+  const resumoMes = useMemo(() => resumirLI(todas, tickets), [todas, tickets]);
   const ticketDe = useMemo(() => new Map(tickets.map((t) => [t.id, t])), [tickets]);
   const pagas = vendas.filter((v) => v.status === "pago");
   const reembolsos = vendas.filter((v) => v.status === "reembolso");
@@ -160,6 +165,32 @@ export function PainelVendas({
             </>
           )}
         </div>
+      </div>
+
+      {/* plataforma */}
+      <div className="-mt-2 flex flex-wrap items-center gap-2">
+        <span className="text-[12.5px] text-ink-dim">Plataforma</span>
+        <div role="radiogroup" aria-label="Filtrar por plataforma" className="flex flex-wrap gap-1.5">
+          {(["todas", ...PLATAFORMAS] as const).map((p) => {
+            const n = p === "todas" ? todas.length : todas.filter((v) => v.plataforma === p).length;
+            return (
+              <button
+                key={p}
+                type="button"
+                role="radio"
+                aria-checked={plataforma === p}
+                onClick={() => setPlataforma(p)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-[12px] transition-colors",
+                  plataforma === p ? "border-accent bg-accent/15 text-white" : "border-line text-ink-dim hover:border-accent hover:text-white",
+                )}
+              >
+                {p === "todas" ? "Todas" : NOME_PLATAFORMA[p]} <span className="tabular-nums text-ink-faint">{n}</span>
+              </button>
+            );
+          })}
+        </div>
+        {plataforma !== "todas" && <span className="text-[11.5px] text-ink-faint">números só da {NOME_PLATAFORMA[plataforma]}; o fechamento continua com o mês inteiro</span>}
       </div>
 
       {/* totais */}
@@ -310,7 +341,7 @@ export function PainelVendas({
           mes={mes}
           vendedorId={vendedor.id}
           vendedorNome={vendedor.nome}
-          resumo={resumo}
+          resumo={resumoMes}
           margem={margem}
           hoje={hoje}
           observacoesSalvas={fechamento.observacoesSalvas}
@@ -321,7 +352,7 @@ export function PainelVendas({
             fechamento.fechado
               ? {
                   ...fechamento.fechado,
-                  difere: fechamento.fechado.qtd !== resumo.qtd || fechamento.fechado.comissao !== resumo.comissao[fechamento.fechado.faixa],
+                  difere: fechamento.fechado.qtd !== resumoMes.qtd || fechamento.fechado.comissao !== resumoMes.comissao[fechamento.fechado.faixa],
                 }
               : null
           }
@@ -452,7 +483,7 @@ function Grade({ vendas, ticketDe, onAbrir, vazio }: { vendas: VendaLI[]; ticket
   );
 }
 
-type Coluna = "data" | "cliente" | "ticket" | "status" | "bruto" | "liquido" | "comissao" | "vendedor";
+type Coluna = "data" | "cliente" | "ticket" | "plataforma" | "status" | "bruto" | "liquido" | "comissao" | "vendedor";
 
 function TabelaVendas({
   vendas,
@@ -494,6 +525,7 @@ function TabelaVendas({
     { id: "cliente", nome: "Cliente" },
     ...(mostrarVendedor ? [{ id: "vendedor" as Coluna, nome: "Vendedor" }] : []),
     { id: "ticket", nome: "Ticket" },
+    { id: "plataforma", nome: "Plataforma" },
     { id: "status", nome: "Status" },
     { id: "bruto", nome: "Bruto", num: true },
     { id: "liquido", nome: "Líquido", num: true },
@@ -527,6 +559,9 @@ function TabelaVendas({
               <td className="whitespace-nowrap px-3 py-2">{v.cliente}</td>
               {mostrarVendedor && <td className="whitespace-nowrap px-3 py-2">{nomeVendedor(v)}</td>}
               <td className="px-3 py-2">{t ? <TicketTag ticket={t} solto /> : <SemComissaoTag oferta={ofertaDe(v)} produto={v.principal_produto} solto />}</td>
+              <td className="px-3 py-2">
+                <PlataformaTag plataforma={v.plataforma} />
+              </td>
               <td className="px-3 py-2">
                 <StatusTag status={v.status} />
               </td>
