@@ -12,7 +12,7 @@ Onde está cada conta e quem é o dono. **Só nomes e URLs. Nunca senhas, tokens
 | SMTP (e-mails de convite) | _a definir_ | | | | |
 | Meta | BM do monitor + número remetente | _pendente_ | | | |
 | Telegram | Bot de alertas | _pendente_ | | | |
-| Hubla | Webhook de vendas → `https://ospinabiz-dashboard.vercel.app/api/vendas/hubla` (segundo webhook, ao lado do masterview e do Metrito) | Token próprio em `HUBLA_WEBHOOK_TOKEN` (`.env.local` e Vercel Production), diferente do masterview | Davi | | 2026-10-08 |
+| Hubla | Webhook de vendas → Edge Function `https://ihxevdaaxzamqzawzgmd.supabase.co/functions/v1/hubla-webhook` (segundo webhook, ao lado do masterview e do Metrito) | Token da conta Hubla (um só para todos os webhooks) no secret `HUBLA_WEBHOOK_TOKEN` da Edge Function | Davi | | 2026-10-08 |
 
 ## Observações
 

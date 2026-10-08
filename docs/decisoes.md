@@ -2,6 +2,20 @@
 
 Registro curto do que foi decidido e por quê. Decisão nova entra no topo.
 
+## 2026-10-08: Webhook da Hubla pela Edge Function
+
+Substitui o item "Webhook continua no Next" abaixo.
+
+- **A Edge Function `hubla-webhook` só recebe:** confere o `x-hubla-token` e grava o evento bruto
+  em `hubla_eventos`. A regra de venda continua só no Next (`modulos/vendas/processar.ts`), para
+  não existir uma segunda cópia em Deno.
+- **Idempotência:** `x-hubla-idempotency` vai para `chave_idempotencia` (única). A Hubla reenviando
+  o mesmo evento recebe 200 e nada é gravado de novo.
+- **Processamento:** um gatilho no banco chama `/api/vendas/processar` (pg_net, `cron_secret` do
+  Vault); o pg_cron repete a cada 10 min para pendentes, até 5 tentativas.
+- **Token:** a Hubla usa um token só para a conta, então o secret é o mesmo do masterview.
+  A rota `/api/vendas/hubla` na Vercel continua existindo como alternativa, mas não é a cadastrada.
+
 ## 2026-10-08: Vendas por vendedor (Davi e Vyenna), snapshot e fechamento
 
 Substitui, onde houver conflito, a entrada "Vendas (Hubla, atribuição e comissão)" abaixo.
