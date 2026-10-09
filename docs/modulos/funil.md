@@ -97,3 +97,18 @@ Spec: `https://api.datacrazy.io/v1/api/openapi/v1/json`. Filtros na query como
   quando foi uma pessoa; sem, quando foi automação ou envio pelo celular).
 - **Webhook de saída:** não existe na API. Possível via bloco de automação do
   CRM (a confirmar no CRM, fica para depois).
+
+## Tela v1 (09/10/2026)
+Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em `modulos/funil/dados.ts`
+(com o login de quem vê: o vendedor só recebe os leads dele pelo RLS).
+- Período: hoje, 7 dias (padrão), 30 dias, mês, personalizado (até 366 dias). Filtros de
+  vendedor e número (só admin).
+- Funil acumulado: quem chegou numa etapa conta nas anteriores. Comprou (Hubla ou Pix/CNPJ) conta
+  como chegou em Aluno. Lead com etiqueta "fora do funil" fica fora do funil, mas entra em
+  "leads por dia".
+- Maior gap: a maior perda entre duas etapas seguidas, só onde a etapa de cima tem pelo menos
+  3 leads ou 10% do funil (senão 1 lead virando 0 aparece como −100%).
+- Tempo entre etapas: só com data real do histórico (não a data de "primeira vez que vi").
+- Aviso de sincronização: última rodada falhou ou mais de 45 min sem rodada completa.
+- Início: cartões "Leads hoje" e "Maior gap da semana".
+- Fora da v1: downsell, mensagens por etapa.
