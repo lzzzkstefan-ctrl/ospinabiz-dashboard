@@ -201,7 +201,7 @@ async function Mes({
                 ajustes: ajustes.filter((a) => a.mes === mes),
                 alteracoes,
                 fechado: fechado
-                  ? { faixa: fechado.faixa, quando: fechado.fechado_em, qtd: fechado.qtd, comissao: fechado.comissao, estornos: fechado.estornos }
+                  ? { faixa: fechado.faixa, quando: fechado.fechado_em, qtd: fechado.qtd, semTicket: fechado.semTicket, comissao: fechado.comissao, estornos: fechado.estornos }
                   : null,
               }
             : undefined
@@ -225,7 +225,7 @@ function ResumoPorVendedor({
 }) {
   // receita da operação: valor real da fatura na Hubla, com bumps (só vendas pagas; nunca na comissão)
   const receita = (lista: typeof vendas) => {
-    const pagas = lista.filter((v) => v.status === "pago");
+    const pagas = lista.filter((v) => v.status === "pago" && !v.teste);
     const com = pagas.filter((v) => v.receita_liquida != null);
     return { valor: com.reduce((s, v) => s + Math.round(Number(v.receita_liquida) * 100), 0), semValor: pagas.length - com.length };
   };
@@ -282,7 +282,7 @@ function ResumoPorVendedor({
       </table>
       <p className="m-0 mt-2 text-[11.5px] text-ink-faint">
         {faixa ? `Faixa sugerida pela margem do mês: ${faixa}%.` : "Margem do mês ainda sem sugestão (falta valor em Configuração)."} O % de cada um é escolhido
-        no fechamento, na tela dele. Receita na Hubla = valor real das faturas pagas, com order bumps e já sem a taxa da Hubla
+        no fechamento, na tela dele. Receita na Hubla = valor real das faturas pagas, com order bumps e já sem a taxa da Hubla (vendas de teste ficam fora)
         {total.semValor > 0 ? ` (${total.semValor} venda(s) do mês ainda sem esse valor)` : ""}; bruto e líquido de ticket = base da comissão (sem bumps).
       </p>
     </section>

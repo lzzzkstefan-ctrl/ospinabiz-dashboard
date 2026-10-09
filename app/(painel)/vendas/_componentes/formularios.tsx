@@ -60,6 +60,9 @@ export function FecharMes({
           </option>
         ))}
       </select>
+      <label className="flex items-center gap-1.5 text-xs text-ink-dim">
+        <input type="checkbox" name="confirmar_mes_aberto" value="sim" /> fechar mesmo se o mês ainda não acabou
+      </label>
       <Salvar texto={faixaAtual ? "Atualizar fechamento" : "Fechar mês"} />
       <Aviso estado={estado} />
     </form>

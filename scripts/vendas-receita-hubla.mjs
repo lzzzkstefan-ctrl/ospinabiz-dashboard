@@ -93,7 +93,7 @@ try {
   const ids = [...novos.keys()];
   const vendas = [];
   for (let i = 0; i < ids.length; i += 200) {
-    const { data, error } = await db.from("vendas").select("id, id_fatura, data, vendedor_id, status, receita_liquida").in("id_fatura", ids.slice(i, i + 200));
+    const { data, error } = await db.from("vendas").select("id, id_fatura, data, vendedor_id, status, receita_liquida, teste").in("id_fatura", ids.slice(i, i + 200));
     if (error) throw new Error(error.message);
     vendas.push(...data);
   }
@@ -102,7 +102,8 @@ try {
   const admin = nomeAdmin ? [...equipe.values()].find((p) => semAcento(p.nome) === semAcento(nomeAdmin)) : null;
   if (nomeAdmin && !admin?.usuario_id) throw new Error(`"${nomeAdmin}" não está na equipe com login.`);
 
-  const atualizar = vendas.filter((v) => sobrescrever || v.receita_liquida == null).filter((v) => cents(Number(v.receita_liquida ?? -1)) !== novos.get(v.id_fatura));
+  // venda de teste fica fora da receita: nunca é preenchida
+  const atualizar = vendas.filter((v) => !v.teste).filter((v) => sobrescrever || v.receita_liquida == null).filter((v) => cents(Number(v.receita_liquida ?? -1)) !== novos.get(v.id_fatura));
   const emMesFechado = atualizar.filter((v) => v.vendedor_id && fechados.has(`${v.data.slice(0, 7)}|${v.vendedor_id}`));
 
   // 3. prévia por mês e vendedor (só pagas entram na receita da tela; reembolsos aparecem à parte)

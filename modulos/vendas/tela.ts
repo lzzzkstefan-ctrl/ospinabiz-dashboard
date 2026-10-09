@@ -15,7 +15,7 @@ import { calcularMargem, centavos, custosDoMes, resumir, type Faixa, type Ticket
 
 const COLUNAS =
   "id, id_fatura, vendedor_id, sem_vendedor, ticket_id, principal_produto, motivo_sem_ticket, itens, bumps, status, data, pago_em, final_lead, origem, plataforma, " +
-  "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, receita_liquida";
+  "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, receita_liquida, teste";
 
 async function todas<T>(pagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
   const tudo: T[] = [];
@@ -115,7 +115,7 @@ export async function listarAdiantamentos(vendedorId: number, ano: number): Prom
 }
 
 /** comissao = congelada no fechamento; estornos = descontados nele (centavos) */
-export type FechamentoLI = { mes: string; faixa: Faixa; qtd: number; comissao: number; estornos: number; fechado_em: string };
+export type FechamentoLI = { mes: string; faixa: Faixa; qtd: number; semTicket: number; comissao: number; estornos: number; fechado_em: string };
 
 export async function listarFechamentosLI(vendedorId: number, ano: number): Promise<FechamentoLI[]> {
   const supabase = await createClient();
@@ -131,6 +131,7 @@ export async function listarFechamentosLI(vendedorId: number, ano: number): Prom
     mes: String(f.mes).slice(0, 7),
     faixa: Number(f.faixa) as Faixa,
     qtd: Number(f.qtd) + Number(f.sem_ticket),
+    semTicket: Number(f.sem_ticket),
     comissao: centavos(f.comissao),
     estornos: centavos(f.estornos),
     fechado_em: String(f.fechado_em),

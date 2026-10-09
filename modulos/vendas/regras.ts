@@ -63,6 +63,14 @@ export function mesDe(dia: string): string {
   return dia.slice(0, 7);
 }
 
+/** O mês (AAAA-MM) já acabou, no horário de Brasília? Mês corrente ou futuro = não. */
+export function mesJaAcabou(mes: string, agora: Date = new Date()): boolean {
+  return mes < mesDe(diaSP(agora)!);
+}
+
+/** Mensagem de quando falta a confirmação para fechar um mês que ainda não acabou. */
+export const MES_NAO_ACABOU = "Este mês ainda não acabou. Vendas que entrarem depois ficam fora do fechamento. Confirme para fechar mesmo assim.";
+
 export function lerMes(valor: string | string[] | undefined, padrao: string): string {
   return typeof valor === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(valor) ? valor : padrao;
 }

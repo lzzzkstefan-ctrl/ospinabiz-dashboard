@@ -21,7 +21,7 @@ import { mesCapitalizado, rotuloEstorno, textoFechamento, valorFinalDe, type Aju
 import type { Faixa } from "@/modulos/vendas/regras";
 import type { Alteracao, EstornoDoVendedor } from "@/modulos/vendas/tela";
 import { cn } from "@/lib/utils";
-import { Check, Copy, HandCoins, History, Link2, LockOpen, MessageCircle, SlidersHorizontal, Unlink } from "lucide-react";
+import { Check, Copy, HandCoins, History, Link2, Lock, LockOpen, MessageCircle, SlidersHorizontal, Unlink } from "lucide-react";
 import { useState, useSyncExternalStore, useTransition } from "react";
 import { botaoPrimario, botaoSecundario, campo, ConfirmButton, dataBR, formatBRL, Janela, parseValorBR } from "./base";
 
@@ -58,7 +58,8 @@ export function Fechamento({
   alteracoes: Alteracao[];
   hoje: string;
   /** fechamento gravado: %, quando e comissão congelada; null = mês aberto */
-  fechadoEm: { faixa: Faixa; quando: string; difere: boolean; comissao: number } | null;
+  /** ticketsDepois = vendas que estavam sem ticket no fechamento e ganharam ticket depois */
+  fechadoEm: { faixa: Faixa; quando: string; difere: boolean; comissao: number; ticketsDepois: number } | null;
 }) {
   const [adiantando, setAdiantando] = useState(false);
   const [ajustando, setAjustando] = useState(false);
@@ -105,14 +106,17 @@ export function Fechamento({
     });
   }
 
-  /** Enviar pro Rodrigo: salva as observações e grava o fechamento no % escolhido (mês aberto). */
+  /** Enviar pro Rodrigo: salva as observações e abre a mensagem. NÃO fecha o mês. */
   function enviar() {
     salvarObs();
-    if (fechadoEm) return; // mês fechado: só reenvia a mensagem
-    startTransition(async () => {
-      const r = await registrarFechamento(mes, vendedorId, margem);
-      setMsg(r.erro ? `Mensagem aberta, mas o fechamento não foi salvo: ${r.erro}` : null);
-    });
+  }
+
+  const mesAcabou = mes < hoje.slice(0, 7);
+  /** Fechar mês: só mês que acabou; mês corrente só depois do "Sim" da confirmação. */
+  async function fechar() {
+    salvarObs();
+    const r = await registrarFechamento(mes, vendedorId, margem, !mesAcabou);
+    return r;
   }
 
   async function copiar(qual: "texto" | "link") {
@@ -137,12 +141,18 @@ export function Fechamento({
             {fechadoEm
               ? `Fechado em ${fechadoEm.faixa}% no dia ${dataBR(fechadoEm.quando.slice(0, 10))}. Mês travado: vale a comissão do fechamento.`
               : admin
-                ? "Mês aberto: o “Enviar pro Rodrigo” grava o fechamento no % escolhido acima."
+                ? "Mês aberto: use “Fechar mês” para gravar o fechamento no % escolhido acima. O “Enviar pro Rodrigo” só manda a mensagem."
                 : "Mês aberto: o % que vale é o que o admin escolher no fechamento."}
             {fechadoEm?.difere && (
               <span className="text-accent-3">
                 {" "}
                 As vendas mudaram depois do fechamento. Reembolso vira estorno no próximo fechamento; para refazer o mês, reabra.
+              </span>
+            )}
+            {fechadoEm && fechadoEm.ticketsDepois > 0 && (
+              <span className="block text-accent-3">
+                {fechadoEm.ticketsDepois} venda{fechadoEm.ticketsDepois > 1 ? "s" : ""} que estava{fechadoEm.ticketsDepois > 1 ? "m" : ""} sem ticket no fechamento
+                ganh{fechadoEm.ticketsDepois > 1 ? "aram" : "ou"} ticket depois. A comissão fechada não muda.
               </span>
             )}
           </p>
@@ -152,6 +162,22 @@ export function Fechamento({
             <button type="button" onClick={() => setAdiantando(true)} className={cn(botaoSecundario, "inline-flex items-center gap-1.5")}>
               <HandCoins size={13} /> Registrar adiantamento
             </button>
+          )}
+          {admin && !fechadoEm && (
+            <ConfirmButton
+              label={
+                <span className="inline-flex items-center gap-1.5">
+                  <Lock size={13} /> Fechar mês em {margem}%
+                </span>
+              }
+              pergunta={
+                mesAcabou
+                  ? `Fechar ${mesCapitalizado(mes).toLowerCase()} em ${margem}%? Depois, só reabrindo com motivo.`
+                  : `Este mês ainda não acabou: vendas que entrarem depois ficam fora. Fechar mesmo assim em ${margem}%?`
+              }
+              action={fechar}
+              className={cn(botaoSecundario, "inline-flex items-center gap-1.5")}
+            />
           )}
           {admin && fechadoEm && (
             <>

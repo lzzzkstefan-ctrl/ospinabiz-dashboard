@@ -58,6 +58,8 @@ export type VendaLI = {
   snap_bruto: number | string | null;
   /** receita líquida da fatura na Hubla, com bumps (só dash geral; nunca na comissão) */
   receita_liquida?: number | string | null;
+  /** venda de teste: fora da receita da operação */
+  teste?: boolean;
   snap_liquido: number | string | null;
   snap_comissao_6: number | string | null;
   snap_comissao_7: number | string | null;

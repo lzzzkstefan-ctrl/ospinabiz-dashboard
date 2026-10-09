@@ -8,7 +8,7 @@ import { ehAdmin, usuarioLogado } from "@/lib/auth/papeis";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { analisarCsv, resumirLI, slugDe, type LinhaImportacao, type Plataforma } from "@/modulos/vendas/lock-in";
-import { FAIXAS, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
+import { FAIXAS, MES_NAO_ACABOU, mesJaAcabou, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
 import { carregarVendas, listarTicketsLI } from "@/modulos/vendas/tela";
 import { refresh } from "next/cache";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -136,11 +136,14 @@ export async function salvarWhatsapp(numero: string): Promise<Resultado> {
   return error ? { erro: "Não deu para salvar." } : {};
 }
 
-// ---------- "Enviar pro Rodrigo": grava o fechamento do mês no % escolhido pelo admin ----------
-export async function registrarFechamento(mes: string, vendedorId: number, faixa: Faixa): Promise<Resultado> {
+// ---------- "Fechar mês": grava o fechamento no % escolhido pelo admin ----------
+// Só fecha mês que já acabou; mês corrente só com confirmação explícita (confirmarMesAberto).
+// O "Enviar pro Rodrigo" NÃO chama isto: só manda a mensagem.
+export async function registrarFechamento(mes: string, vendedorId: number, faixa: Faixa, confirmarMesAberto = false): Promise<Resultado> {
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   if (!mesOk(mes) || !idOk(vendedorId) || !FAIXAS.includes(faixa)) return { erro: "Dados inválidos." };
+  if (!mesJaAcabou(mes) && !confirmarMesAberto) return { erro: MES_NAO_ACABOU };
   const [a, m] = mes.split("-").map(Number);
   const fim = new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10);
   const [vendas, tickets] = await Promise.all([carregarVendas(vendedorId, `${mes}-01`, fim), listarTicketsLI()]);

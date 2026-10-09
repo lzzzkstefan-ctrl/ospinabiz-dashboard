@@ -56,7 +56,7 @@ export type DadosFechamento = {
   /** registro de alterações do mês fechado (só admin) */
   alteracoes: Alteracao[];
   /** fechamento gravado (qtd = todas as pagas; comissão e estornos congelados) */
-  fechado: { faixa: Faixa; quando: string; qtd: number; comissao: number; estornos: number } | null;
+  fechado: { faixa: Faixa; quando: string; qtd: number; semTicket: number; comissao: number; estornos: number } | null;
 };
 
 const cartao = "rounded-2xl border border-line-soft bg-bg-raised-2 p-4";
@@ -371,6 +371,7 @@ export function PainelVendas({
               ? {
                   ...fechamento.fechado,
                   difere: fechamento.fechado.qtd !== resumoMes.qtd || fechamento.fechado.comissao !== resumoMes.comissao[fechamento.fechado.faixa],
+                  ticketsDepois: Math.max(0, fechamento.fechado.semTicket - (resumoMes.semTicket + resumoMes.semTicketProduto)),
                 }
               : null
           }

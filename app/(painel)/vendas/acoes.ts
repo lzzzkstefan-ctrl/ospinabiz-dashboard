@@ -11,7 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { dadosDoFechamento } from "@/modulos/vendas/fechamento";
 import { processarEvento } from "@/modulos/vendas/processar";
-import { FAIXAS, type Faixa } from "@/modulos/vendas/regras";
+import { FAIXAS, MES_NAO_ACABOU, mesJaAcabou, type Faixa } from "@/modulos/vendas/regras";
 import { refresh } from "next/cache";
 
 const SO_ADMIN: EstadoForm = { erro: "Só admin pode alterar." };
@@ -129,6 +129,7 @@ export async function fecharMes(_anterior: EstadoForm, form: FormData): Promise<
   const faixa = Number(form.get("faixa")) as Faixa;
   if (!mes || !vendedorId) return { erro: "Mês ou vendedor inválido." };
   if (!FAIXAS.includes(faixa)) return { erro: "Escolha o % (6 a 10)." };
+  if (!mesJaAcabou(mes.slice(0, 7)) && form.get("confirmar_mes_aberto") !== "sim") return { erro: MES_NAO_ACABOU };
 
   const d = await dadosDoFechamento(mes.slice(0, 7), vendedorId);
   const r = d.resumo;
