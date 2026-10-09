@@ -44,8 +44,8 @@ async function Relatorio({ searchParams }: Props) {
   const resumo: [string, string][] = [
     ["Vendas pagas com ticket", String(r.qtd)],
     ...(r.semTicket > 0 ? [["Vendas pagas sem ticket (sem comissão)", String(r.semTicket)] as [string, string]] : []),
-    ["Faturamento bruto", reais(r.bruto)],
-    ["Líquido", reais(r.liquido)],
+    ["Bruto de ticket (base da comissão)", reais(r.bruto)],
+    ["Líquido de ticket (base da comissão)", reais(r.liquido)],
     ["Margem de comissão", `${rel.faixa}%`],
     ["Comissão", reais(r.comissao[rel.faixa])],
     ["Reembolsos", String(r.reembolsos)],
@@ -88,8 +88,8 @@ async function Relatorio({ searchParams }: Props) {
               <th className="py-1.5 pr-3 font-medium">Cliente</th>
               <th className="py-1.5 pr-3 font-medium">Ticket</th>
               <th className="py-1.5 pr-3 font-medium">Status</th>
-              <th className="py-1.5 pr-3 text-right font-medium">Bruto</th>
-              <th className="py-1.5 pr-3 text-right font-medium">Líquido</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Bruto de ticket</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Líquido de ticket</th>
               <th className="py-1.5 text-right font-medium">Comissão {rel.faixa}%</th>
             </tr>
           </thead>

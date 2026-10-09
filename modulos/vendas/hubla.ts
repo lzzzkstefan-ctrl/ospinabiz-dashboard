@@ -21,7 +21,10 @@ export type FaturaHubla = {
   ofertasBump: OfertaHubla[];
   /** nomes dos order bumps (isOrderBump = true): só para mostrar, nunca contam */
   bumps: string[];
-  valorPagoCentavos: number | null; // só referência
+  valorPagoCentavos: number | null; // só referência (subtotal da fatura)
+  /** o que fica para a operação na fatura inteira (com bumps), depois da taxa da Hubla.
+   * Receita da dash geral; NUNCA entra na comissão. */
+  receitaLiquidaCentavos: number | null;
   pagoEm: string | null; // ISO, instante do status "paid"
   nome: string | null;
   telefone: string | null;
@@ -73,6 +76,8 @@ export function lerFatura(payload: unknown): FaturaHubla {
   }
 
   const valor = obj(fatura.amount);
+  // recebedor da operação = o que tem o mesmo id do vendedor da fatura (o outro é a plataforma)
+  const recebedor = lista(fatura.receivers).map(obj).find((r) => texto(r.id) !== null && r.id === fatura.sellerId);
   const pago = lista(fatura.statusAt).map(obj).find((s) => s.status === "paid");
   const pagador = obj(fatura.payer);
   const nome = [texto(pagador.firstName), texto(pagador.lastName)].filter(Boolean).join(" ") || null;
@@ -88,6 +93,7 @@ export function lerFatura(payload: unknown): FaturaHubla {
     ofertasBump,
     bumps,
     valorPagoCentavos: numero(valor.subtotalCents) ?? numero(valor.totalCents),
+    receitaLiquidaCentavos: recebedor ? numero(recebedor.totalCents) : null,
     pagoEm: texto(pago?.when) ?? texto(fatura.saleDate),
     nome,
     telefone: texto(pagador.phone),

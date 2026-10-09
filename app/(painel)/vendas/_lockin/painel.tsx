@@ -212,8 +212,8 @@ export function PainelVendas({
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { lbl: "total de vendas", num: String(resumo.qtd) },
-          { lbl: "faturamento bruto", num: formatBRL(resumo.bruto) },
-          { lbl: "valor líquido", num: formatBRL(resumo.liquido) },
+          { lbl: "bruto de ticket (base da comissão)", num: formatBRL(resumo.bruto) },
+          { lbl: "líquido de ticket (base da comissão)", num: formatBRL(resumo.liquido) },
           { lbl: `comissão (${margem}%)`, num: formatBRL(resumo.comissao[margem]), destaque: true },
         ].map((c) => (
           <div key={c.lbl} className={cn(cartao, c.destaque && "border-accent/40")}>
@@ -226,7 +226,7 @@ export function PainelVendas({
       {resumo.semTicket > 0 && (
         <p role="status" className="m-0 -mt-3 rounded-xl border border-accent-3/40 bg-accent-3/10 px-3 py-2 text-[12.5px] text-ink">
           ⚠ {resumo.semTicket} venda{resumo.semTicket > 1 ? "s" : ""} a revisar (ticket que não bate com a tabela ou combo não identificado):
-          conta{resumo.semTicket > 1 ? "m" : ""} no total de vendas, mas não no bruto, no líquido nem na comissão.
+          conta{resumo.semTicket > 1 ? "m" : ""} no total de vendas, mas não na base da comissão (bruto e líquido de ticket) nem na comissão.
           {admin && " Use o filtro “A revisar” e escolha o ticket em cada uma."}
         </p>
       )}
@@ -272,8 +272,8 @@ export function PainelVendas({
               <tr>
                 <th className="py-1.5 pr-3 font-medium">Ticket</th>
                 <th className="py-1.5 pr-3 text-right font-medium">Qtd</th>
-                <th className="py-1.5 pr-3 text-right font-medium">Bruto</th>
-                <th className="py-1.5 pr-3 text-right font-medium">Líquido</th>
+                <th className="py-1.5 pr-3 text-right font-medium">Bruto de ticket</th>
+                <th className="py-1.5 pr-3 text-right font-medium">Líquido de ticket</th>
                 <th className="py-1.5 text-right font-medium">Comissão {margem}%</th>
               </tr>
             </thead>
@@ -546,8 +546,8 @@ function TabelaVendas({
     { id: "ticket", nome: "Ticket" },
     { id: "plataforma", nome: "Plataforma" },
     { id: "status", nome: "Status" },
-    { id: "bruto", nome: "Bruto", num: true },
-    { id: "liquido", nome: "Líquido", num: true },
+    { id: "bruto", nome: "Bruto de ticket", num: true },
+    { id: "liquido", nome: "Líquido de ticket", num: true },
     { id: "comissao", nome: `Comissão ${margem}%`, num: true },
   ];
   if (!vendas.length) return <p className="m-0 py-3 text-[13px] italic text-ink-faint">Nenhuma venda neste período.</p>;
@@ -634,14 +634,14 @@ function DetalheVenda({
         ))}
       {v.bumps.length > 0 && (
         <p className="-mt-2 mb-4 text-[12px] text-ink-faint">
-          Order bump: {v.bumps.join(", ")} <span>(não entra em bruto, líquido nem comissão)</span>
+          Order bump: {v.bumps.join(", ")} <span>(não entra na base da comissão; conta só na receita na Hubla)</span>
         </p>
       )}
       {t && (
         <div className="-mt-1 mb-4 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] tabular-nums text-ink-dim">
           <TicketTag ticket={t} />
-          <span>bruto {formatBRL(brutoVenda(v, t) ?? 0)}</span>
-          <span>líquido {formatBRL(liquidoVenda(v, t) ?? 0)}</span>
+          <span>bruto de ticket {formatBRL(brutoVenda(v, t) ?? 0)}</span>
+          <span>líquido de ticket {formatBRL(liquidoVenda(v, t) ?? 0)}</span>
           <span className={v.status === "pago" ? "text-white" : "line-through"}>
             comissão {margem}% {formatBRL(comissaoVenda(v, t, margem) ?? 0)}
           </span>

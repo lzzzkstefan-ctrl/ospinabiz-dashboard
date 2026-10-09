@@ -56,6 +56,8 @@ export type VendaLI = {
   origem: "webhook" | "importacao" | "manual";
   plataforma: Plataforma;
   snap_bruto: number | string | null;
+  /** receita líquida da fatura na Hubla, com bumps (só dash geral; nunca na comissão) */
+  receita_liquida?: number | string | null;
   snap_liquido: number | string | null;
   snap_comissao_6: number | string | null;
   snap_comissao_7: number | string | null;
@@ -247,7 +249,7 @@ export function textoFechamento(p: {
   return [
     "📊 *Resumo Geral*",
     "",
-    `🐲 Mês de ${nome}: ${brl(r.bruto)}`,
+    `🐲 Mês de ${nome} (bruto de ticket): ${brl(r.bruto)}`,
     `🍄 Total de Vendas: ${r.qtd} vendas aprovadas`,
     `💰 Comissão Total: ${brl(comissao)}`,
     "",

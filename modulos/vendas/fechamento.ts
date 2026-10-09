@@ -108,7 +108,7 @@ export function csvDoFechamento(nomeVendedor: string, mesNome: string, faixa: Fa
       linha("Reembolsos", r.reembolsos),
       linha("Chargebacks", r.chargebacks),
       "",
-      linha("Data", "Hora", "Cliente", "Ticket", "Status", "Bruto", "Líquido", `Comissão ${faixa}%`),
+      linha("Data", "Hora", "Cliente", "Ticket", "Status", "Bruto de ticket", "Líquido de ticket", `Comissão ${faixa}%`),
       ...linhas.map((l) => linha(l.data, l.hora, l.cliente, l.ticket, l.status, numeroBR(l.bruto), numeroBR(l.liquido), numeroBR(l.comissao))),
     ].join("\r\n") +
     "\r\n"

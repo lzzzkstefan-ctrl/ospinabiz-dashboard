@@ -25,6 +25,15 @@ Venda aprovada na Hubla
 
 ## Ticket, bump e valores
 
+> **Duas medidas (decisão do Davi, 09/10/2026):**
+> - **Fechamento, pagamento e comissão** (e a margem que sugere a faixa): só o produto principal,
+>   pelo **bruto/líquido de ticket** da tabela (`snap_*`). Order bump não entra. Na tela:
+>   "Bruto de ticket (base da comissão)" e "Líquido de ticket (base da comissão)".
+> - **Visão geral / receita da operação:** **"Receita na Hubla (com bumps)"** = `vendas.receita_liquida`,
+>   o valor real da fatura (principal + bumps) depois da taxa da Hubla. Webhook: recebedor da fatura com
+>   o mesmo id do vendedor (`event.invoice.receivers`). Histórico: `scripts/vendas-receita-hubla.mjs`
+>   com o export de faturas da Hubla (prévia antes de gravar; mês fechado com `--admin`).
+
 - **Regra A:** "Protocolo Game Changer" (ou "Game Changer Society") na venda, como principal
   OU como order bump → venda de **ticket**. Nexus PGC, Combo, Acesso Vitalício e templates
   nunca entram (nem venda com ticket, nem bruto, nem comissão); o nome deles fica em

@@ -223,10 +223,23 @@ function ResumoPorVendedor({
   opcoes: { id: number; nome: string }[];
   faixa: Faixa | null;
 }) {
+  // receita da operação: valor real da fatura na Hubla, com bumps (só vendas pagas; nunca na comissão)
+  const receita = (lista: typeof vendas) => {
+    const pagas = lista.filter((v) => v.status === "pago");
+    const com = pagas.filter((v) => v.receita_liquida != null);
+    return { valor: com.reduce((s, v) => s + Math.round(Number(v.receita_liquida) * 100), 0), semValor: pagas.length - com.length };
+  };
   const linhas = [
-    ...opcoes.map((o) => ({ nome: o.nome, r: resumirLI(vendas.filter((v) => v.vendedor_id === o.id), tickets) })),
-    { nome: "Sem vendedor", r: resumirLI(vendas.filter((v) => v.vendedor_id === null), tickets) },
+    ...opcoes.map((o) => {
+      const doVendedor = vendas.filter((v) => v.vendedor_id === o.id);
+      return { nome: o.nome, r: resumirLI(doVendedor, tickets), receita: receita(doVendedor) };
+    }),
+    (() => {
+      const sem = vendas.filter((v) => v.vendedor_id === null);
+      return { nome: "Sem vendedor", r: resumirLI(sem, tickets), receita: receita(sem) };
+    })(),
   ].filter((l) => l.r.qtd + l.r.reembolsos + l.r.chargebacks > 0 || l.nome !== "Sem vendedor");
+  const total = receita(vendas);
   return (
     <section className="glass-lite glass-static overflow-x-auto p-4">
       <h3 className="mb-3 text-[15px] font-semibold text-white">Por vendedor</h3>
@@ -235,8 +248,9 @@ function ResumoPorVendedor({
           <tr>
             <th className="py-1.5 pr-3 font-medium">Vendedor</th>
             <th className="py-1.5 pr-3 text-right font-medium">Vendas</th>
-            <th className="py-1.5 pr-3 text-right font-medium">Bruto</th>
-            <th className="py-1.5 pr-3 text-right font-medium">Líquido</th>
+            <th className="py-1.5 pr-3 text-right font-medium">Receita na Hubla (com bumps)</th>
+            <th className="py-1.5 pr-3 text-right font-medium">Bruto de ticket</th>
+            <th className="py-1.5 pr-3 text-right font-medium">Líquido de ticket</th>
             {FAIXAS.map((f) => (
               <th key={f} className={cn("py-1.5 pr-3 text-right font-medium", faixa === f && "text-white")}>
                 {f}%
@@ -246,10 +260,14 @@ function ResumoPorVendedor({
           </tr>
         </thead>
         <tbody>
-          {linhas.map(({ nome, r }) => (
+          {linhas.map(({ nome, r, receita: rec }) => (
             <tr key={nome} className="border-t border-line-soft text-ink">
               <td className="py-1.5 pr-3 text-white">{nome}</td>
               <td className="py-1.5 pr-3 text-right">{r.qtd}</td>
+              <td className="whitespace-nowrap py-1.5 pr-3 text-right text-white" title={rec.semValor ? `${rec.semValor} venda(s) paga(s) ainda sem o valor da Hubla` : undefined}>
+                {formatBRLServidor(rec.valor)}
+                {rec.semValor > 0 && <span className="ml-1 text-[11px] text-accent-3">({rec.semValor} sem valor)</span>}
+              </td>
               <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRLServidor(r.bruto)}</td>
               <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRLServidor(r.liquido)}</td>
               {FAIXAS.map((f) => (
@@ -264,7 +282,8 @@ function ResumoPorVendedor({
       </table>
       <p className="m-0 mt-2 text-[11.5px] text-ink-faint">
         {faixa ? `Faixa sugerida pela margem do mês: ${faixa}%.` : "Margem do mês ainda sem sugestão (falta valor em Configuração)."} O % de cada um é escolhido
-        no fechamento, na tela dele.
+        no fechamento, na tela dele. Receita na Hubla = valor real das faturas pagas, com order bumps e já sem a taxa da Hubla
+        {total.semValor > 0 ? ` (${total.semValor} venda(s) do mês ainda sem esse valor)` : ""}; bruto e líquido de ticket = base da comissão (sem bumps).
       </p>
     </section>
   );

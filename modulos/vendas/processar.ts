@@ -124,6 +124,7 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
       itens: f.principais.length ? [...f.principais.map((p) => p.nome), ...f.itens.filter((i) => !f.principais.some((p) => p.nome === i))] : f.itens,
       bumps: ticket.bumps,
       valor_pago: f.valorPagoCentavos === null ? null : f.valorPagoCentavos / 100,
+      receita_liquida: f.receitaLiquidaCentavos === null ? null : f.receitaLiquidaCentavos / 100,
       status: jaReembolsada ? "reembolso" : "pago",
       reembolsado_em: jaReembolsada ? reembolsoAntes.data[0].recebido_em : null,
       pago_em: f.pagoEm,
