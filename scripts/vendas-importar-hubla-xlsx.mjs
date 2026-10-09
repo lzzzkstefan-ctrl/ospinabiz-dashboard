@@ -1,6 +1,13 @@
-// Vendas: importa o histórico de UM vendedor a partir da exportação XLSX da Hubla
-// (uma linha por fatura). Uso pensado para o histórico da Vyenna (utm "vyenna").
-// - só as linhas com "UTM Termo" = utm informado; status "Paga" e "Reembolsada";
+// Vendas: importa vendas a partir da exportação XLSX da Hubla (uma linha por fatura).
+// Dois modos:
+// - --utm=<código>: só as vendas de UM vendedor (ex.: histórico da Vyenna, utm "vyenna");
+// - --utm=todos: todas as vendas. UTM de vendedor cadastrado → atribuída a ele; sem UTM ou
+//   UTM desconhecida → "A atribuir" (vendedor vazio; o admin atribui na tela).
+// - --desde=AAAA-MM-DD / --ate=AAAA-MM-DD (opcionais): só vendas pagas nesse período (Brasília);
+// - --historico-ate=AAAA-MM-DD (opcional, modo "todos"): venda sem vendedor paga até essa data
+//   entra como "histórico sem vendedor" (sem_vendedor = sim): conta no total do admin, não vai
+//   para "A revisar", não entra em comissão; só o admin atribui depois, se precisar;
+// - status "Paga" e "Reembolsada";
 // - ticket: pelo VALOR COBRADO ("Valor do produto") menos os preços dos bumps, como no Lock
 //   in do masterview, e não pelo preço escrito no nome da oferta (ex.: "Ticket - R$238,00"
 //   cobrava R$ 100,00). O item do ticket (Society/Protocolo) pode vir em qualquer coluna,
@@ -16,6 +23,7 @@
 // Uso (na pasta do projeto):
 //   node --env-file=.env.local scripts/vendas-importar-hubla-xlsx.mjs --arquivo=<.xlsx> --utm=vyenna            # prévia
 //   node --env-file=.env.local scripts/vendas-importar-hubla-xlsx.mjs --arquivo=<.xlsx> --utm=vyenna --aplicar  # grava
+//   node --env-file=.env.local scripts/vendas-importar-hubla-xlsx.mjs --arquivo=<.xlsx> --utm=todos --desde=2026-09-05
 //   ... --aba="nome da aba" (padrão: a primeira)
 
 import { createClient } from "@supabase/supabase-js";
@@ -26,9 +34,19 @@ const arg = (nome) => process.argv.find((a) => a.startsWith(`--${nome}=`))?.slic
 const arquivo = arg("arquivo");
 const utm = (arg("utm") ?? "").toLowerCase().replace(/\s+/g, "");
 const abaPedida = arg("aba");
+const todos = utm === "todos";
+const desde = arg("desde") ?? null;
+const ate = arg("ate") ?? null;
+const historicoAte = arg("historico-ate") ?? null;
 if (!arquivo || !utm) {
-  console.error("Informe --arquivo=<planilha .xlsx da Hubla> e --utm=<código do vendedor>");
+  console.error("Informe --arquivo=<planilha .xlsx da Hubla> e --utm=<código do vendedor ou todos>");
   process.exit(1);
+}
+for (const d of [desde, ate, historicoAte]) {
+  if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    console.error(`Data inválida: "${d}". Use AAAA-MM-DD.`);
+    process.exit(1);
+  }
 }
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
 
@@ -54,8 +72,11 @@ try {
   const faltando = Object.entries(C).filter(([, i]) => i < 0).map(([k]) => k);
   if (faltando.length) throw new Error(`colunas não encontradas: ${faltando.join(", ")}. Cabeçalho da aba "${aba}": ${cab.join(" | ")}`);
 
-  const { data: vendedor, error: ev } = await db.from("vendedores").select("equipe_id, equipe(nome)").eq("utm_term", utm).single();
-  if (ev || !vendedor) throw new Error(`vendedor com utm "${utm}" não encontrado`);
+  // utm → vendedor (no modo "todos", todos os vendedores ativos)
+  const { data: vendedores, error: ev } = await db.from("vendedores").select("equipe_id, utm_term, equipe(nome)").eq("ativo", true);
+  if (ev) throw new Error(ev.message);
+  const vendedorDoUtm = new Map(vendedores.map((v) => [v.utm_term, v]));
+  if (!todos && !vendedorDoUtm.has(utm)) throw new Error(`vendedor com utm "${utm}" não encontrado`);
   const { data: tickets, error: et } = await db.from("tickets").select("*");
   if (et) throw new Error(et.message);
   const existentes = new Set();
@@ -66,11 +87,13 @@ try {
     if (data.length < 1000) break;
   }
 
-  const cont = { linhas: corpo.length, outro: 0, statusIgnorado: new Map(), semId: 0, semData: 0, jaExiste: 0 };
+  const cont = { linhas: corpo.length, outro: 0, foraPeriodo: 0, statusIgnorado: new Map(), semId: 0, semData: 0, jaExiste: 0, repetidaNoArquivo: 0 };
   const novas = [];
   const vistas = new Set();
   for (const l of corpo) {
-    if (String(l[C.termo] ?? "").toLowerCase().replace(/\s+/g, "") !== utm) { cont.outro++; continue; }
+    const termo = String(l[C.termo] ?? "").toLowerCase().replace(/\s+/g, "");
+    if (!todos && termo !== utm) { cont.outro++; continue; }
+    const vendedor = vendedorDoUtm.get(termo) ?? null; // null = "A atribuir"
     const stBruto = String(l[C.status] ?? "").trim();
     const status = STATUS[semAcento(stBruto)];
     if (!status) { cont.statusIgnorado.set(stBruto || "(vazio)", (cont.statusIgnorado.get(stBruto || "(vazio)") ?? 0) + 1); continue; }
@@ -78,7 +101,8 @@ try {
     if (!id) { cont.semId++; continue; }
     const data = dataDe(l[C.data]);
     if (!data) { cont.semData++; continue; }
-    if (vistas.has(id)) continue;
+    if ((desde && data.dia < desde) || (ate && data.dia > ate)) { cont.foraPeriodo++; continue; }
+    if (vistas.has(id)) { cont.repetidaNoArquivo++; continue; }
     vistas.add(id);
     if (existentes.has(id)) { cont.jaExiste++; continue; }
 
@@ -90,13 +114,16 @@ try {
     const principalProduto = p.produto;
     const motivo = p.motivo;
 
+    const historico = !vendedor && !!historicoAte && data.dia <= historicoAte;
+
     novas.push({
       venda: {
         id_fatura: id,
-        vendedor_id: vendedor.equipe_id,
-        forma_atribuicao: "utm",
-        atribuida_em: data.instante,
-        utm_term: utm,
+        vendedor_id: vendedor?.equipe_id ?? null,
+        sem_vendedor: historico,
+        forma_atribuicao: vendedor ? "utm" : null,
+        atribuida_em: vendedor ? data.instante : null,
+        utm_term: termo || null,
         ticket_id: ticket?.id ?? null,
         motivo_sem_ticket: motivo?.slice(0, 200) ?? null,
         itens: [produto && oferta ? `${produto} - ${oferta}` : produto || oferta].filter(Boolean),
@@ -111,6 +138,7 @@ try {
       oferta,
       cliente: { nome: String(l[C.nome] ?? "").trim() || null, telefone: String(l[C.telefone] ?? "").trim() || null },
       ticket,
+      dono: vendedor?.equipe?.nome ?? (historico ? "histórico sem vendedor" : "A atribuir"),
     });
   }
 
@@ -133,7 +161,17 @@ try {
   }
 
   console.log(`IMPORTAÇÃO DA PLANILHA DA HUBLA — ${aplicar ? "APLICANDO" : "PRÉVIA (nada gravado)"} — aba "${aba}", ${cont.linhas} linhas`);
-  console.log(`Vendedor: ${vendedor.equipe.nome} (utm "${utm}") · novas: ${novas.length} · já existiam: ${cont.jaExiste} · de outros/sem utm: ${cont.outro}`);
+  console.log(
+    todos
+      ? `Todos os vendedores${desde || ate ? ` · período ${desde ?? "início"} a ${ate ?? "hoje"}` : ""} · novas: ${novas.length} · já existiam: ${cont.jaExiste} · fora do período: ${cont.foraPeriodo} · repetidas no arquivo: ${cont.repetidaNoArquivo}`
+      : `Vendedor: ${vendedorDoUtm.get(utm).equipe.nome} (utm "${utm}") · novas: ${novas.length} · já existiam: ${cont.jaExiste} · de outros/sem utm: ${cont.outro} · fora do período: ${cont.foraPeriodo}`,
+  );
+  const porDono = new Map();
+  for (const n of novas) {
+    const k = `${n.dono} · ${n.venda.status}`;
+    porDono.set(k, (porDono.get(k) ?? 0) + 1);
+  }
+  console.log(`Novas por dono: ${[...porDono].sort().map(([k, q]) => `${q}x ${k}`).join(" · ") || "nenhuma"}`);
   if (cont.statusIgnorado.size) console.log(`Status ignorados (não são Paga/Reembolsada): ${[...cont.statusIgnorado].map(([s, q]) => `${q}x ${s}`).join(" · ")}`);
   if (cont.semId || cont.semData) console.log(`Sem id da fatura: ${cont.semId} · sem data de pagamento: ${cont.semData}`);
   console.log("\nMês      Pagas  c/ticket  s/ticket  Reemb.         Bruto       Líquido   " + FAIXAS.map((f) => `Com.${f}%`.padStart(10)).join(" "));
