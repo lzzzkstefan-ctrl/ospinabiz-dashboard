@@ -175,3 +175,26 @@ da empresa quando a Vercel for para um time pago. Ver `contas.md`.
 ## 2026-10-08: Login só por convite, papéis admin e atendente
 
 Cadastro público desligado. O papel fica em `app_metadata` (o usuário não consegue editar).
+
+## 2026-10-09: Funil pelas etiquetas da Data Crazy, não pelo pipeline
+
+O funil é montado pelas etiquetas que os fluxos de automação colocam no lead. O pipeline da
+Data Crazy quase não tem negócios cadastrados. O vínculo etiqueta → etapa fica na tabela
+`funil_etiquetas`, editada pelo admin; nenhum nome de etiqueta fica no código.
+
+**Por quê:** a operação acompanha o lead pelas etiquetas. Os nomes mudam com frequência
+(duas sumiram no mesmo dia em que o módulo foi criado). O histórico da Data Crazy traz o
+**nome** da etiqueta, não o id, então `funil_etiquetas_nomes` guarda todos os nomes que cada
+etiqueta já teve.
+
+## 2026-10-09: Sincronização do Funil incremental, a cada 15 min
+
+A API da Data Crazy não filtra por "atualizado em" e limita 60 chamadas/min por rota. A cada
+rodada: lê a lista de leads da janela (90 dias, mínimo 01/09/2026), que já traz as etiquetas
+atuais; só busca o histórico (1 chamada por lead) de quem é novo ou mudou de etiqueta. O
+vendedor e o número vêm das conversas, lidas da mais recente para trás até o início da janela.
+A rota responde na hora e trabalha em segundo plano (`after`, até 300 s); o que não couber
+fica para a próxima rodada.
+
+**Por quê:** uma rodada sem mudanças custa ~6 chamadas. A carga inicial (29 leads) levou
+35 chamadas e 40 s.
