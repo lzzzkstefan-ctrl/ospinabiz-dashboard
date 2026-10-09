@@ -219,3 +219,15 @@ registro deixa o valor pago e o valor da tela diferentes sem explicação. Reemb
 fechamento não reabre o mês: vira estorno no próximo fechamento (decisão do Davi), e o mês
 fechado continua mostrando o valor congelado, para não descontar duas vezes. Correção sem
 reabrir: ajuste manual com motivo.
+
+## 2026-10-09: Líquido de ticket pela fatura real (a partir de outubro/2026)
+
+Até setembro, o líquido de ticket (base da comissão) vinha da tabela de tickets, que supõe a taxa
+do Pix. No cartão parcelado com juros a operação recebe mais (ex.: ticket R$ 238 em 12x: tabela
+R$ 225,53, real R$ 234,67). A partir de outubro, o líquido de ticket é o que realmente fica na
+fatura, na parte do ticket. Vale para todas as formas de pagamento.
+
+**Por quê:** a comissão tem que acompanhar o que a operação recebe de fato, inclusive se a Hubla
+mudar taxa (de jan a mar/2026 o Pix custava ~R$ 2 a mais por venda do que a tabela supõe).
+Agosto e setembro já foram pagos e ficam como estão; julho fechado também (a diferença de
++R$ 30,67 a 10% ficou só como informação).

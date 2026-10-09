@@ -33,6 +33,12 @@ Venda aprovada na Hubla
 >   o valor real da fatura (principal + bumps) depois da taxa da Hubla. Webhook: recebedor da fatura com
 >   o mesmo id do vendedor (`event.invoice.receivers`). Histórico: `scripts/vendas-receita-hubla.mjs`
 >   com o export de faturas da Hubla (prévia antes de gravar; mês fechado com `--admin`).
+> - **Líquido de ticket pela fatura real, a partir de outubro/2026** (`vendas_config.liquido_real_desde`,
+>   migration `vendas_liquido_real`): líquido de ticket = `receita_liquida` × (preço do ticket ÷
+>   subtotal da fatura); comissão = % × esse líquido. Bruto de ticket continua o preço da tabela (juros do
+>   parcelamento não entram). Corrige o cartão com juros (a tabela supunha a taxa do Pix). Meses
+>   anteriores (já pagos) ficam pela tabela; mês fechado não é recalculado. Script:
+>   `scripts/vendas-liquido-real.mjs --desde=AAAA-MM` (prévia; `--aplicar` grava).
 
 - **Regra A:** "Protocolo Game Changer" (ou "Game Changer Society") na venda, como principal
   OU como order bump → venda de **ticket**. Nexus PGC, Combo, Acesso Vitalício e templates
