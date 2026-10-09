@@ -353,7 +353,7 @@ export async function criarAjuste(mes: string, vendedorId: number, valorCentavos
   if (m.length < 5) return { erro: "Escreva o motivo (mínimo 5 letras)." };
   const supabase = await createClient();
   const { error } = await supabase.from("vendas_ajustes").insert({ mes: `${mes}-01`, vendedor_id: vendedorId, valor: valorCentavos / 100, motivo: m.slice(0, 500) });
-  if (error) return { erro: /m[eê]s fechado|m[eê]s aberto/i.test(error.message) ? error.message : "Não deu para salvar o ajuste." };
+  if (error) return { erro: /m[eê]s fechado|m[eê]s aberto|descontado/i.test(error.message) ? error.message : "Não deu para salvar o ajuste." };
   refresh();
   return {};
 }

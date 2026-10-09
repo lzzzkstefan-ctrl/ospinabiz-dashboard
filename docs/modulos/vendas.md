@@ -80,8 +80,11 @@ Faixas (o limite de baixo entra na faixa de cima): <10% → 6% · 10–<20% → 
 - **Ajuste manual:** valor (+/−) e motivo, só admin, só em mês fechado, sem reabrir. Não se
   edita nem apaga: corrige-se com outro ajuste.
 - **A receber** = comissão − estornos + ajustes − adiantamentos. Negativo aparece como "saldo
-  negativo de R$ X, descontado no próximo fechamento" (o desconto automático do saldo ainda
-  está para ser feito — ver decisões).
+  negativo de R$ X, descontado no próximo fechamento".
+- **Saldo negativo** (migration `vendas_saldo_negativo`): mês fechado com a receber abaixo de
+  zero ganha um estorno "saldo negativo" (sem venda), descontado sozinho no próximo fechamento.
+  Recalculado ao fechar, ao lançar ajuste e ao mudar adiantamento; voltou a ≥ 0 → cancelado.
+  Depois que esse saldo foi descontado, o mês não aceita mais ajuste: lance no mês seguinte.
 - **Exportar** (só mês fechado): CSV em `/api/vendas/fechamento?mes=AAAA-MM&vendedor=<id>` e
   PDF pela impressão do navegador em `/vendas/fechamento?mes=AAAA-MM&vendedor=<id>`.
   Cliente aparece só com o primeiro nome e os 4 últimos dígitos.

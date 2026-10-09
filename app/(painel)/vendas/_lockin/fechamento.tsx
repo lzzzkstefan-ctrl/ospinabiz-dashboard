@@ -17,7 +17,7 @@ import {
   salvarObservacoes,
   salvarWhatsapp,
 } from "../acoes-lockin";
-import { mesCapitalizado, textoFechamento, valorFinalDe, type AjusteLI, type ResumoLI } from "@/modulos/vendas/lock-in";
+import { mesCapitalizado, rotuloEstorno, textoFechamento, valorFinalDe, type AjusteLI, type ResumoLI } from "@/modulos/vendas/lock-in";
 import type { Faixa } from "@/modulos/vendas/regras";
 import type { Alteracao, EstornoDoVendedor } from "@/modulos/vendas/tela";
 import { cn } from "@/lib/utils";
@@ -188,8 +188,8 @@ export function Fechamento({
             {formatBRL(comissaoBase)}
           </span>
           {estornosDoMes.map((e) => (
-            <span key={`e${e.id}`} title={`Venda #${e.vendaId}`}>
-              {fechadoEm ? "estorno" : "estorno a descontar"} ({e.motivo} de {mesCapitalizado(e.mesOrigem).toLowerCase()}): −{formatBRL(e.valor)}
+            <span key={`e${e.id}`}>
+              {fechadoEm ? "estorno" : "estorno a descontar"} ({rotuloEstorno(e)}): −{formatBRL(e.valor)}
             </span>
           ))}
           {ajustes.map((a) => (

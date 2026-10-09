@@ -196,14 +196,24 @@ export function valorFinalDe(
   return comissao - soma(extras.estornos) + soma(extras.ajustes) - soma(adiantamentos);
 }
 
-/** Estorno: comissão de venda de mês fechado que virou reembolso/chargeback (centavos). */
-export type EstornoLI = { id: number; vendaId: number; mesOrigem: string; valor: number; motivo: "reembolso" | "chargeback" };
+/**
+ * Estorno (centavos), descontado no próximo fechamento:
+ * - reembolso/chargeback: comissão de venda de mês fechado que deixou de valer;
+ * - saldo_negativo: o mês fechou (ou ficou) com "a receber" abaixo de zero (sem venda).
+ */
+export type EstornoLI = { id: number; vendaId: number | null; mesOrigem: string; valor: number; motivo: "reembolso" | "chargeback" | "saldo_negativo" };
+
+/** "reembolso de julho, venda #12" / "saldo negativo de julho" */
+export function rotuloEstorno(e: EstornoLI): string {
+  const mes = mesCapitalizado(e.mesOrigem).toLowerCase();
+  return e.motivo === "saldo_negativo" ? `saldo negativo de ${mes}` : `${e.motivo} de ${mes}, venda #${e.vendaId}`;
+}
 /** Ajuste manual no fechamento (centavos; + paga a mais, − desconta). */
 export type AjusteLI = { id: number; mes: string; valor: number; motivo: string };
 
 function linhasDeDesconto(estornos: EstornoLI[], ajustes: AjusteLI[]): string[] {
   return [
-    ...estornos.map((e) => `Estorno (${e.motivo} de ${mesCapitalizado(e.mesOrigem).toLowerCase()}, venda #${e.vendaId}): -${brl(e.valor)}`),
+    ...estornos.map((e) => `Estorno (${rotuloEstorno(e)}): -${brl(e.valor)}`),
     ...ajustes.map((a) => `Ajuste: ${a.valor < 0 ? "-" : "+"}${brl(Math.abs(a.valor))} (${a.motivo})`),
   ];
 }

@@ -151,7 +151,7 @@ export async function listarEstornos(vendedorId: number): Promise<EstornoDoVende
   if (error) throw new Error(`Erro ao carregar estornos: ${error.message}`);
   return data.map((e) => ({
     id: Number(e.id),
-    vendaId: Number(e.venda_id),
+    vendaId: e.venda_id === null ? null : Number(e.venda_id),
     mesOrigem: String(e.mes_origem).slice(0, 7),
     valor: centavos(e.valor),
     motivo: e.motivo as EstornoLI["motivo"],
