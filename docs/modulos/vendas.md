@@ -8,9 +8,10 @@ Lock in do masterview). Decisões em `docs/decisoes.md` (08/10/2026).
 
 ```
 Venda aprovada na Hubla
-  → POST /api/vendas/hubla           confere x-hubla-token (HUBLA_WEBHOOK_TOKEN), senão 401
-  → grava o evento em hubla_eventos  (falhou → 500, a Hubla tenta de novo)
-  → responde 200 e processa depois   modulos/vendas/processar.ts (after())
+  → Edge Function hubla-webhook      confere x-hubla-token (secret HUBLA_WEBHOOK_TOKEN), senão 401
+  → grava o evento em hubla_eventos  (falhou → 500, a Hubla tenta de novo; repetido → 200)
+  → gatilho do banco chama           /api/vendas/processar → modulos/vendas/processar.ts
+                                     (pg_cron repete a cada 10 min os pendentes)
 ```
 
 - **Pagamento** (`invoice.payment_succeeded`): cria UMA venda por fatura (`id_fatura` único).
@@ -120,8 +121,9 @@ Vendas:
 
 ## Na Hubla
 
-- URL: `https://ospinabiz-dashboard.vercel.app/api/vendas/hubla`
-- Token: o mesmo valor em `HUBLA_WEBHOOK_TOKEN` (`.env.local` e Vercel). Nunca no código.
+- URL: a Edge Function `hubla-webhook` do Supabase (endereço em `docs/contas.md`). É o único
+  receptor: a rota `/api/vendas/hubla` da Vercel foi apagada em 09/10/2026.
+- Token: secret `HUBLA_WEBHOOK_TOKEN` da Edge Function (Supabase). Nunca no código.
 - Até a versão da empresa ser validada, o masterview continua recebendo as vendas do Davi.
   Ainda não está confirmado se a Hubla aceita duas regras de webhook para o mesmo evento:
   testar criando a segunda regra e conferindo que as duas recebem a próxima venda.

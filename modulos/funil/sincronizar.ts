@@ -116,8 +116,9 @@ async function fecharRodada(
 type Config = {
   /** nome normalizado → id da etiqueta (inclui nomes antigos) */
   etiquetaPorNome: Map<string, string>;
-  /** id do atendente na Data Crazy → pessoa da equipe (ou null) */
+  /** id do atendente na Data Crazy → pessoa da equipe (ou null). Sem os de suporte. */
   equipeDoAtendente: Map<string, number | null>;
+  /** só atendentes que podem ser vendedor (sem os de suporte) */
   atendentePorNome: Map<string, string>;
   numeros: Set<string>;
   numeroPorNome: Map<string, string>;
@@ -178,9 +179,12 @@ async function sincronizarConfiguracao(db: Db, dc: DataCrazy): Promise<Config> {
   for (const n of nomes) etiquetaPorNome.set(nomeDaEtiqueta(n.nome), n.etiqueta_dc_id);
   for (const t of etiquetas) etiquetaPorNome.set(nomeDaEtiqueta(t.name), t.id);
 
-  const vinculos = await lerTudo<{ dc_id: string; nome: string; equipe_id: number | null }>((de, ate) =>
-    db.from("funil_atendentes").select("dc_id, nome, equipe_id").order("dc_id").range(de, ate),
-  );
+  // atendente de suporte (equipe da Data Crazy) nunca é vendedor: fica fora dos mapas
+  const vinculos = (
+    await lerTudo<{ dc_id: string; nome: string; equipe_id: number | null; suporte_dc: boolean }>((de, ate) =>
+      db.from("funil_atendentes").select("dc_id, nome, equipe_id, suporte_dc").order("dc_id").range(de, ate),
+    )
+  ).filter((a) => !a.suporte_dc);
   const numerosDb = await lerTudo<{ dc_id: string; nome: string }>((de, ate) =>
     db.from("funil_numeros").select("dc_id, nome").order("dc_id").range(de, ate),
   );
@@ -299,7 +303,8 @@ async function sincronizarConversas(db: Db, dc: DataCrazy, leads: DcLead[], jane
   const mudancas = [...achados.entries()].flatMap(([id, a]) => {
     const antes = noBanco.get(id);
     const lead = porId.get(id)!;
-    const atendente = a.atendente ?? antes?.atendente_dc_id ?? null;
+    const anterior = antes?.atendente_dc_id && config.equipeDoAtendente.has(antes.atendente_dc_id) ? antes.atendente_dc_id : null;
+    const atendente = a.atendente ?? anterior;
     const numero = a.numero ?? antes?.numero_dc_id ?? null;
     const ultima = a.ultima ?? antes?.ultima_mensagem_em ?? null;
     if (antes && antes.atendente_dc_id === atendente && antes.numero_dc_id === numero && mesmoInstante(antes.ultima_mensagem_em, ultima)) return [];
@@ -399,8 +404,10 @@ async function lerHistoricos(db: Db, dc: DataCrazy, config: Config): Promise<num
         .filter((ev) => ev.historyCode === "conversation-attendant-changed")
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       if (!lead.atendente_dc_id) {
-        const nome = troca.map((ev) => ev.parameters?.attendantName).find((n): n is string => typeof n === "string");
-        const id = nome ? config.atendentePorNome.get(nome.trim().toLowerCase()) : undefined;
+        const id = troca
+          .map((ev) => ev.parameters?.attendantName)
+          .map((n) => (typeof n === "string" ? config.atendentePorNome.get(n.trim().toLowerCase()) : undefined))
+          .find((x) => x !== undefined);
         if (id) Object.assign(extra, { atendente_dc_id: id, vendedor_id: config.equipeDoAtendente.get(id) ?? null });
       }
       if (!lead.numero_dc_id) {

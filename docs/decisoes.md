@@ -54,7 +54,7 @@ Substitui o item "Webhook continua no Next" abaixo.
 - **Processamento:** um gatilho no banco chama `/api/vendas/processar` (pg_net, `cron_secret` do
   Vault); o pg_cron repete a cada 10 min para pendentes, até 5 tentativas.
 - **Token:** a Hubla usa um token só para a conta, então o secret é o mesmo do masterview.
-  A rota `/api/vendas/hubla` na Vercel continua existindo como alternativa, mas não é a cadastrada.
+  A rota `/api/vendas/hubla` na Vercel foi apagada em 09/10/2026 (ver abaixo).
 
 ## 2026-10-08: Vendas por vendedor (Davi e Vyenna), snapshot e fechamento
 
@@ -69,8 +69,8 @@ Substitui, onde houver conflito, a entrada "Vendas (Hubla, atribuição e comiss
 - **Vendedor vê só o que é dele**, garantido pelo RLS: saiu o "A atribuir" do vendedor e o
   botão "É minha". Venda sem dono ou nova sem ticket vai para **"A revisar"**, só do admin.
   O e-mail de acesso fica em `vendedores.email`, coluna que o vendedor não consegue ler.
-- **Webhook continua no Next** (`/api/vendas/hubla`), não em Edge Function: já estava pronto e
-  a regra fica num lugar só (ver "Supabase é o relógio, a Vercel faz o trabalho").
+- ~~Webhook continua no Next~~: substituído pela Edge Function (entrada "Webhook da Hubla pela
+  Edge Function"). A regra continua num lugar só (`/api/vendas/processar`).
 - **Exportação:** CSV (separador `;`, abre certo no Excel) e PDF pela impressão do navegador
   (`/vendas/fechamento`), sem biblioteca nova. Só de mês fechado.
 - **Histórico:** importado com `origem = 'importacao'`. O do Davi vem do backup do Lock in
@@ -198,3 +198,12 @@ fica para a próxima rodada.
 
 **Por quê:** uma rodada sem mudanças custa ~6 chamadas. A carga inicial (29 leads) levou
 35 chamadas e 40 s.
+
+## 2026-10-09: Um receptor só para a Hubla (Edge Function)
+
+A rota `/api/vendas/hubla` da Vercel foi apagada. O único receptor é a Edge Function
+`hubla-webhook`, que é a URL cadastrada na Hubla (conferido pelo Davi no painel da Hubla).
+
+**Por quê:** dois receptores fazendo a mesma coisa confundem (a doc de Vendas ainda apontava
+para a rota antiga) e são mais uma porta aberta para manter. A regra de venda já ficava num
+lugar só (`/api/vendas/processar`); agora a entrada também.

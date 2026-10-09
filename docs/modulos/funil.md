@@ -60,6 +60,8 @@ Depois (não agora): mensagens por etapa e webhook das automações.
      fica para a próxima rodada;
   4. cruza com as vendas da Hubla (no banco, sem chamar a API).
 - A tela mostra data/hora da última sincronização e avisa se ela falhou.
+- Atendente da equipe da Data Crazy (`funil_atendentes.suporte_dc`) não é vendedor: a
+  sincronização pula esse atendente; lead atendido só por eles fica sem vendedor.
 
 ## O que a API da Data Crazy entrega (conferido em 09/10/2026, só leitura)
 Base `https://api.g1.datacrazy.io/api/v1`, `Authorization: Bearer DATACRAZY_API_KEY`.
