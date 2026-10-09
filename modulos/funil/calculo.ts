@@ -5,6 +5,10 @@
 // - Comprou (venda na Hubla ou "pagou no Pix/CNPJ") conta como chegou na etapa de compra (Aluno).
 // - Lead com etiqueta "fora do funil" (Menor de idade, Suporte, Lançamento) não entra no funil,
 //   mas entra no "leads por dia".
+// - Contagem de leads (card, leads por dia, leads por número): a MESMA lista de leads do período,
+//   cada lead uma vez só. Etiqueta não conta lead. Número = o da primeira conversa do lead
+//   (funil_leads.numero_dc_id); lead sem conversa ainda fica em "ainda sem conversa" (null),
+//   para a soma por número sempre bater com o total.
 // - Tempo entre etapas: só com datas reais do histórico (origem 'historico').
 
 export type Etapa = {
@@ -28,17 +32,30 @@ export type LeadFunil = {
 
 export type LinhaFunil = { etapaId: number; nome: string; qtd: number; pctTotal: number; perdaAnterior: number | null };
 export type Gap = { de: string; para: string; perda: number };
+/** Leads por número (null = ainda sem conversa), do maior para o menor; "sem conversa" por último. */
+export type PorNumero = { numeroId: string | null; qtd: number }[];
+
 export type Resultado = {
   totalLeads: number;
   foraDoFunil: number;
   noFunil: number;
-  porDia: { dia: string; qtd: number }[];
+  porDia: { dia: string; qtd: number; porNumero: PorNumero }[];
+  porNumero: PorNumero;
   funil: LinhaFunil[];
   maiorGap: Gap | null;
   perdas: { nome: string; onde: string | null; qtd: number; pct: number }[];
   compradores: { hubla: number; foraHubla: number; aConferir: number };
   tempos: { de: string; para: string; mediaMs: number | null; leads: number }[];
 };
+
+/** Cada lead uma vez, no número da primeira conversa; sem conversa (null) por último. */
+export function contarPorNumero(leads: Pick<LeadFunil, "numero_dc_id">[]): PorNumero {
+  const c = new Map<string | null, number>();
+  for (const l of leads) c.set(l.numero_dc_id, (c.get(l.numero_dc_id) ?? 0) + 1);
+  return [...c.entries()]
+    .map(([numeroId, qtd]) => ({ numeroId, qtd }))
+    .sort((a, b) => (a.numeroId === null ? 1 : b.numeroId === null ? -1 : b.qtd - a.qtd));
+}
 
 /** Base mínima na etapa de cima para contar como "maior gap": 3 leads ou 10% do funil. */
 export function minimoParaGap(totalNoFunil: number): number {
@@ -134,14 +151,18 @@ export function calcularFunil(leads: LeadFunil[], etapas: Etapa[], etiquetas: Et
     return { de: anterior.nome, para: p.nome, mediaMs: difs.length ? difs.reduce((s, d) => s + d, 0) / difs.length : null, leads: difs.length };
   });
 
-  const contagemDia = new Map<string, number>();
-  for (const l of leads) contagemDia.set(l.dia, (contagemDia.get(l.dia) ?? 0) + 1);
+  const doDia = new Map<string, LeadFunil[]>();
+  for (const l of leads) doDia.set(l.dia, [...(doDia.get(l.dia) ?? []), l]);
 
   return {
     totalLeads: leads.length,
     foraDoFunil: leads.length - total,
     noFunil: total,
-    porDia: diasDoPeriodo(desde, ate).map((dia) => ({ dia, qtd: contagemDia.get(dia) ?? 0 })),
+    porDia: diasDoPeriodo(desde, ate).map((dia) => {
+      const lista = doDia.get(dia) ?? [];
+      return { dia, qtd: lista.length, porNumero: contarPorNumero(lista) };
+    }),
+    porNumero: contarPorNumero(leads),
     funil,
     maiorGap,
     perdas,

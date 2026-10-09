@@ -1,10 +1,11 @@
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { cn } from "@/lib/utils";
 import { duracao, hojeSP, lerPeriodo, minimoParaGap, type Periodo } from "@/modulos/funil/calculo";
-import { carregarFunil, opcoesDoFunil, statusDaSincronizacao, type StatusSincronizacao } from "@/modulos/funil/dados";
+import { carregarFunil, nomesDosNumeros, opcoesDoFunil, statusDaSincronizacao, type StatusSincronizacao } from "@/modulos/funil/dados";
 import Link from "next/link";
 import { Suspense } from "react";
-import { BarrasPorDia, FunilEtapas } from "./_componentes/graficos";
+import { BarrasPorDia, FunilEtapas, TabelaPorNumero } from "./_componentes/graficos";
+import { SincronizarAgora } from "./_componentes/sincronizar-agora";
 
 // Funil e Leads (v1). Contexto e regras em docs/modulos/funil.md; cálculo em modulos/funil/calculo.ts.
 // Admin vê tudo e filtra por vendedor/número; o vendedor vê só o funil dele (garantido pelo RLS).
@@ -49,7 +50,11 @@ async function Conteudo({ searchParams }: Props) {
   const vendedorId = admin && opcoes.vendedores.some((v) => String(v.id) === sp.v) ? Number(sp.v) : null;
   const numeroId = admin && opcoes.numeros.some((n) => n.id === sp.n) ? sp.n! : null;
 
-  const [r, sync] = await Promise.all([carregarFunil({ desde, ate, vendedorId, numeroId }), statusDaSincronizacao()]);
+  // card, tooltip por número e tabela por número saem do MESMO resultado (uma leitura dos leads)
+  const [r, sync, nomes] = await Promise.all([carregarFunil({ desde, ate, vendedorId, numeroId }), statusDaSincronizacao(), nomesDosNumeros()]);
+  const contadoAte = sync.ultimaOk
+    ? new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(sync.ultimaOk))
+    : null;
 
   // links de período mantêm os filtros
   const filtros = new URLSearchParams();
@@ -69,7 +74,12 @@ async function Conteudo({ searchParams }: Props) {
 
   return (
     <>
-      <AvisoSincronizacao sync={sync} />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <AvisoSincronizacao sync={sync} />
+        </div>
+        {admin && <SincronizarAgora />}
+      </div>
 
       {/* filtros: tudo numa linha acima dos gráficos */}
       <section className="flex flex-col gap-3">
@@ -142,7 +152,11 @@ async function Conteudo({ searchParams }: Props) {
 
       {/* números principais */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Numero rotulo="Leads no período" valor={String(r.totalLeads)} detalhe={r.foraDoFunil ? `${r.foraDoFunil} fora do funil (suporte, menor, lançamento)` : undefined} />
+        <Numero
+          rotulo="Leads no período"
+          valor={String(r.totalLeads)}
+          detalhe={[contadoAte && `contado até ${contadoAte} (última sincronização)`, r.foraDoFunil && `${r.foraDoFunil} fora do funil`].filter(Boolean).join(" · ") || undefined}
+        />
         <Numero
           rotulo="Maior gap"
           valor={r.maiorGap ? `−${pct(r.maiorGap.perda)}` : "—"}
@@ -164,7 +178,15 @@ async function Conteudo({ searchParams }: Props) {
 
       <section className="glass-lite glass-static p-4">
         <h2 className="mb-3 text-[15px] font-semibold text-white">Leads por dia</h2>
-        <BarrasPorDia dias={r.porDia} />
+        <BarrasPorDia dias={r.porDia} nomes={nomes} />
+      </section>
+
+      <section className="glass-lite glass-static p-4">
+        <h2 className="mb-1 text-[15px] font-semibold text-white">Leads por número</h2>
+        <p className="m-0 mb-3 text-[12px] text-ink-faint">
+          Mesmos leads do card: cada lead uma vez, no número da primeira conversa. Quem ainda não conversou fica em “ainda sem conversa”.
+        </p>
+        <TabelaPorNumero porNumero={r.porNumero} total={r.totalLeads} nomes={nomes} />
       </section>
 
       <section className="glass-lite glass-static overflow-x-auto p-4">

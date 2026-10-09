@@ -112,3 +112,16 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
 - Aviso de sincronização: última rodada falhou ou mais de 45 min sem rodada completa.
 - Início: cartões "Leads hoje" e "Maior gap da semana".
 - Fora da v1: downsell, mensagens por etapa.
+
+## Contagem de leads (09/10/2026, decisão do Davi)
+- **Lead do dia** = lead criado na Data Crazy no dia, no fuso America/Sao_Paulo: a sincronização
+  busca `GET /api/v1/leads` com `createdAtGreaterOrEqual`/`createdAtLessOrEqual` (00:00–23:59:59.999
+  de Brasília convertidos para UTC). A API não devolve total: o "count" é o tamanho da lista.
+- **Card, leads por dia (e o tooltip por número) e a tabela "Leads por número"** saem da mesma
+  leitura dos leads (mesmo snapshot): cada lead uma vez só, no número (instância) da **primeira
+  conversa**; quem ainda não conversou fica em "ainda sem conversa". A soma por número = total.
+- O número do lead, depois de definido, não muda (a primeira conversa pode sair da janela de 90 dias).
+- **Etiquetas não contam leads**: servem só para as etapas do funil.
+- A tela lê a cópia do banco (atualizada a cada 15 min); o card mostra "contado até HH:MM" e o
+  admin tem "Sincronizar agora". A tela não consulta a Data Crazy a cada acesso (limite de 60
+  chamadas/min por rota, dividido com o cron).

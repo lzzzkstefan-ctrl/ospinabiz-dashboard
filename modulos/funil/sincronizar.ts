@@ -305,7 +305,8 @@ async function sincronizarConversas(db: Db, dc: DataCrazy, leads: DcLead[], jane
     const lead = porId.get(id)!;
     const anterior = antes?.atendente_dc_id && config.equipeDoAtendente.has(antes.atendente_dc_id) ? antes.atendente_dc_id : null;
     const atendente = a.atendente ?? anterior;
-    const numero = a.numero ?? antes?.numero_dc_id ?? null;
+    // número = o da primeira conversa: depois de definido, não muda (a conversa antiga pode sair da janela)
+    const numero = antes?.numero_dc_id ?? a.numero ?? null;
     const ultima = a.ultima ?? antes?.ultima_mensagem_em ?? null;
     if (antes && antes.atendente_dc_id === atendente && antes.numero_dc_id === numero && mesmoInstante(antes.ultima_mensagem_em, ultima)) return [];
     return [{

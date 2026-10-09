@@ -83,3 +83,11 @@ export async function statusDaSincronizacao(): Promise<StatusSincronizacao> {
     ultimaOk: ok.data?.terminada_em ?? null,
   };
 }
+
+/** Nome de cada número (instância) da Data Crazy, para o tooltip e a tabela por número. */
+export async function nomesDosNumeros(): Promise<Map<string, string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("funil_numeros").select("dc_id, nome");
+  if (error) throw new Error(`Erro ao carregar números: ${error.message}`);
+  return new Map(data.map((n) => [String(n.dc_id), String(n.nome).trim()]));
+}
