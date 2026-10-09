@@ -207,3 +207,15 @@ A rota `/api/vendas/hubla` da Vercel foi apagada. O único receptor é a Edge Fu
 **Por quê:** dois receptores fazendo a mesma coisa confundem (a doc de Vendas ainda apontava
 para a rota antiga) e são mais uma porta aberta para manter. A regra de venda já ficava num
 lugar só (`/api/vendas/processar`); agora a entrada também.
+
+## 2026-10-09: Mês fechado fica travado (estorno, reabrir, ajuste)
+
+Regras em `docs/modulos/vendas.md` ("Mês fechado"). A trava fica no banco (gatilho), não só
+na tela: venda de mês fechado só muda com a identificação de quem mudou, e tudo vai para
+`vendas_alteracoes`, que ninguém edita nem apaga.
+
+**Por quê:** o fechamento é o que foi pago ao vendedor. Mudar uma venda de mês pago sem
+registro deixa o valor pago e o valor da tela diferentes sem explicação. Reembolso depois do
+fechamento não reabre o mês: vira estorno no próximo fechamento (decisão do Davi), e o mês
+fechado continua mostrando o valor congelado, para não descontar duas vezes. Correção sem
+reabrir: ajuste manual com motivo.

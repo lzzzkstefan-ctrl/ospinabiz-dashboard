@@ -58,9 +58,30 @@ Faixas (o limite de baixo entra na faixa de cima): <10% → 6% · 10–<20% → 
 
 - Na aba de cada vendedor, o admin escolhe o **%** (6 a 10; a faixa sugerida vem marcada) e
   clica **Fechar mês**. Grava em `vendas_fechamentos`: %, faixa sugerida, totais congelados,
-  quem fechou e quando. Fechar de novo atualiza.
-- Venda mudou depois do fechamento (reembolso, correção): a tela avisa e a exportação só sai
-  depois de **Atualizar fechamento**.
+  quem fechou e quando. Mês fechado não se fecha de novo: reabra ou use ajuste (abaixo).
+- Venda mudou depois do fechamento (reembolso, correção): a tela avisa; o valor do mês continua
+  o congelado no fechamento.
+
+### Mês fechado (travado) — migration `vendas_mes_fechado`, 09/10/2026
+
+- **Trava no banco:** venda de mês fechado daquele vendedor só muda se a gravação disser quem
+  está mudando (`alterado_via` = `admin` + `alterado_por`, ou `hubla`). Sem isso, o banco recusa.
+  Vale também para mover venda para dentro de mês fechado. Apagar venda de mês fechado: nunca.
+  A Hubla, em mês fechado, só muda status (reembolso/chargeback) e cria venda nova.
+- **Registro** em `vendas_alteracoes`: quem, quando, antes/depois. Só admin lê; ninguém edita
+  nem apaga (nem a chave secreta). Na tela: "Registro de alterações" no fechamento do mês.
+- **Estorno:** venda paga de mês fechado que vira reembolso/chargeback gera um estorno com a
+  comissão dela (na faixa do fechamento), descontado sozinho no **próximo** fechamento do
+  vendedor, com a venda e o mês de origem. Voltou para pago antes do desconto: estorno cancelado.
+- **Mês fechado mostra a comissão congelada** (a que foi paga). O reembolso aparece só como
+  estorno no mês seguinte, nunca reduzindo o mês antigo (senão descontaria duas vezes).
+- **Reabrir:** só admin, motivo obrigatório, registrado. Cancela os estornos nascidos no mês e
+  ainda não descontados; os descontados naquele fechamento voltam a pendentes.
+- **Ajuste manual:** valor (+/−) e motivo, só admin, só em mês fechado, sem reabrir. Não se
+  edita nem apaga: corrige-se com outro ajuste.
+- **A receber** = comissão − estornos + ajustes − adiantamentos. Negativo aparece como "saldo
+  negativo de R$ X, descontado no próximo fechamento" (o desconto automático do saldo ainda
+  está para ser feito — ver decisões).
 - **Exportar** (só mês fechado): CSV em `/api/vendas/fechamento?mes=AAAA-MM&vendedor=<id>` e
   PDF pela impressão do navegador em `/vendas/fechamento?mes=AAAA-MM&vendedor=<id>`.
   Cliente aparece só com o primeiro nome e os 4 últimos dígitos.

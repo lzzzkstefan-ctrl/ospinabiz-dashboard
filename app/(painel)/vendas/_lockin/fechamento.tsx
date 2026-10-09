@@ -1,22 +1,27 @@
 "use client";
 
-// Fechamento do mês de UM vendedor (igual ao do Lock in): comissão, adiantamentos,
-// a receber, mensagem pro Rodrigo, observações e link público.
+// Fechamento do mês de UM vendedor (igual ao do Lock in): comissão, estornos, ajustes,
+// adiantamentos, a receber, mensagem pro Rodrigo, observações e link público.
+// Mês fechado fica travado: vale a comissão congelada no fechamento; reembolso de venda
+// dele vira estorno no próximo fechamento. Admin reabre (com motivo) ou lança ajuste.
 // Admin edita tudo; o vendedor só vê os números, as observações e a prévia.
 
 import {
   criarAdiantamento,
+  criarAjuste,
   desativarLinkMes,
   gerarLinkMes,
+  reabrirMes,
   registrarFechamento,
   removerAdiantamento,
   salvarObservacoes,
   salvarWhatsapp,
 } from "../acoes-lockin";
-import { mesCapitalizado, textoFechamento, valorFinalDe, type ResumoLI } from "@/modulos/vendas/lock-in";
+import { mesCapitalizado, textoFechamento, valorFinalDe, type AjusteLI, type ResumoLI } from "@/modulos/vendas/lock-in";
 import type { Faixa } from "@/modulos/vendas/regras";
+import type { Alteracao, EstornoDoVendedor } from "@/modulos/vendas/tela";
 import { cn } from "@/lib/utils";
-import { Check, Copy, HandCoins, Link2, MessageCircle, Unlink } from "lucide-react";
+import { Check, Copy, HandCoins, History, Link2, LockOpen, MessageCircle, SlidersHorizontal, Unlink } from "lucide-react";
 import { useState, useSyncExternalStore, useTransition } from "react";
 import { botaoPrimario, botaoSecundario, campo, ConfirmButton, dataBR, formatBRL, Janela, parseValorBR } from "./base";
 
@@ -31,6 +36,9 @@ export function Fechamento({
   codigo,
   whatsapp,
   adiantamentos,
+  estornos,
+  ajustes,
+  alteracoes,
   hoje,
   fechadoEm,
 }: {
@@ -44,11 +52,17 @@ export function Fechamento({
   codigo: string | null;
   whatsapp: string | null;
   adiantamentos: { id: number; valor: number; data: string }[];
+  /** todos os estornos do vendedor que valem; aqui entram os deste mês */
+  estornos: EstornoDoVendedor[];
+  ajustes: AjusteLI[];
+  alteracoes: Alteracao[];
   hoje: string;
-  /** fechamento gravado: % e quando; null = mês aberto */
-  fechadoEm: { faixa: Faixa; quando: string; difere: boolean } | null;
+  /** fechamento gravado: %, quando e comissão congelada; null = mês aberto */
+  fechadoEm: { faixa: Faixa; quando: string; difere: boolean; comissao: number } | null;
 }) {
   const [adiantando, setAdiantando] = useState(false);
+  const [ajustando, setAjustando] = useState(false);
+  const [reabrindo, setReabrindo] = useState(false);
   const [obs, setObs] = useState(observacoesSalvas);
   const [salvo, setSalvo] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
@@ -64,7 +78,15 @@ export function Fechamento({
     () => "",
   );
   const link = codigo && origem ? `${origem}/r/${codigo}` : null;
-  const texto = textoFechamento({ mes, resumo, margem, observacoes: obs, link, adiantamentos });
+  // mês fechado: comissão congelada + estornos descontados nele; aberto: comissão de agora +
+  // estornos pendentes de meses anteriores (serão descontados quando fechar)
+  const comissaoBase = fechadoEm ? fechadoEm.comissao : resumo.comissao[margem];
+  const estornosDoMes = fechadoEm
+    ? estornos.filter((e) => e.descontadoNoMes === mes)
+    : estornos.filter((e) => e.descontadoNoMes === null && e.mesOrigem < mes);
+  const aReceber = valorFinalDe(comissaoBase, adiantamentos, { estornos: estornosDoMes, ajustes });
+  const temDescontos = adiantamentos.length > 0 || estornosDoMes.length > 0 || ajustes.length > 0;
+  const texto = textoFechamento({ mes, resumo, margem, observacoes: obs, link, adiantamentos, comissao: comissaoBase, estornos: estornosDoMes, ajustes });
 
   function salvarNumero() {
     if (numero.replace(/\D/g, "") === (whatsapp ?? "")) return;
@@ -83,9 +105,10 @@ export function Fechamento({
     });
   }
 
-  /** Enviar pro Rodrigo: salva as observações e grava o fechamento no % escolhido. */
+  /** Enviar pro Rodrigo: salva as observações e grava o fechamento no % escolhido (mês aberto). */
   function enviar() {
     salvarObs();
+    if (fechadoEm) return; // mês fechado: só reenvia a mensagem
     startTransition(async () => {
       const r = await registrarFechamento(mes, vendedorId, margem);
       setMsg(r.erro ? `Mensagem aberta, mas o fechamento não foi salvo: ${r.erro}` : null);
@@ -112,11 +135,16 @@ export function Fechamento({
           </h3>
           <p className="m-0 mt-0.5 text-[12px] text-ink-faint">
             {fechadoEm
-              ? `Fechado em ${fechadoEm.faixa}% no dia ${dataBR(fechadoEm.quando.slice(0, 10))}.`
+              ? `Fechado em ${fechadoEm.faixa}% no dia ${dataBR(fechadoEm.quando.slice(0, 10))}. Mês travado: vale a comissão do fechamento.`
               : admin
                 ? "Mês aberto: o “Enviar pro Rodrigo” grava o fechamento no % escolhido acima."
                 : "Mês aberto: o % que vale é o que o admin escolher no fechamento."}
-            {fechadoEm?.difere && <span className="text-accent-3"> As vendas mudaram depois do fechamento: envie de novo para atualizar.</span>}
+            {fechadoEm?.difere && (
+              <span className="text-accent-3">
+                {" "}
+                As vendas mudaram depois do fechamento. Reembolso vira estorno no próximo fechamento; para refazer o mês, reabra.
+              </span>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -124,6 +152,16 @@ export function Fechamento({
             <button type="button" onClick={() => setAdiantando(true)} className={cn(botaoSecundario, "inline-flex items-center gap-1.5")}>
               <HandCoins size={13} /> Registrar adiantamento
             </button>
+          )}
+          {admin && fechadoEm && (
+            <>
+              <button type="button" onClick={() => setAjustando(true)} className={cn(botaoSecundario, "inline-flex items-center gap-1.5")}>
+                <SlidersHorizontal size={13} /> Ajuste
+              </button>
+              <button type="button" onClick={() => setReabrindo(true)} className={cn(botaoSecundario, "inline-flex items-center gap-1.5")}>
+                <LockOpen size={13} /> Reabrir mês
+              </button>
+            </>
           )}
           <button type="button" onClick={() => copiar("texto")} className={cn(botaoSecundario, "inline-flex items-center gap-1.5")}>
             {copiado === "texto" ? <Check size={13} /> : <Copy size={13} />}
@@ -143,15 +181,31 @@ export function Fechamento({
         </div>
       </div>
 
-      {adiantamentos.length > 0 && (
+      {temDescontos && (
         <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 rounded-xl border border-line-soft px-3 py-2 text-[12.5px] tabular-nums text-ink-dim">
-          <span>comissão {formatBRL(resumo.comissao[margem])}</span>
+          <span>
+            comissão {fechadoEm ? "(fechada) " : ""}
+            {formatBRL(comissaoBase)}
+          </span>
+          {estornosDoMes.map((e) => (
+            <span key={`e${e.id}`} title={`Venda #${e.vendaId}`}>
+              {fechadoEm ? "estorno" : "estorno a descontar"} ({e.motivo} de {mesCapitalizado(e.mesOrigem).toLowerCase()}): −{formatBRL(e.valor)}
+            </span>
+          ))}
+          {ajustes.map((a) => (
+            <span key={`a${a.id}`} title={a.motivo}>
+              ajuste: {a.valor < 0 ? "−" : "+"}
+              {formatBRL(Math.abs(a.valor))}
+            </span>
+          ))}
           {adiantamentos.map((a) => (
             <span key={a.id}>
               adiantamento {dataBR(a.data).slice(0, 5)}: −{formatBRL(a.valor)}
             </span>
           ))}
-          <span className="text-white">a receber {formatBRL(valorFinalDe(resumo.comissao[margem], adiantamentos))}</span>
+          <span className={aReceber >= 0 ? "text-white" : "text-accent-3"}>
+            {aReceber >= 0 ? `a receber ${formatBRL(aReceber)}` : `saldo negativo de ${formatBRL(-aReceber)}, descontado no próximo fechamento`}
+          </span>
         </div>
       )}
 
@@ -250,9 +304,12 @@ export function Fechamento({
           </pre>
         </div>
       </div>
+      {admin && alteracoes.length > 0 && <Registro alteracoes={alteracoes} />}
       {adiantando && (
         <Adiantamentos mes={mes} vendedorId={vendedorId} hoje={hoje} lista={adiantamentos} onFechar={() => setAdiantando(false)} />
       )}
+      {ajustando && <Ajustes mes={mes} vendedorId={vendedorId} lista={ajustes} onFechar={() => setAjustando(false)} />}
+      {reabrindo && <Reabrir mes={mes} vendedorId={vendedorId} vendedorNome={vendedorNome} onFechar={() => setReabrindo(false)} />}
     </section>
   );
 }
@@ -329,5 +386,170 @@ function Adiantamentos({
         </ul>
       )}
     </Janela>
+  );
+}
+
+function Ajustes({ mes, vendedorId, lista, onFechar }: { mes: string; vendedorId: number; lista: AjusteLI[]; onFechar: () => void }) {
+  const [sinal, setSinal] = useState<"desconta" | "paga">("desconta");
+  const [valor, setValor] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function salvar(e: React.FormEvent) {
+    e.preventDefault();
+    const c = parseValorBR(valor);
+    if (!c) return setErro("Valor inválido. Ex.: 50,00");
+    if (motivo.trim().length < 5) return setErro("Escreva o motivo (mínimo 5 letras).");
+    startTransition(async () => {
+      const r = await criarAjuste(mes, vendedorId, sinal === "desconta" ? -c : c, motivo);
+      if (r.erro) setErro(r.erro);
+      else {
+        setValor("");
+        setMotivo("");
+        setErro(null);
+      }
+    });
+  }
+
+  return (
+    <Janela titulo={`Ajustes de ${mesCapitalizado(mes).toLowerCase()}`} onFechar={onFechar}>
+      <p className="m-0 mb-3 text-[12px] text-ink-faint">
+        Corrige o valor do mês fechado sem reabrir. Fica registrado e não se apaga: para desfazer, lance outro ajuste.
+      </p>
+      <form onSubmit={salvar} className="flex flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-xs text-ink-dim">
+            Tipo
+            <select value={sinal} onChange={(e) => setSinal(e.target.value as "desconta" | "paga")} className={`${campo} mt-1`}>
+              <option value="desconta">Descontar (−)</option>
+              <option value="paga">Pagar a mais (+)</option>
+            </select>
+          </label>
+          <label className="text-xs text-ink-dim">
+            Valor (R$)
+            <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" placeholder="50,00" required autoFocus className={`${campo} mt-1 tabular-nums`} />
+          </label>
+        </div>
+        <label className="text-xs text-ink-dim">
+          Motivo
+          <input
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            maxLength={500}
+            required
+            placeholder="Ex.: venda de julho atribuída depois do fechamento"
+            className={`${campo} mt-1`}
+          />
+        </label>
+        {erro && (
+          <p role="alert" className="m-0 text-xs text-accent-3">
+            {erro}
+          </p>
+        )}
+        <div className="flex gap-2">
+          <button type="submit" disabled={pending} className={botaoPrimario}>
+            {pending ? "Salvando…" : "Lançar ajuste"}
+          </button>
+          <button type="button" onClick={onFechar} className={botaoSecundario}>
+            Fechar
+          </button>
+        </div>
+      </form>
+      {lista.length > 0 && (
+        <ul className="mt-4 flex flex-col gap-1.5 border-t border-line-soft pt-3">
+          {lista.map((a) => (
+            <li key={a.id} className="flex items-baseline justify-between gap-3 text-[13px] tabular-nums text-ink">
+              <span className="text-ink-dim">{a.motivo}</span>
+              <span className="whitespace-nowrap">
+                {a.valor < 0 ? "−" : "+"}
+                {formatBRL(Math.abs(a.valor))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Janela>
+  );
+}
+
+function Reabrir({ mes, vendedorId, vendedorNome, onFechar }: { mes: string; vendedorId: number; vendedorNome: string; onFechar: () => void }) {
+  const [motivo, setMotivo] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function reabrir(e: React.FormEvent) {
+    e.preventDefault();
+    if (motivo.trim().length < 5) return setErro("Escreva o motivo (mínimo 5 letras).");
+    startTransition(async () => {
+      const r = await reabrirMes(mes, vendedorId, motivo);
+      if (r.erro) setErro(r.erro);
+      else onFechar();
+    });
+  }
+
+  return (
+    <Janela titulo={`Reabrir ${mesCapitalizado(mes).toLowerCase()} de ${vendedorNome}`} onFechar={onFechar}>
+      <p className="m-0 mb-3 text-[12.5px] text-ink-dim">
+        O mês volta a ficar aberto e o valor passa a ser recalculado pelas vendas. Estornos que nasceram deste mês e ainda não foram descontados são
+        cancelados (o recálculo já pega o reembolso). Fica registrado quem reabriu e por quê.
+      </p>
+      <form onSubmit={reabrir} className="flex flex-col gap-3">
+        <label className="text-xs text-ink-dim">
+          Motivo (obrigatório)
+          <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3} maxLength={500} required autoFocus className={`${campo} mt-1 resize-y`} />
+        </label>
+        {erro && (
+          <p role="alert" className="m-0 text-xs text-accent-3">
+            {erro}
+          </p>
+        )}
+        <div className="flex gap-2">
+          <button type="submit" disabled={pending} className={botaoPrimario}>
+            {pending ? "Reabrindo…" : "Reabrir mês"}
+          </button>
+          <button type="button" onClick={onFechar} className={botaoSecundario}>
+            Cancelar
+          </button>
+        </div>
+      </form>
+    </Janela>
+  );
+}
+
+const ROTULO_TIPO: Record<string, string> = {
+  venda_criada: "venda criada",
+  venda_alterada: "venda alterada",
+  mes_reaberto: "mês reaberto",
+  ajuste_criado: "ajuste",
+  estorno_criado: "estorno criado",
+  estorno_cancelado: "estorno cancelado",
+};
+
+const valorCampo = (v: unknown) => (v === null || v === undefined || v === "" ? "vazio" : String(v));
+
+/** Registro de alterações do mês (só admin). */
+function Registro({ alteracoes }: { alteracoes: Alteracao[] }) {
+  return (
+    <details className="mt-3 rounded-xl border border-line-soft px-3 py-2">
+      <summary className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-dim">
+        <History size={13} /> Registro de alterações ({alteracoes.length})
+      </summary>
+      <ul className="m-0 mt-2 flex list-none flex-col gap-2 p-0">
+        {alteracoes.map((a) => (
+          <li key={a.id} className="text-[12.5px] text-ink">
+            <span className="tabular-nums text-ink-faint">
+              {dataBR(a.em.slice(0, 10))} {a.em.slice(11, 16)}
+            </span>{" "}
+            · {a.quem} · {ROTULO_TIPO[a.tipo] ?? a.tipo}
+            {a.vendaId !== null && <span className="text-ink-dim"> (venda #{a.vendaId})</span>}
+            {a.motivo && <span className="text-ink-dim"> — {a.motivo}</span>}
+            {a.campos.length > 0 && (
+              <span className="block pl-3 text-ink-dim">{a.campos.map((c) => `${c.campo}: ${valorCampo(c.antes)} → ${valorCampo(c.depois)}`).join(" · ")}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

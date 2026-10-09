@@ -7,6 +7,9 @@ import {
   carregarVendas,
   faixasSugeridas,
   listarAdiantamentos,
+  listarAjustes,
+  listarAlteracoes,
+  listarEstornos,
   listarFechamentosLI,
   listarPlataformas,
   listarTicketsLI,
@@ -152,7 +155,7 @@ async function Mes({
 }) {
   const ano = Number(mes.slice(0, 4));
   const fim = `${somarMes(mes, 1)}-01`;
-  const [tickets, vendas, margem, mesVend, adiantamentos, fechamentos, whatsapp, plataformas] = await Promise.all([
+  const [tickets, vendas, margem, mesVend, adiantamentos, fechamentos, whatsapp, plataformas, estornos, ajustes] = await Promise.all([
     listarTicketsLI(),
     carregarVendas(vendedor?.id ?? null, `${mes}-01`, fim),
     // só a faixa sugerida sai daqui (a margem e os custos ficam no servidor)
@@ -162,8 +165,12 @@ async function Mes({
     vendedor ? listarFechamentosLI(vendedor.id, ano) : [],
     admin && vendedor ? whatsappFechamento() : null,
     listarPlataformas(),
+    vendedor ? listarEstornos(vendedor.id) : [],
+    vendedor ? listarAjustes(vendedor.id, ano) : [],
   ]);
   const fechado = fechamentos.find((f) => f.mes === mes) ?? null;
+  // registro de alterações: só admin, só de mês fechado
+  const alteracoes = admin && vendedor && fechado ? await listarAlteracoes(mes, vendedor.id) : [];
   const margemPadrao: Faixa = fechado?.faixa ?? margem ?? 10;
 
   return (
@@ -190,7 +197,12 @@ async function Mes({
                 codigo: admin ? mesVend.codigo : null,
                 whatsapp,
                 adiantamentos: adiantamentos.filter((a) => a.mes === mes).map(({ id, valor, data }) => ({ id, valor, data })),
-                fechado: fechado ? { faixa: fechado.faixa, quando: fechado.fechado_em, qtd: fechado.qtd, comissao: fechado.comissao } : null,
+                estornos,
+                ajustes: ajustes.filter((a) => a.mes === mes),
+                alteracoes,
+                fechado: fechado
+                  ? { faixa: fechado.faixa, quando: fechado.fechado_em, qtd: fechado.qtd, comissao: fechado.comissao, estornos: fechado.estornos }
+                  : null,
               }
             : undefined
         }
@@ -259,14 +271,16 @@ function ResumoPorVendedor({
 }
 
 async function Anual({ vendedorId, ano, anoAtual, base }: { vendedorId: number; ano: number; anoAtual: number; base: string }) {
-  const [tickets, vendas, fechamentos, sugeridas, adiantamentos] = await Promise.all([
+  const [tickets, vendas, fechamentos, sugeridas, adiantamentos, estornos, ajustes] = await Promise.all([
     listarTicketsLI(),
     carregarVendas(vendedorId, `${ano}-01-01`, `${ano + 1}-01-01`),
     listarFechamentosLI(vendedorId, ano),
     faixasSugeridas(ano),
     listarAdiantamentos(vendedorId, ano),
+    listarEstornos(vendedorId),
+    listarAjustes(vendedorId, ano),
   ]);
-  const meses = resumoAnual(ano, vendas, tickets, fechamentos, sugeridas, adiantamentos);
+  const meses = resumoAnual(ano, vendas, tickets, fechamentos, sugeridas, adiantamentos, estornos, ajustes);
   const anos = Array.from({ length: anoAtual - 2026 + 1 }, (_, i) => 2026 + i);
   return <ResumoAnual ano={ano} anos={anos} meses={meses} base={base} />;
 }

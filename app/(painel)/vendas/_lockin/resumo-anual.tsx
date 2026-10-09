@@ -112,7 +112,12 @@ export function ResumoAnual({ ano, anos, meses, base }: { ano: number; anos: num
                           adiantamento {a.data.slice(8, 10)}/{a.data.slice(5, 7)}: −{formatBRL(a.valor)}
                         </span>
                       ))}
-                      {m.adiantamentos.length > 0 && m.valorFinal != null && <span className="text-white">a receber {formatBRL(m.valorFinal)}</span>}
+                      {/* aparece quando há adiantamento, estorno ou ajuste (o valor final difere da comissão) */}
+                      {m.valorFinal != null && m.valorFinal !== m.comissao && (
+                        <span className={m.valorFinal >= 0 ? "text-white" : "text-accent-3"}>
+                          {m.valorFinal >= 0 ? `a receber ${formatBRL(m.valorFinal)}` : `saldo negativo de ${formatBRL(-m.valorFinal)}, descontado no próximo fechamento`}
+                        </span>
+                      )}
                       {m.difere && <span className="text-accent-3">≠ as vendas mudaram depois do fechamento</span>}
                     </span>
                   )}

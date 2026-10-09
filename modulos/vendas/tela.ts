@@ -10,7 +10,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { corDoTicket } from "./cores";
-import { type PlataformaLI, type TicketLI, type VendaLI } from "./lock-in";
+import { type AjusteLI, type EstornoLI, type PlataformaLI, type TicketLI, type VendaLI } from "./lock-in";
 import { calcularMargem, centavos, custosDoMes, resumir, type Faixa, type Ticket, type Venda } from "./regras";
 
 const COLUNAS =
@@ -114,13 +114,14 @@ export async function listarAdiantamentos(vendedorId: number, ano: number): Prom
   return data.map((a) => ({ id: Number(a.id), mes: String(a.mes).slice(0, 7), valor: centavos(a.valor), data: String(a.data) }));
 }
 
-export type FechamentoLI = { mes: string; faixa: Faixa; qtd: number; comissao: number; fechado_em: string };
+/** comissao = congelada no fechamento; estornos = descontados nele (centavos) */
+export type FechamentoLI = { mes: string; faixa: Faixa; qtd: number; comissao: number; estornos: number; fechado_em: string };
 
 export async function listarFechamentosLI(vendedorId: number, ano: number): Promise<FechamentoLI[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("vendas_fechamentos")
-    .select("mes, faixa, qtd, sem_ticket, comissao, fechado_em")
+    .select("mes, faixa, qtd, sem_ticket, comissao, estornos, fechado_em")
     .eq("vendedor_id", vendedorId)
     .gte("mes", `${ano}-01-01`)
     .lt("mes", `${ano + 1}-01-01`);
@@ -131,8 +132,86 @@ export async function listarFechamentosLI(vendedorId: number, ano: number): Prom
     faixa: Number(f.faixa) as Faixa,
     qtd: Number(f.qtd) + Number(f.sem_ticket),
     comissao: centavos(f.comissao),
+    estornos: centavos(f.estornos),
     fechado_em: String(f.fechado_em),
   }));
+}
+
+export type EstornoDoVendedor = EstornoLI & { descontadoNoMes: string | null };
+
+/** Estornos do vendedor que valem (não cancelados). O RLS mostra ao vendedor só os dele. */
+export async function listarEstornos(vendedorId: number): Promise<EstornoDoVendedor[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("vendas_estornos")
+    .select("id, venda_id, mes_origem, valor, motivo, descontado_no_mes")
+    .eq("vendedor_id", vendedorId)
+    .is("cancelado_em", null)
+    .order("criado_em");
+  if (error) throw new Error(`Erro ao carregar estornos: ${error.message}`);
+  return data.map((e) => ({
+    id: Number(e.id),
+    vendaId: Number(e.venda_id),
+    mesOrigem: String(e.mes_origem).slice(0, 7),
+    valor: centavos(e.valor),
+    motivo: e.motivo as EstornoLI["motivo"],
+    descontadoNoMes: e.descontado_no_mes ? String(e.descontado_no_mes).slice(0, 7) : null,
+  }));
+}
+
+/** Ajustes manuais do vendedor no ano (o RLS mostra ao vendedor só os dele). */
+export async function listarAjustes(vendedorId: number, ano: number): Promise<AjusteLI[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("vendas_ajustes")
+    .select("id, mes, valor, motivo")
+    .eq("vendedor_id", vendedorId)
+    .gte("mes", `${ano}-01-01`)
+    .lt("mes", `${ano + 1}-01-01`)
+    .order("criado_em");
+  if (error) throw new Error(`Erro ao carregar ajustes: ${error.message}`);
+  return data.map((a) => ({ id: Number(a.id), mes: String(a.mes).slice(0, 7), valor: centavos(a.valor), motivo: String(a.motivo) }));
+}
+
+export type Alteracao = {
+  id: number;
+  em: string;
+  quem: string;
+  tipo: string;
+  vendaId: number | null;
+  motivo: string | null;
+  campos: { campo: string; antes: unknown; depois: unknown }[];
+};
+
+/** Registro de alterações do mês fechado de um vendedor (só admin: o RLS devolve vazio ao vendedor). */
+export async function listarAlteracoes(mes: string, vendedorId: number): Promise<Alteracao[]> {
+  const supabase = await createClient();
+  const [{ data, error }, equipe] = await Promise.all([
+    supabase
+      .from("vendas_alteracoes")
+      .select("id, em, por, via, tipo, venda_id, motivo, antes, depois")
+      .eq("mes", `${mes}-01`)
+      .eq("vendedor_id", vendedorId)
+      .order("em", { ascending: false })
+      .limit(100),
+    supabase.from("equipe").select("nome, usuario_id"),
+  ]);
+  if (error) throw new Error(`Erro ao carregar alterações: ${error.message}`);
+  const nomePorUsuario = new Map((equipe.data ?? []).map((p) => [p.usuario_id, String(p.nome)]));
+  return data.map((a) => {
+    const antes = (a.antes ?? {}) as Record<string, unknown>;
+    const depois = (a.depois ?? {}) as Record<string, unknown>;
+    const campos = a.tipo === "venda_alterada" ? Object.keys(depois).map((campo) => ({ campo, antes: antes[campo], depois: depois[campo] })) : [];
+    return {
+      id: Number(a.id),
+      em: String(a.em),
+      quem: a.via === "hubla" ? "sistema (Hubla)" : (nomePorUsuario.get(a.por) ?? "admin"),
+      tipo: String(a.tipo),
+      vendaId: a.venda_id === null ? null : Number(a.venda_id),
+      motivo: a.motivo ?? null,
+      campos,
+    };
+  });
 }
 
 /** % sugerido pela margem da operação em cada mês do ano (null = falta valor do mês). */

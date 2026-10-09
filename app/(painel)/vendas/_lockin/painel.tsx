@@ -38,6 +38,8 @@ import {
   TicketTag,
 } from "./base";
 import { Fechamento } from "./fechamento";
+import type { AjusteLI } from "@/modulos/vendas/lock-in";
+import type { Alteracao, EstornoDoVendedor } from "@/modulos/vendas/tela";
 import { COR_NEUTRA, COR_PRODUTO, COR_REVISAR, FUNDO_SELECIONADO } from "@/modulos/vendas/cores";
 
 export type VerLista = "pago" | "reembolso" | "tabela";
@@ -47,8 +49,14 @@ export type DadosFechamento = {
   codigo: string | null;
   whatsapp: string | null;
   adiantamentos: { id: number; valor: number; data: string }[];
-  /** fechamento gravado (qtd = todas as pagas) */
-  fechado: { faixa: Faixa; quando: string; qtd: number; comissao: number } | null;
+  /** estornos do vendedor (todos os que valem); o componente separa os do mês */
+  estornos: EstornoDoVendedor[];
+  /** ajustes manuais do mês */
+  ajustes: AjusteLI[];
+  /** registro de alterações do mês fechado (só admin) */
+  alteracoes: Alteracao[];
+  /** fechamento gravado (qtd = todas as pagas; comissão e estornos congelados) */
+  fechado: { faixa: Faixa; quando: string; qtd: number; comissao: number; estornos: number } | null;
 };
 
 const cartao = "rounded-2xl border border-line-soft bg-bg-raised-2 p-4";
@@ -355,6 +363,9 @@ export function PainelVendas({
           codigo={fechamento.codigo}
           whatsapp={fechamento.whatsapp}
           adiantamentos={fechamento.adiantamentos}
+          estornos={fechamento.estornos}
+          ajustes={fechamento.ajustes}
+          alteracoes={fechamento.alteracoes}
           fechadoEm={
             fechamento.fechado
               ? {

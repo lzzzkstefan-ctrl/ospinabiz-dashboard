@@ -5,6 +5,8 @@
 // - reembolso: marca a venda; se ela ainda não existe, o evento fica registrado
 //   e a venda já nasce reembolsada quando o pagamento chegar.
 // Usa a chave secreta (roda no servidor, depois da resposta à Hubla).
+// Toda gravação em vendas vai com alterado_via = 'hubla': em mês fechado o banco aceita só
+// reembolso/chargeback e venda nova, registra em vendas_alteracoes e gera o estorno.
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerFatura, type FaturaHubla } from "./hubla";
@@ -67,7 +69,7 @@ async function reembolso(db: Db, idFatura: string): Promise<Conclusao> {
 
   const { error: erroUpdate } = await db
     .from("vendas")
-    .update({ status: "reembolso", reembolsado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() })
+    .update({ status: "reembolso", reembolsado_em: new Date().toISOString(), atualizado_em: new Date().toISOString(), alterado_via: "hubla" })
     .eq("id", data.id);
   if (erroUpdate) throw new Error(`erro ao marcar reembolso: ${erroUpdate.message}`);
   return { resultado: "reembolso", vendaId: data.id };
@@ -127,6 +129,7 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
       pago_em: f.pagoEm,
       data: (f.pagoEm && diaSP(f.pagoEm)) ?? diaSP(new Date())!,
       final_lead: finalDoLead(f.utmContent, f.telefone),
+      alterado_via: "hubla",
     })
     .select("id")
     .single();

@@ -19,6 +19,14 @@ const mesOk = (m: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(m);
 const dataOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(new Date(`${d}T12:00:00Z`).getTime());
 const idOk = (n: number) => Number.isInteger(n) && n > 0;
 
+/** Quem está mudando a venda: o banco exige isso em mês fechado e registra (vendas_alteracoes). */
+const peloAdmin = (usuarioId: string) => ({ alterado_via: "admin" as const, alterado_por: usuarioId });
+
+/** Erro do banco → mensagem para a tela. A trava de mês fechado já vem em português. */
+function erroDoBanco(error: { message: string }, padrao: string): string {
+  return /m[eê]s fechado|reabr/i.test(error.message) ? error.message : padrao;
+}
+
 async function vendedorExiste(id: number): Promise<boolean> {
   const supabase = await createClient();
   const { data } = await supabase.from("vendedores").select("equipe_id").eq("equipe_id", id).maybeSingle();
@@ -139,7 +147,7 @@ export async function registrarFechamento(mes: string, vendedorId: number, faixa
   const r = resumirLI(vendas, tickets);
   const semTicket = r.semTicket + r.semTicketProduto;
   const supabase = await createClient();
-  const { error } = await supabase.from("vendas_fechamentos").upsert({
+  const { error } = await supabase.from("vendas_fechamentos").insert({
     mes: `${mes}-01`,
     vendedor_id: vendedorId,
     faixa,
@@ -153,7 +161,10 @@ export async function registrarFechamento(mes: string, vendedorId: number, faixa
     fechado_em: new Date().toISOString(),
     fechado_por: usuario.id,
   });
-  if (error) return { erro: "Não deu para gravar o fechamento." };
+  if (error) {
+    if (error.code === "23505") return { erro: "Este mês já está fechado. Para fechar de novo, reabra (com motivo) ou use um ajuste." };
+    return { erro: "Não deu para gravar o fechamento." };
+  }
   refresh();
   return {};
 }
@@ -206,10 +217,11 @@ export async function criarVenda(v: VendaInput): Promise<Resultado> {
       final_lead: v.digitos || null,
       plataforma: v.plataforma,
       origem: "manual",
+      ...peloAdmin(usuario.id),
     })
     .select("id")
     .single();
-  if (error) return { erro: "Não deu para salvar a venda." };
+  if (error) return { erro: erroDoBanco(error, "Não deu para salvar a venda.") };
   await db.from("vendas_clientes").insert({ venda_id: data.id, nome: v.nome.trim().split(/\s+/)[0] });
   await db.from("vendas_atribuicoes").insert({ venda_id: data.id, para_vendedor_id: v.vendedorId, forma: "admin", por: usuario.id });
   refresh();
@@ -252,9 +264,10 @@ export async function editarVenda(id: number, v: VendaInput & { semVendedor: boo
           }
         : {}),
       atualizado_em: agora,
+      ...peloAdmin(usuario.id),
     })
     .eq("id", id);
-  if (error) return { erro: "Não deu para salvar." };
+  if (error) return { erro: erroDoBanco(error, "Não deu para salvar.") };
   await db.from("vendas_clientes").upsert({ venda_id: id, nome: v.nome.trim().split(/\s+/)[0] }, { onConflict: "venda_id" });
   if (mudouDono) {
     await db.from("vendas_atribuicoes").insert({
@@ -306,13 +319,41 @@ export async function gravarImportacao(texto: string, vendedorId: number): Promi
         data: l.data,
         final_lead: l.digitos || null,
         origem: "importacao",
+        ...peloAdmin(usuario.id),
       })
       .select("id")
       .single();
-    if (error) return { erro: `Parou na linha ${l.linha}: ${error.message}`, gravadas };
+    if (error) return { erro: `Parou na linha ${l.linha}: ${erroDoBanco(error, error.message)}`, gravadas };
     await db.from("vendas_clientes").insert({ venda_id: data.id, nome: l.nome });
     gravadas++;
   }
   refresh();
   return { gravadas };
+}
+
+// ---------- mês fechado: reabrir (com motivo) e ajuste manual ----------
+/** Reabre um mês fechado. O banco confere se é admin, exige o motivo e registra. */
+export async function reabrirMes(mes: string, vendedorId: number, motivo: string): Promise<Resultado> {
+  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!mesOk(mes) || !idOk(vendedorId)) return { erro: "Mês ou vendedor inválido." };
+  if (motivo.trim().length < 5) return { erro: "Escreva o motivo (mínimo 5 letras)." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("vendas_reabrir_mes", { p_mes: `${mes}-01`, p_vendedor: vendedorId, p_motivo: motivo.trim().slice(0, 500) });
+  if (error) return { erro: error.message || "Não deu para reabrir." };
+  refresh();
+  return {};
+}
+
+/** Ajuste manual num mês fechado: + paga a mais, − desconta. Não se apaga: corrige-se com outro. */
+export async function criarAjuste(mes: string, vendedorId: number, valorCentavos: number, motivo: string): Promise<Resultado> {
+  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!mesOk(mes) || !idOk(vendedorId)) return { erro: "Mês ou vendedor inválido." };
+  if (!Number.isInteger(valorCentavos) || valorCentavos === 0) return { erro: "Valor inválido." };
+  const m = motivo.trim();
+  if (m.length < 5) return { erro: "Escreva o motivo (mínimo 5 letras)." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("vendas_ajustes").insert({ mes: `${mes}-01`, vendedor_id: vendedorId, valor: valorCentavos / 100, motivo: m.slice(0, 500) });
+  if (error) return { erro: /m[eê]s fechado|m[eê]s aberto/i.test(error.message) ? error.message : "Não deu para salvar o ajuste." };
+  refresh();
+  return {};
 }

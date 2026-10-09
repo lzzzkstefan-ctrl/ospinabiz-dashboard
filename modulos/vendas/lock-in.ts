@@ -185,8 +185,27 @@ export function textoResumo(r: ResumoLI, margem: Faixa): string {
 }
 
 /** comissão − adiantamentos (centavos), nunca negativo */
-export function valorFinalDe(comissao: number, adiantamentos: { valor: number }[]): number {
-  return Math.max(0, comissao - adiantamentos.reduce((s, a) => s + a.valor, 0));
+export function valorFinalDe(
+  comissao: number,
+  adiantamentos: { valor: number }[],
+  extras: { estornos?: { valor: number }[]; ajustes?: { valor: number }[] } = {},
+): number {
+  // comissão − estornos de meses fechados + ajustes (±) − adiantamentos, em centavos.
+  // Pode dar negativo: a tela mostra "saldo negativo", descontado no próximo fechamento.
+  const soma = (l: { valor: number }[] = []) => l.reduce((s, x) => s + x.valor, 0);
+  return comissao - soma(extras.estornos) + soma(extras.ajustes) - soma(adiantamentos);
+}
+
+/** Estorno: comissão de venda de mês fechado que virou reembolso/chargeback (centavos). */
+export type EstornoLI = { id: number; vendaId: number; mesOrigem: string; valor: number; motivo: "reembolso" | "chargeback" };
+/** Ajuste manual no fechamento (centavos; + paga a mais, − desconta). */
+export type AjusteLI = { id: number; mes: string; valor: number; motivo: string };
+
+function linhasDeDesconto(estornos: EstornoLI[], ajustes: AjusteLI[]): string[] {
+  return [
+    ...estornos.map((e) => `Estorno (${e.motivo} de ${mesCapitalizado(e.mesOrigem).toLowerCase()}, venda #${e.vendaId}): -${brl(e.valor)}`),
+    ...ajustes.map((a) => `Ajuste: ${a.valor < 0 ? "-" : "+"}${brl(Math.abs(a.valor))} (${a.motivo})`),
+  ];
 }
 
 /** Mensagem do "Enviar pro Rodrigo" (negrito *…* do WhatsApp). */
@@ -197,8 +216,16 @@ export function textoFechamento(p: {
   observacoes: string;
   link: string | null;
   adiantamentos: { valor: number; data: string }[];
+  /** comissão base: a congelada no fechamento (mês fechado) ou a de agora (mês aberto) */
+  comissao?: number;
+  estornos?: EstornoLI[];
+  ajustes?: AjusteLI[];
 }): string {
   const { resumo: r, margem } = p;
+  const comissao = p.comissao ?? r.comissao[margem];
+  const estornos = p.estornos ?? [];
+  const ajustes = p.ajustes ?? [];
+  const final = valorFinalDe(comissao, p.adiantamentos, { estornos, ajustes });
   const nome = mesCapitalizado(p.mes);
   const vendas = (n: number) => `${n} venda${n === 1 ? "" : "s"}`;
   const porTicket = [
@@ -212,7 +239,7 @@ export function textoFechamento(p: {
     "",
     `🐲 Mês de ${nome}: ${brl(r.bruto)}`,
     `🍄 Total de Vendas: ${r.qtd} vendas aprovadas`,
-    `💰 Comissão Total: ${brl(r.comissao[margem])}`,
+    `💰 Comissão Total: ${brl(comissao)}`,
     "",
     "🔄 *Reembolsos & Chargebacks*",
     "",
@@ -223,12 +250,13 @@ export function textoFechamento(p: {
     "",
     `-${margem}%`,
     ...porTicket.map((x) => `-${vendas(x.qtd)} ${x.txt}`),
-    ...(p.adiantamentos.length
+    ...(p.adiantamentos.length || estornos.length || ajustes.length
       ? [
           "",
-          `-Comissão (${margem}%): ${brl(r.comissao[margem])}`,
+          `-Comissão (${margem}%): ${brl(comissao)}`,
+          ...linhasDeDesconto(estornos, ajustes),
           ...p.adiantamentos.map((a) => `Adiantamento no dia ${a.data.slice(8, 10)}/${a.data.slice(5, 7)}: -${brl(a.valor)}`),
-          `Valor final a receber: ${brl(valorFinalDe(r.comissao[margem], p.adiantamentos))}`,
+          final >= 0 ? `Valor final a receber: ${brl(final)}` : `Saldo negativo de ${brl(-final)}, descontado no próximo fechamento`,
         ]
       : []),
     ...(obs ? [obs] : []),
@@ -259,6 +287,9 @@ export function resumoAnual(
   fechamentos: { mes: string; faixa: Faixa; qtd: number; comissao: number }[],
   sugeridas: Map<string, Faixa | null>,
   adiantamentos: { id: number; mes: string; valor: number; data: string }[],
+  /** estornos já descontados (descontadoNoMes = "AAAA-MM") e ajustes do ano */
+  estornos: (EstornoLI & { descontadoNoMes: string | null })[] = [],
+  ajustes: AjusteLI[] = [],
 ): MesAnual[] {
   return Array.from({ length: 12 }, (_, i) => {
     const mes = i + 1;
@@ -269,7 +300,12 @@ export function resumoAnual(
     const margem = f?.faixa ?? sugeridas.get(chave) ?? null;
     const adiant = adiantamentos.filter((a) => a.mes === chave).sort((a, b) => a.data.localeCompare(b.data));
     const tem = r.qtd > 0 || r.reembolsos > 0 || !!f;
-    const comissao = r.comissao[margem ?? 10];
+    // mês fechado: vale a comissão congelada no fechamento (a diferença vira estorno no mês seguinte)
+    const comissao = f ? f.comissao : r.comissao[margem ?? 10];
+    const extras = {
+      estornos: estornos.filter((e) => e.descontadoNoMes === chave),
+      ajustes: ajustes.filter((a) => a.mes === chave),
+    };
     return {
       mes,
       vendas: r.qtd,
@@ -279,7 +315,7 @@ export function resumoAnual(
       reembolsos: r.reembolsos,
       chargebacks: r.chargebacks,
       adiantamentos: adiant,
-      valorFinal: tem ? valorFinalDe(comissao, adiant) : null,
+      valorFinal: tem ? valorFinalDe(comissao, adiant, extras) : null,
       difere: !!f && (f.comissao !== r.comissao[f.faixa] || f.qtd !== r.qtd),
     };
   });

@@ -16,6 +16,14 @@ import { refresh } from "next/cache";
 
 const SO_ADMIN: EstadoForm = { erro: "Só admin pode alterar." };
 
+/** Quem está mudando a venda: o banco exige isso em mês fechado e registra (vendas_alteracoes). */
+const peloAdmin = (usuarioId: string) => ({ alterado_via: "admin" as const, alterado_por: usuarioId });
+
+/** Erro do banco → mensagem para a tela. A trava de mês fechado já vem em português. */
+function erroDoBanco(error: { message: string }, padrao: string): string {
+  return /m[eê]s fechado|reabr/i.test(error.message) ? error.message : padrao;
+}
+
 function id(form: FormData, campo = "id"): number | null {
   const n = Number(form.get(campo));
   return Number.isInteger(n) && n > 0 ? n : null;
@@ -62,9 +70,10 @@ export async function atribuirVenda(_anterior: EstadoForm, form: FormData): Prom
       atribuida_por: paraId || semVendedor ? usuario.id : null,
       atribuida_em: paraId || semVendedor ? agora : null,
       atualizado_em: agora,
+      ...peloAdmin(usuario.id),
     })
     .eq("id", vendaId);
-  if (error) return { erro: "Não deu para salvar." };
+  if (error) return { erro: erroDoBanco(error, "Não deu para salvar.") };
 
   await db.from("vendas_atribuicoes").insert({
     venda_id: vendaId,
@@ -80,7 +89,8 @@ export async function atribuirVenda(_anterior: EstadoForm, form: FormData): Prom
 
 /** Admin: corrige o ticket e o status (pago, reembolso, chargeback) de uma venda. */
 export async function corrigirVenda(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return SO_ADMIN;
   const vendaId = id(form);
   if (!vendaId) return { erro: "Venda não encontrada." };
 
@@ -99,16 +109,17 @@ export async function corrigirVenda(_anterior: EstadoForm, form: FormData): Prom
       status,
       reembolsado_em: status === "pago" ? null : (antes?.status === status ? antes.reembolsado_em : new Date().toISOString()),
       atualizado_em: new Date().toISOString(),
+      ...peloAdmin(usuario.id),
     })
     .eq("id", vendaId);
-  if (error) return { erro: "Não deu para salvar." };
+  if (error) return { erro: erroDoBanco(error, "Não deu para salvar.") };
   refresh();
   return { ok: "Salvo." };
 }
 
 // ---------------------------------------------------------------------------
 // Fechamento do mês por vendedor (só admin): grava o % escolhido e congela os totais.
-// Fechar de novo o mesmo mês atualiza (ex.: depois de corrigir uma venda).
+// Mês já fechado não se fecha de novo: reabra (com motivo) ou use um ajuste.
 // ---------------------------------------------------------------------------
 export async function fecharMes(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
   const usuario = await usuarioLogado();
@@ -122,7 +133,7 @@ export async function fecharMes(_anterior: EstadoForm, form: FormData): Promise<
   const d = await dadosDoFechamento(mes.slice(0, 7), vendedorId);
   const r = d.resumo;
   const supabase = await createClient();
-  const { error } = await supabase.from("vendas_fechamentos").upsert({
+  const { error } = await supabase.from("vendas_fechamentos").insert({
     mes,
     vendedor_id: vendedorId,
     faixa,
@@ -137,7 +148,10 @@ export async function fecharMes(_anterior: EstadoForm, form: FormData): Promise<
     fechado_em: new Date().toISOString(),
     fechado_por: usuario.id,
   });
-  if (error) return { erro: "Não deu para salvar." };
+  if (error) {
+    if (error.code === "23505") return { erro: "Este mês já está fechado. Para fechar de novo, reabra (com motivo) ou use um ajuste." };
+    return { erro: "Não deu para salvar." };
+  }
   refresh();
   return { ok: `Mês fechado em ${faixa}%.` };
 }
