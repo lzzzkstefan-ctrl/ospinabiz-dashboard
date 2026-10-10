@@ -1,5 +1,7 @@
 import { PainelOperacao } from "@/components/painel-operacao";
 import { usuarioLogado } from "@/lib/auth/papeis";
+import { createClient } from "@/lib/supabase/server";
+import { querReceber, TIPOS_AVISO } from "@/modulos/escala/alertas";
 import { carregarSemana } from "@/modulos/escala/dados";
 import { horaCurta, inicioDaSemana, TOLERANCIA_ATRASO_MIN } from "@/modulos/escala/regras";
 import { hojeSP } from "@/modulos/funil/calculo";
@@ -7,6 +9,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { DiasDaSemana } from "./_componentes/dias";
 import { FormPadrao, FormPausaLonga } from "./_componentes/formularios";
+import { AtivarNotificacoes, FormPreferencias } from "./_componentes/notificacoes";
 
 // Check-in (endereço /escala). Contexto em docs/modulos/escala.md.
 // De cima para baixo: "Entrei na operação" + quem está online; os 7 dias da semana atual com o
@@ -35,7 +38,12 @@ async function Conteudo({ searchParams }: Props) {
   const admin = usuario.papel === "admin";
   const hoje = hojeSP();
   const editar = admin && (await searchParams).editar === "1";
-  const s = await carregarSemana(inicioDaSemana(hoje), usuario.id);
+  const supabase = await createClient();
+  const [s, prefs] = await Promise.all([
+    carregarSemana(inicioDaSemana(hoje), usuario.id),
+    supabase.from("notificacoes_preferencias").select("*").eq("usuario_id", usuario.id).maybeSingle(),
+  ]);
+  const marcados = Object.fromEntries(TIPOS_AVISO.map((t) => [t.id, querReceber(prefs.data, usuario.papel, t.id)]));
   // horário fixo de todos aparece para todos; entrada/saída e atraso dos outros, só para o admin
   const presencas = admin ? s.presencas : s.presencas.filter((p) => p.equipeId === s.eu);
 
@@ -79,6 +87,21 @@ async function Conteudo({ searchParams }: Props) {
           Operação das {horaCurta(s.operacao.inicio)} às {horaCurta(s.operacao.fim)}. Atraso = entrou mais de {TOLERANCIA_ATRASO_MIN} min depois do horário fixo. Quem
           esquece de sair sai sozinho no fim do horário fixo (saída automática). Pausa não conta como tempo online; acima de {s.pausaLongaMin} min fica em vermelho.
         </p>
+      </section>
+
+      <section className="glass-lite glass-static grid gap-6 p-4 lg:grid-cols-2">
+        <div>
+          <h2 className="mb-1 text-[15px] font-semibold text-white">Notificações</h2>
+          <p className="m-0 mb-3 text-[12.5px] text-ink-dim">
+            Avisos no navegador e no celular, mesmo com a página fechada. Ative em cada aparelho (computador, celular). No celular, instale a Ospinabiz na tela de início.
+          </p>
+          <AtivarNotificacoes />
+        </div>
+        <div>
+          <h3 className="mb-2 text-[13px] font-semibold text-white">Quais avisos eu quero</h3>
+          <FormPreferencias tipos={TIPOS_AVISO.map((t) => ({ id: t.id, nome: t.nome }))} marcados={marcados} />
+          <p className="m-0 mt-2 text-[11.5px] text-ink-faint">Padrão: só o admin recebe. Vale para todos os seus aparelhos.</p>
+        </div>
       </section>
     </>
   );

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Outfit } from "next/font/google";
 import { PausarBrilhoForaDaTela } from "@/components/pausar-brilho";
 import "./globals.css";
@@ -12,6 +12,13 @@ export const metadata: Metadata = {
   title: "Ospinabiz | Dashboard",
   description: "Dashboard interno da Ospinabiz",
   robots: { index: false, follow: false },
+  // iPhone: instalado pela "Adicionar à Tela de Início" abre como app (sem barra do Safari)
+  appleWebApp: { capable: true, title: "Ospinabiz", statusBarStyle: "black-translucent" },
+  icons: { icon: "/icone-192.png", apple: "/apple-touch-icon.png" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#000607",
 };
 
 const outfit = Outfit({

@@ -126,3 +126,29 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
   fonte pequena no navegador e o título entrava por baixo do menu.
 - Testado em 10/10 com cliques de verdade (Edge sem janela) e uma pessoa de teste apagada no fim.
 
+## Notificações push e app instalável (10/10/2026, migration `notificacoes`)
+
+- **App instalável (PWA):** `app/manifest.ts` (abre em /escala), ícones em `public/` (anel azul,
+  gerados com sharp), `appleWebApp` no layout raiz. iPhone: só recebe com o app na tela de início
+  (Compartilhar → Adicionar à Tela de Início) e aberto pelo ícone (iOS 16.4+).
+- **Service worker** `public/sw.js`: só notificações (sem cache offline); `Cache-Control: no-store`
+  (next.config) e liberado sem login no `proxy.ts` (junto com o manifest).
+- **Chaves VAPID** (`NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` = URL do
+  site): `.env.local` e Vercel. A pública entra no build (NEXT_PUBLIC): mudar exige novo deploy.
+- **Avisos** (`modulos/escala/alertas.ts`, envio em `lib/integracoes/webpush.ts`):
+  pausa começou / acabou (na hora, pela ação; quem pausou não recebe o próprio), pausa longa,
+  **operação descoberta** (no horário de atendimento, em dia com algum horário fixo, ninguém online;
+  pausa não conta; avisa uma vez e avisa "coberta de novo" quando alguém volta; sábado sem horário
+  fixo não avisa — decisão do Davi), **sem check-in** (por pessoa, 15 min depois do início do
+  horário fixo). Pausa longa, descoberta e sem check-in: pg_cron `escala-alertas` a cada 2 min →
+  `/api/escala/alertas`, e também logo depois de entrar/sair/pausar.
+- **Sem repetição:** `notificacoes_enviadas` com chave única por acontecimento (pausa N, pessoa+dia,
+  início da descoberta). Aparelho que desativou (404/410) é apagado de `push_inscricoes`.
+- **Quem recebe:** `notificacoes_preferencias` (cada um escolhe no Check-in); sem escolha salva,
+  admin recebe tudo e os outros nada. Salvar: update (com data) e, na primeira vez, insert sem
+  `atualizado_em` (o grant de insert não inclui a data).
+- **Depois:** mesmos avisos pelo WhatsApp quando o número remetente do Monitor estiver configurado.
+- Testado em 10/10: ativação no Edge (serviço de push do Windows aceitou), "Testar", ainda não
+  entrou, pausa, volta e pausa longa com pessoa de teste (apagada); decisão da operação descoberta
+  com 10 cenários (`decidirDescoberta` em regras.ts), incluindo sábado sem horário fixo.
+

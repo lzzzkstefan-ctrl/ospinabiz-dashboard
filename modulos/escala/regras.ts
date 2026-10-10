@@ -248,3 +248,23 @@ export function horas(min: number): string {
   const m = min % 60;
   return h ? `${h}h${m ? String(m).padStart(2, "0") : ""}` : `${m}min`;
 }
+
+/**
+ * Operação descoberta (aviso mais importante): o que fazer agora.
+ * - "descobriu": no horário de atendimento, em dia com horário fixo, ninguém online (pausa não
+ *   conta) e ainda não tinha avisado → avisa;
+ * - "cobriu": estava descoberta e alguém ficou online dentro do horário → avisa que cobriu;
+ * - "limpar": estava descoberta, mas acabou o horário (ou o dia não tem horário fixo) → só esquece;
+ * - "nada": segue como estava (inclusive descoberta já avisada: não repete).
+ */
+export function decidirDescoberta(o: { agoraMin: number; inicio: string; fim: string; diaComFixo: boolean; online: number; jaDescobertaDesde: string | null }):
+  | "descobriu"
+  | "cobriu"
+  | "limpar"
+  | "nada" {
+  const noHorario = o.diaComFixo && o.agoraMin >= minutos(o.inicio) && o.agoraMin < minutos(o.fim);
+  if (noHorario && o.online === 0) return o.jaDescobertaDesde ? "nada" : "descobriu";
+  if (!o.jaDescobertaDesde) return "nada";
+  return noHorario && o.online > 0 ? "cobriu" : "limpar";
+}
+

@@ -9,7 +9,9 @@ import { usuarioLogado } from "@/lib/auth/papeis";
 import { createClient } from "@/lib/supabase/server";
 import { hojeSP } from "@/modulos/funil/calculo";
 import { inicioDaSemana, instante, somarDias } from "@/modulos/escala/regras";
+import { avisarPausa, avisoDeTeste, verificarAlertas } from "@/modulos/escala/alertas";
 import { refresh } from "next/cache";
+import { after } from "next/server";
 
 const SO_ADMIN: EstadoForm = { erro: "Só o admin pode fazer isso." };
 const horaOk = (h: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(h);
@@ -34,11 +36,23 @@ function mensagem(e: { message: string; code?: string }): string {
 // Check-in
 // ---------------------------------------------------------------------------
 
+/** Depois de entrar/sair/pausar: confere na hora se a operação ficou descoberta (ou coberta de novo). */
+function conferirAlertasDepois() {
+  after(async () => {
+    try {
+      await verificarAlertas();
+    } catch (e) {
+      console.error("escala: alertas depois da ação falharam:", e);
+    }
+  });
+}
+
 /** "Entrei na operação" (hora do servidor). */
 export async function entrarNaOperacao(): Promise<EstadoForm> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("escala_comecar_turno", { p_tipo: "normal" });
   if (error) return { erro: mensagem(error) };
+  conferirAlertasDepois();
   refresh();
   return { ok: "Você está online." };
 }
@@ -48,6 +62,7 @@ export async function sairDaOperacao(): Promise<EstadoForm> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("escala_encerrar_turno");
   if (error) return { erro: mensagem(error) };
+  conferirAlertasDepois();
   refresh();
   return { ok: "Você saiu da operação." };
 }
@@ -60,8 +75,17 @@ export async function pausar(_anterior: EstadoForm, form: FormData): Promise<Est
   if (!(MOTIVOS as readonly string[]).includes(motivo)) return { erro: "Escolha o motivo da pausa." };
   const detalhe = String(form.get("detalhe") ?? "").trim().slice(0, 120) || null;
   const supabase = await createClient();
-  const { error } = await supabase.rpc("escala_pausar", { p_motivo: motivo, p_detalhe: detalhe });
+  const { data: pausaId, error } = await supabase.rpc("escala_pausar", { p_motivo: motivo, p_detalhe: detalhe });
   if (error) return { erro: mensagem(error) };
+  const usuario = await usuarioLogado();
+  after(async () => {
+    try {
+      await avisarPausa(Number(pausaId), "inicio", usuario?.id ?? "");
+      await verificarAlertas();
+    } catch (e) {
+      console.error("escala: aviso de pausa falhou:", e);
+    }
+  });
   refresh();
   return { ok: "Pausa começada." };
 }
@@ -71,6 +95,20 @@ export async function voltarDaPausa(): Promise<EstadoForm> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("escala_voltar_da_pausa");
   if (error) return { erro: mensagem(error) };
+  const usuario = await usuarioLogado();
+  // a pausa que acabou de fechar (a mais recente da pessoa)
+  const { data: eu } = await supabase.from("equipe").select("id").eq("usuario_id", usuario?.id ?? "").maybeSingle();
+  const { data: ultima } = eu
+    ? await supabase.from("escala_pausas").select("id").eq("equipe_id", eu.id).not("fim", "is", null).order("fim", { ascending: false }).limit(1).maybeSingle()
+    : { data: null };
+  after(async () => {
+    try {
+      if (ultima) await avisarPausa(Number(ultima.id), "fim", usuario?.id ?? "");
+      await verificarAlertas();
+    } catch (e) {
+      console.error("escala: aviso de volta da pausa falhou:", e);
+    }
+  });
   refresh();
   return { ok: "Você voltou da pausa." };
 }
@@ -166,4 +204,65 @@ export async function criarPessoa(_anterior: EstadoForm, form: FormData): Promis
   if (error) return { erro: error.code === "23505" ? "Já tem alguém com esse nome na equipe." : "Não deu para salvar." };
   refresh();
   return { ok: `${nome} entrou na equipe. Para entrar na operação (check-in), precisa de login (convite).` };
+}
+
+// ---------------------------------------------------------------------------
+// Notificações (cada um mexe só nas próprias; o RLS confere)
+// ---------------------------------------------------------------------------
+
+export type InscricaoNavegador = { endpoint: string; keys: { p256dh: string; auth: string } };
+
+/** Aparelho ativou as notificações: guarda a inscrição (troca se já existia). */
+export async function salvarInscricao(sub: InscricaoNavegador, aparelho: string): Promise<EstadoForm> {
+  if (!/^https:\/\//.test(sub?.endpoint ?? "") || !sub.keys?.p256dh || !sub.keys?.auth) return { erro: "Inscrição inválida." };
+  const supabase = await createClient();
+  await supabase.from("push_inscricoes").delete().eq("endpoint", sub.endpoint);
+  const { error } = await supabase.from("push_inscricoes").insert({ endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth, aparelho: aparelho.slice(0, 200) });
+  if (error) return { erro: "Não deu para ativar." };
+  refresh();
+  return { ok: "Notificações ativadas neste aparelho." };
+}
+
+export async function apagarInscricao(endpoint: string): Promise<EstadoForm> {
+  const supabase = await createClient();
+  await supabase.from("push_inscricoes").delete().eq("endpoint", endpoint);
+  refresh();
+  return { ok: "Notificações desligadas neste aparelho." };
+}
+
+/** Manda um aviso de teste só para os aparelhos de quem clicou. */
+export async function testarNotificacao(): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (!usuario) return { erro: "Entre de novo." };
+  const n = await avisoDeTeste(usuario.id);
+  return n ? { ok: `Teste enviado (${n} aparelho${n > 1 ? "s" : ""}).` } : { erro: "Nenhum aparelho seu ativado (ou as chaves de notificação faltam no servidor)." };
+}
+
+/** Quais avisos a pessoa quer receber. */
+export async function salvarPreferencias(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (!usuario) return { erro: "Entre de novo." };
+  const marcado = (k: string) => form.get(k) === "on";
+  const escolhas = {
+    pausa_inicio: marcado("pausa_inicio"),
+    pausa_fim: marcado("pausa_fim"),
+    pausa_longa: marcado("pausa_longa"),
+    operacao_descoberta: marcado("operacao_descoberta"),
+    sem_checkin: marcado("sem_checkin"),
+  };
+  const supabase = await createClient();
+  // já tem escolhas salvas: atualiza (com a data); primeira vez: cria (a data o banco põe sozinho;
+  // a regra do banco não deixa mandar atualizado_em ao criar)
+  const { data: mudou, error: e1 } = await supabase
+    .from("notificacoes_preferencias")
+    .update({ ...escolhas, atualizado_em: new Date().toISOString() })
+    .eq("usuario_id", usuario.id)
+    .select("usuario_id");
+  if (e1) return { erro: "Não deu para salvar." };
+  if (!mudou?.length) {
+    const { error: e2 } = await supabase.from("notificacoes_preferencias").insert(escolhas);
+    if (e2) return { erro: "Não deu para salvar." };
+  }
+  refresh();
+  return { ok: "Salvo." };
 }
