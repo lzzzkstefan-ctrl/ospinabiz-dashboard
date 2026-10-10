@@ -10,16 +10,16 @@ import { Suspense } from "react";
 import { encerrarPadrao } from "../acoes";
 import { FormPadrao, FormPessoa } from "../_componentes/formularios";
 
-// Configuração da Escala (só admin): a escala padrão por dia da semana e as pessoas que cobrem.
+// Configuração do Check-in (só admin): horários fixos (escala padrão) por dia da semana e as pessoas.
 // Tirar alguém da escala não apaga o passado: o "escalado" dos dias que já foram continua igual.
 export default function ConfigEscalaPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
         <Link href="/escala" className="text-[13px] text-ink-dim underline-offset-4 hover:underline">
-          ← Escala
+          ← Check-in
         </Link>
-        <h1 className="mt-1 text-[28px] leading-tight">Escala padrão e pessoas</h1>
+        <h1 className="mt-1 text-[28px] leading-tight">Horários fixos e pessoas</h1>
       </div>
       <Suspense fallback={<p className="text-[13.5px] text-ink-faint">Carregando...</p>}>
         <Conteudo />
@@ -46,10 +46,10 @@ async function Conteudo() {
   return (
     <>
       <section className="flex flex-col gap-3">
-        <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Escala padrão</h2>
+        <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Horários fixos</h2>
         <p className="text-[12.5px] text-ink-dim">
-          Quem cobre cada dia da semana. Ex.: domingo a sexta com os vendedores; sábado sem escala fixa (fica &quot;descoberto&quot; até alguém marcar plantão). Para
-          passar a segunda a segunda, é só adicionar o sábado aqui.
+          Quem cobre cada dia da semana e em que horário. Dia sem ninguém aparece como &quot;descoberto&quot; no calendário. Para passar a segunda a segunda, é só
+          adicionar o sábado aqui. Quem esquece de sair da operação sai sozinho no fim do horário fixo do dia.
         </p>
         <FormPadrao pessoas={pessoas} operacao={operacao} hoje={hoje} />
         <div className="mt-2 grid gap-2 md:grid-cols-7">
@@ -72,7 +72,7 @@ async function Conteudo() {
                       <form action={encerrarPadrao}>
                         <input type="hidden" name="id" value={p.id} />
                         <button type="submit" className="text-[11.5px] text-ink-faint underline-offset-4 hover:text-ink hover:underline">
-                          tirar da escala
+                          tirar
                         </button>
                       </form>
                     </li>
@@ -87,15 +87,15 @@ async function Conteudo() {
       <section className="flex flex-col gap-3">
         <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Pessoas que cobrem</h2>
         <p className="text-[12.5px] text-ink-dim">
-          Quem pode entrar na escala (vendedores, seus irmãos, alguém só para sábado). Para fazer check-in e ver os leads no Funil, a pessoa precisa de login: o convite de
-          plantonista é feito pelo admin (link pelo WhatsApp).
+          Quem pode entrar nos horários (vendedores, seus irmãos, alguém só para sábado). Para entrar na operação e ver os leads no Funil, a pessoa precisa de login: o
+          convite de plantonista é feito pelo admin (link pelo WhatsApp).
         </p>
         <FormPessoa />
         <ul className="m-0 flex list-none flex-col p-0">
           {pessoas.map((p) => (
             <li key={p.id} className="flex flex-wrap items-center gap-3 border-b border-line-soft py-2 text-[13.5px] last:border-b-0">
               <span className="flex-1 text-white">{p.nome}</span>
-              {p.temLogin ? <Etiqueta cor="verde">tem login</Etiqueta> : <Etiqueta cor="cinza">sem login (não faz check-in)</Etiqueta>}
+              {p.temLogin ? <Etiqueta cor="verde">tem login</Etiqueta> : <Etiqueta cor="cinza">sem login (não entra na operação)</Etiqueta>}
             </li>
           ))}
         </ul>

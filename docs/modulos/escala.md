@@ -1,6 +1,6 @@
-# Escala e check-in
+# Check-in (antes "Escala e check-in")
 
-Aba `/escala` (menu "Escala"). Pedido do Davi em 10/10/2026: as campanhas rodam 7 dias, atendimento
+Aba `/escala` (menu "Check-in"; o endereço continua /escala). Pedido do Davi em 10/10/2026: as campanhas rodam 7 dias, atendimento
 das 9h às 22h. No começo, domingo a sexta com os vendedores e sábado sem escala fixa (alguém faz
 "raspagem": limpar a fila acumulada). Mais para frente, segunda a segunda. Quem pode cobrir: Davi,
 Vyenna, Rodrigo, os irmãos do Davi ou alguém contratado só para sábado.
@@ -59,3 +59,28 @@ Crazy ligada a ela.
 Ligação com o Funil: por dia da semana, leads, sem atendimento na chegada, conversão e cobertura
 (coberto / raspagem / descoberto, pelo que aconteceu de verdade no check-in), e quanto se perde
 sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base for pequena.
+
+## Mudanças de 10/10/2026 (tarde, pedido do Davi; migration `escala_saida_automatica`)
+
+- **Nome:** "Check-in" no menu e no título (endereço continua `/escala`).
+- **Plantões extras saíram da tela** (lista e "+ vou ficar"). A tabela `escala_plantoes` e a função
+  `escala_cancelar_plantao` continuam no banco, sem uso (vazias).
+- **Calendário semanal:** dias em colunas (domingo a sábado), horas em linhas (8h–24h). Cada pessoa
+  do dia tem uma faixa na cor dela (pelo id da equipe) com dois blocos lado a lado: claro =
+  horário fixo (previsto), forte = entrou/saiu de verdade (realizado). Dia sem ninguém no horário
+  fixo: fundo vermelho "descoberto"; horas da operação sem ninguém: vermelho claro. Linha vermelha =
+  agora. Navegação anterior / hoje / próxima. No celular a grade rola para o lado dentro do card.
+- **"Entrei na operação" / "Sair da operação":** botão grande no topo da aba e no Início (componentes
+  `components/painel-operacao.tsx` e `components/botao-operacao.tsx`). É o mesmo check-in (sempre
+  tipo normal). "Online agora" com bolinha verde e desde que horas.
+- **Atraso:** entrou mais de 10 min depois do início do horário fixo; aparece no calendário e na tabela
+  "Previsto x realizado".
+- **Saída automática:** quem esquece de sair sai no fim do SEU horário fixo do dia em que entrou
+  (antes: 22h05, fim da operação). Sem horário fixo no dia (ou entrou depois do fim dele): meia-noite.
+  pg_cron a cada 15 min. Se a pessoa continuar atendendo depois do fim do horário fixo, precisa apertar
+  "Entrei na operação" de novo (vira outro bloco).
+- **Horários fixos cadastrados em 10/10** (valem a partir de 10/10; editáveis em `/escala/config`):
+  Davi 9h–22h domingo a sexta; Vyenna 9h–22h segunda a sexta. Sábado fica descoberto.
+  Os dias de 04 a 09/10 aparecem descobertos porque os horários fixos só começam em 10/10 (o
+  check-in não existia antes; marcar como escalado viraria "não entrou" sem ser verdade).
+

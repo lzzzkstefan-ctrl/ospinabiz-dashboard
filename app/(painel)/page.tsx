@@ -6,6 +6,8 @@ import { carregarMonitor } from "@/modulos/monitor/dados";
 import { listarTarefas } from "@/modulos/tarefas/dados";
 import { hojeSP, lerPeriodo } from "@/modulos/funil/calculo";
 import { carregarFunil, configDoFunil, leadsEsperando } from "@/modulos/funil/dados";
+import { operacaoAgora } from "@/modulos/escala/dados";
+import { PainelOperacao } from "@/components/painel-operacao";
 import { contarPorFiltro, hojeEmSaoPaulo } from "@/modulos/tarefas/regras";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -35,7 +37,7 @@ async function ConteudoInicio() {
   // Monitor é só de admin: para atendente nem carrega.
   // Funil: o RLS mostra ao vendedor só os leads dele
   const semana = lerPeriodo("7d", undefined, undefined, hojeSP());
-  const [capa, nome, monitor, tarefas, funilHoje, funilSemana, esperando] = await Promise.all([
+  const [capa, nome, monitor, tarefas, funilHoje, funilSemana, esperando, operacao] = await Promise.all([
     urlDaCapa(),
     usuario ? nomeNaEquipe(usuario.id) : Promise.resolve(null),
     admin ? carregarMonitor() : Promise.resolve(null),
@@ -43,6 +45,7 @@ async function ConteudoInicio() {
     carregarFunil({ desde: hojeSP(), ate: hojeSP(), vendedorId: null, numeroId: null }),
     carregarFunil({ desde: semana.desde, ate: semana.ate, vendedorId: null, numeroId: null }),
     configDoFunil().then((cfg) => leadsEsperando(cfg)),
+    usuario ? operacaoAgora(usuario.id) : Promise.resolve(null),
   ]);
 
   const agora = new Date();
@@ -69,6 +72,13 @@ async function ConteudoInicio() {
           </h1>
         </header>
       </div>
+
+      {/* Check-in: o atendente aperta ao ligar o PC */}
+      {operacao && (
+        <div className="mb-8">
+          <PainelOperacao eu={operacao.eu} agora={operacao.agora} />
+        </div>
+      )}
 
       <section className="flex flex-col gap-3">
         <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Status do dia</h2>

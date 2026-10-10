@@ -1,8 +1,8 @@
 "use server";
 
-// Ações da Escala e check-in. Grava com o login de quem clicou: o RLS e as funções do banco
-// conferem de novo (começar/encerrar turno usam a hora do servidor; só o admin decide plantão,
-// corrige turno e mexe na escala padrão).
+// Ações do Check-in (aba /escala). Grava com o login de quem clicou: o RLS e as funções do banco
+// conferem de novo ("Entrei na operação" / "Sair da operação" usam a hora do servidor; só o admin
+// corrige um registro e mexe nos horários fixos). Plantões extras saíram em 10/10/2026.
 
 import type { EstadoForm } from "@/components/formulario";
 import { usuarioLogado } from "@/lib/auth/papeis";
@@ -16,9 +16,12 @@ const horaOk = (h: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(h);
 const diaOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
 const tipoDe = (t: FormDataEntryValue | null) => (t === "raspagem" ? "raspagem" : "normal");
 
-/** Mensagem do banco → texto para a pessoa (as funções do banco já mandam em português). */
+/** Mensagem do banco → texto para a pessoa. */
 function mensagem(e: { message: string; code?: string }): string {
-  if (/turno aberto|não tem turno|não está ligado|não encontrado|exige motivo/i.test(e.message)) return e.message.replace(/^.*?: /, "");
+  if (/já tem um turno aberto/i.test(e.message)) return "Você já está na operação.";
+  if (/não tem turno aberto/i.test(e.message)) return "Você não está na operação.";
+  if (/não está ligado/i.test(e.message)) return "Seu login não está ligado a ninguém da equipe. Fale com o admin.";
+  if (/exige motivo/i.test(e.message)) return "Corrigir exige motivo.";
   if (e.code === "42501" || /row-level security/i.test(e.message)) return "Você não tem permissão para isso.";
   return "Não deu para salvar.";
 }
@@ -27,24 +30,25 @@ function mensagem(e: { message: string; code?: string }): string {
 // Check-in
 // ---------------------------------------------------------------------------
 
-export async function comecarTurno(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+/** "Entrei na operação" (hora do servidor). */
+export async function entrarNaOperacao(): Promise<EstadoForm> {
   const supabase = await createClient();
-  const { error } = await supabase.rpc("escala_comecar_turno", { p_tipo: tipoDe(form.get("tipo")) });
+  const { error } = await supabase.rpc("escala_comecar_turno", { p_tipo: "normal" });
   if (error) return { erro: mensagem(error) };
   refresh();
-  return { ok: "Turno começado." };
+  return { ok: "Você está online." };
 }
 
-// (anterior, form) é o formato do useActionState; aqui nenhum dos dois é usado
-export async function encerrarTurno(): Promise<EstadoForm> {
+/** "Sair da operação" (hora do servidor). */
+export async function sairDaOperacao(): Promise<EstadoForm> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("escala_encerrar_turno");
   if (error) return { erro: mensagem(error) };
   refresh();
-  return { ok: "Turno encerrado." };
+  return { ok: "Você saiu da operação." };
 }
 
-/** Admin corrige o horário de um turno (exige motivo; fica registrado). */
+/** Admin corrige o horário de entrada/saída (exige motivo; fica registrado). */
 export async function corrigirTurno(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
@@ -53,7 +57,7 @@ export async function corrigirTurno(_anterior: EstadoForm, form: FormData): Prom
   const inicio = String(form.get("inicio") ?? "");
   const fim = String(form.get("fim") ?? "");
   const motivo = String(form.get("motivo") ?? "").trim();
-  if (!Number.isInteger(id) || id <= 0 || !diaOk(dia)) return { erro: "Turno inválido." };
+  if (!Number.isInteger(id) || id <= 0 || !diaOk(dia)) return { erro: "Registro inválido." };
   if (!horaOk(inicio) || (fim && !horaOk(fim))) return { erro: "Horário no formato 09:00." };
   if (fim && fim < inicio) return { erro: "O fim tem que ser depois do início." };
   if (motivo.length < 3) return { erro: "Escreva o motivo da correção." };
@@ -64,65 +68,7 @@ export async function corrigirTurno(_anterior: EstadoForm, form: FormData): Prom
     .eq("id", id);
   if (error) return { erro: mensagem(error) };
   refresh();
-  return { ok: "Turno corrigido (registrado com o motivo)." };
-}
-
-// ---------------------------------------------------------------------------
-// Plantões
-// ---------------------------------------------------------------------------
-
-export async function pedirPlantao(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
-  const usuario = await usuarioLogado();
-  if (!usuario) return { erro: "Entre de novo." };
-  const dia = String(form.get("dia") ?? "");
-  const inicio = String(form.get("inicio") ?? "");
-  const fim = String(form.get("fim") ?? "");
-  if (!diaOk(dia)) return { erro: "Escolha o dia." };
-  if (!horaOk(inicio) || !horaOk(fim)) return { erro: "Horário no formato 09:00." };
-  if (fim <= inicio) return { erro: "O fim tem que ser depois do início." };
-  const supabase = await createClient();
-  let equipeId: number | null = null;
-  if (usuario.papel === "admin" && /^\d+$/.test(String(form.get("equipe_id") ?? ""))) {
-    equipeId = Number(form.get("equipe_id"));
-  } else {
-    const { data } = await supabase.from("equipe").select("id").eq("usuario_id", usuario.id).maybeSingle();
-    equipeId = data?.id ?? null;
-  }
-  if (!equipeId) return { erro: "Seu login não está ligado a ninguém da equipe. Fale com o admin." };
-  if (usuario.papel !== "admin" && dia < hojeSP()) return { erro: "Só dá para marcar de hoje em diante." };
-  const { data: novo, error } = await supabase.from("escala_plantoes").insert({ dia, equipe_id: equipeId, inicio, fim, tipo: tipoDe(form.get("tipo")) }).select("id").single();
-  if (error) return { erro: mensagem(error) };
-  // o admin marcando já decide: plantão confirmado na hora
-  if (usuario.papel === "admin" && form.get("confirmar") === "sim") {
-    await supabase.from("escala_plantoes").update({ situacao: "confirmado" }).eq("id", novo.id);
-  }
-  refresh();
-  return { ok: usuario.papel === "admin" && form.get("confirmar") === "sim" ? "Plantão marcado e confirmado." : "Pedido enviado. Aparece na escala quando o admin confirmar." };
-}
-
-/** Admin confirma ou recusa (recusar pede motivo). */
-export async function decidirPlantao(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
-  const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") return SO_ADMIN;
-  const id = Number(form.get("id"));
-  const situacao = form.get("situacao") === "recusado" ? "recusado" : form.get("situacao") === "confirmado" ? "confirmado" : null;
-  const motivo = String(form.get("motivo") ?? "").trim();
-  if (!Number.isInteger(id) || id <= 0 || !situacao) return { erro: "Pedido inválido." };
-  if (situacao === "recusado" && motivo.length < 3) return { erro: "Escreva o motivo da recusa." };
-  const supabase = await createClient();
-  const { error } = await supabase.from("escala_plantoes").update({ situacao, motivo: situacao === "recusado" ? motivo.slice(0, 300) : null }).eq("id", id);
-  if (error) return { erro: mensagem(error) };
-  refresh();
-  return { ok: situacao === "confirmado" ? "Confirmado." : "Recusado." };
-}
-
-/** A pessoa cancela o próprio plantão pendente. */
-export async function cancelarPlantao(form: FormData): Promise<void> {
-  const id = Number(form.get("id"));
-  if (!Number.isInteger(id) || id <= 0) return;
-  const supabase = await createClient();
-  await supabase.rpc("escala_cancelar_plantao", { p_id: id });
-  refresh();
+  return { ok: "Corrigido (registrado com o motivo)." };
 }
 
 // ---------------------------------------------------------------------------
@@ -178,5 +124,5 @@ export async function criarPessoa(_anterior: EstadoForm, form: FormData): Promis
   const { error } = await supabase.from("equipe").insert({ nome: nome.slice(0, 60) });
   if (error) return { erro: error.code === "23505" ? "Já tem alguém com esse nome na equipe." : "Não deu para salvar." };
   refresh();
-  return { ok: `${nome} entrou na equipe. Para fazer check-in, precisa de login (convite).` };
+  return { ok: `${nome} entrou na equipe. Para entrar na operação (check-in), precisa de login (convite).` };
 }

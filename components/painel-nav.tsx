@@ -29,7 +29,7 @@ const TODOS: { href: string; label: string; icon: typeof House; emBreve: boolean
   { href: "/tarefas", label: "Tarefas", icon: ListChecks, emBreve: false, para: "todos" },
   { href: "/vendas", label: "Vendas", icon: BadgeDollarSign, emBreve: false, para: "equipe" },
   { href: "/funil", label: "Funil", icon: Filter, emBreve: false, para: "todos" },
-  { href: "/escala", label: "Escala", icon: CalendarClock, emBreve: false, para: "todos" },
+  { href: "/escala", label: "Check-in", icon: CalendarClock, emBreve: false, para: "todos" },
   { href: "/webinarios", label: "Webinários", icon: Presentation, emBreve: false, para: "equipe" },
   { href: "/fechamento", label: "Fechamento", icon: CalendarCheck, emBreve: true, para: "admin" },
   { href: "/bms", label: "BMs", icon: Building2, emBreve: false, para: "admin" },
