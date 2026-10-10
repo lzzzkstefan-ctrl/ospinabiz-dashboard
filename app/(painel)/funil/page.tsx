@@ -12,6 +12,7 @@ import {
   primeiraResposta,
   statusDaSincronizacao,
   type Esperando,
+  type Filas,
   type StatusSincronizacao,
 } from "@/modulos/funil/dados";
 import Link from "next/link";
@@ -227,6 +228,7 @@ async function Conteudo({ searchParams }: Props) {
         </form>
       </section>
 
+      <FilasDataCrazy filas={esperando.filas} admin={admin} />
       <ListaEsperando
         id="esperando"
         titulo="Leads esperando resposta"
@@ -436,6 +438,63 @@ function AvisoSincronizacao({ sync }: { sync: StatusSincronizacao }) {
       {!falhou && parada && " Mais de 45 minutos sem sincronizar: confira o cron do Supabase."}
       {u.situacao === "rodando" && !parada && " Sincronizando agora…"}
     </div>
+  );
+}
+
+/** Filas da Data Crazy, como no CRM: Em aberto (total), Não iniciados e Aguardando. */
+function FilasDataCrazy({ filas, admin }: { filas: Filas; admin: boolean }) {
+  const total = filas.emAberto + filas.naoIniciados.length + filas.aguardando.length;
+  return (
+    <section id="filas" className="glass-lite glass-static scroll-mt-28 p-4">
+      <div className="mb-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <h2 className="text-[15px] font-semibold text-white">Filas da Data Crazy · {total} em aberto</h2>
+        <span className="text-[12.5px] tabular-nums text-ink-dim">
+          Em aberto {filas.emAberto} · Não iniciados {filas.naoIniciados.length} · Aguardando {filas.aguardando.length}
+        </span>
+      </div>
+      <p className="m-0 mb-3 text-[12px] text-ink-faint">
+        Conversas em aberto separadas como no CRM. Não iniciados = ninguém assumiu o atendimento. O tempo é desde o início do atendimento atual (tempo real, não só o
+        horário de atendimento). Atualiza a cada 15 minutos.{!admin && " Só as suas conversas (as que ninguém assumiu ainda não têm vendedor)."}
+      </p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {[
+          { nome: "Não iniciados", itens: filas.naoIniciados },
+          { nome: "Aguardando", itens: filas.aguardando },
+        ].map((f) => (
+          <div key={f.nome} className="overflow-x-auto">
+            <h3 className="mb-1 text-[13px] font-semibold text-ink">
+              {f.nome} · {f.itens.length}
+            </h3>
+            {f.itens.length === 0 ? (
+              <p className="m-0 py-2 text-[13px] italic text-ink-faint">Ninguém nesta fila.</p>
+            ) : (
+              <table className="w-full border-collapse text-left text-[13px] tabular-nums">
+                <thead className="text-[11.5px] text-ink-dim">
+                  <tr>
+                    <th className="py-1.5 pr-3 font-medium">Lead</th>
+                    <th className="py-1.5 pr-3 font-medium">Vendedor</th>
+                    <th className="py-1.5 pr-3 font-medium">Número</th>
+                    <th className="py-1.5 pr-3 font-medium">Etapa</th>
+                    <th className="py-1.5 text-right font-medium">Na fila há</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {f.itens.slice(0, 100).map((e) => (
+                    <tr key={e.conversaId} className="border-t border-line-soft text-ink">
+                      <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
+                      <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">ninguém</span>}</td>
+                      <td className="whitespace-nowrap py-1.5 pr-3">{e.numeros.join(" · ") || "—"}</td>
+                      <td className="py-1.5 pr-3 text-ink-dim">{e.etapa ?? "—"}</td>
+                      <td className="whitespace-nowrap py-1.5 text-right font-semibold text-white">{duracao(e.esperaMs)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

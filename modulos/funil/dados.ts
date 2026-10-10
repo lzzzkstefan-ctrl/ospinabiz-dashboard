@@ -17,6 +17,8 @@ export async function carregarFunil(f: FiltrosFunil): Promise<Resultado> {
       .gte("dia", f.desde)
       .lte("dia", f.ate)
       .eq("funil_eventos.acao", "colocou")
+      // número interno (teste) fica fora de toda a dashboard
+      .eq("interno", false)
       .order("dc_id")
       .range(de, de + 999);
     if (f.vendedorId) q = q.eq("vendedor_id", f.vendedorId);
@@ -128,7 +130,14 @@ export type Esperando = {
  *   ao webinar de downsell). Só leads (alunos ficam fora).
  * Todas passando de X horas, contando só o horário de atendimento. Aluno = etiqueta de etapa de compra.
  */
-export type ListasEsperando = { leads: Esperando[]; alunos: Esperando[]; aguardandoLead: Esperando[] };
+export type ListasEsperando = { leads: Esperando[]; alunos: Esperando[]; aguardandoLead: Esperando[]; filas: Filas };
+
+/**
+ * Filas da Data Crazy, como no CRM (uma linha por conversa, para bater com os totais de lá):
+ * Em aberto (só o total), Não iniciados (ninguém assumiu) e Aguardando. esperaMs = tempo REAL na
+ * fila (desde o início do atendimento atual), não só o horário de atendimento.
+ */
+export type Filas = { emAberto: number; naoIniciados: Esperando[]; aguardando: Esperando[] };
 
 /**
  * Uma linha por lead: o mesmo lead em mais de um número vira uma linha só, com os números juntos e o
@@ -138,9 +147,11 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
   const supabase = await createClient();
   let q = supabase
     .from("funil_conversas")
-    .select("dc_id, lead_dc_id, contato_rotulo, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em")
+    .select("dc_id, lead_dc_id, contato_rotulo, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em, fila, fila_desde")
     // finalizada = finalizada ou arquivada na Data Crazy (se o lead escrever de novo, ela reabre)
     .eq("finalizada", false)
+    // número interno (teste) fica fora de toda a dashboard
+    .eq("interno", false)
     .limit(5000);
   if (filtro.vendedorId) q = q.eq("vendedor_id", filtro.vendedorId);
   if (filtro.numeroId) q = q.eq("numero_dc_id", filtro.numeroId);
@@ -163,7 +174,24 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
   type Linha = Esperando & { aluno: boolean };
   const esperando = new Map<string, Linha>();
   const aguardando = new Map<string, Linha>();
+  const filas: Filas = { emAberto: 0, naoIniciados: [], aguardando: [] };
   for (const c of conversas.data) {
+    // filas: toda conversa aberta, sem limite de horas
+    if (c.fila === "aberto") filas.emAberto++;
+    else if ((c.fila === "nao_iniciado" || c.fila === "aguardando") && c.fila_desde) {
+      const tags: string[] = c.etiquetas_atuais ?? [];
+      const numero = c.numero_dc_id ? (numeros.get(String(c.numero_dc_id)) ?? null) : null;
+      (c.fila === "nao_iniciado" ? filas.naoIniciados : filas.aguardando).push({
+        conversaId: String(c.dc_id),
+        rotulo: c.contato_rotulo,
+        vendedor: c.vendedor_id ? (nomeDe.get(Number(c.vendedor_id)) ?? null) : null,
+        numeros: numero ? [numero] : [],
+        etapa: etapaAtual(tags, listaEtiquetas, listaEtapas),
+        desde: String(c.fila_desde),
+        esperaMs: Math.max(0, agora - Date.parse(String(c.fila_desde))),
+      });
+    }
+
     const recebida = c.ultima_recebida_em ? String(c.ultima_recebida_em) : null;
     const enviada = c.ultima_enviada_em ? String(c.ultima_enviada_em) : null;
     // quem mandou a última: o lead (sem nada da empresa depois) ou a empresa
@@ -206,7 +234,8 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
   for (const chave of esperando.keys()) aguardando.delete(chave);
   const ordenar = (m: Map<string, Linha>) => [...m.values()].sort((a, b) => b.esperaMs - a.esperaMs);
   const todos = ordenar(esperando);
-  return { leads: todos.filter((e) => !e.aluno), alunos: todos.filter((e) => e.aluno), aguardandoLead: ordenar(aguardando) };
+  for (const f of [filas.naoIniciados, filas.aguardando]) f.sort((a, b) => b.esperaMs - a.esperaMs);
+  return { leads: todos.filter((e) => !e.aluno), alunos: todos.filter((e) => e.aluno), aguardandoLead: ordenar(aguardando), filas };
 }
 
 export type PrimeiraResposta = { vendedor: string; leads: number; mediaMs: number; medianaMs: number };
@@ -221,6 +250,7 @@ export async function primeiraResposta(f: FiltrosFunil, cfg: ConfigFunil): Promi
     .lte("dia", f.ate)
     .not("primeira_resposta_em", "is", null)
     .not("primeira_msg_lead_em", "is", null)
+    .eq("interno", false)
     .limit(5000);
   if (f.vendedorId) q = q.eq("vendedor_id", f.vendedorId);
   if (f.numeroId) q = q.eq("numero_dc_id", f.numeroId);

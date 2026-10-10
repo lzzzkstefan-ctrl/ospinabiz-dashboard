@@ -6,7 +6,7 @@ import { Aviso, Campo, classeOpcao, classeSelect, type EstadoForm } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useActionState } from "react";
-import { criarMudanca, salvarConfigFunil } from "../acoes";
+import { criarMudanca, criarNumeroInterno, salvarConfigFunil } from "../acoes";
 
 export function FormConfigFunil({ horas, inicio, fim }: { horas: number; inicio: string; fim: string }) {
   const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(salvarConfigFunil, {});
@@ -59,6 +59,24 @@ export function FormMudanca({ hoje, etapas }: { hoje: string; etapas: { id: numb
         </Button>
         <Aviso estado={estado} />
       </div>
+    </form>
+  );
+}
+
+export function FormNumeroInterno() {
+  const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(criarNumeroInterno, {});
+  return (
+    <form action={acao} className="flex flex-wrap items-end gap-3">
+      <Campo rotulo="Nome">
+        <Input name="nome" maxLength={80} placeholder="Ex.: Celular de teste do Davi" className="w-64" />
+      </Campo>
+      <Campo rotulo="Telefone">
+        <Input name="telefone" inputMode="tel" maxLength={25} placeholder="+55 11 91234-5678" className="w-52 tabular-nums" autoComplete="off" />
+      </Campo>
+      <Button type="submit" disabled={pendente}>
+        {pendente ? "Salvando…" : "Cadastrar número"}
+      </Button>
+      <Aviso estado={estado} />
     </form>
   );
 }

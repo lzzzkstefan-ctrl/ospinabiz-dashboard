@@ -265,3 +265,14 @@ Antes (09/10): "automação não conta como resposta".
 você vai escolher?"). Aí quem precisa responder é o lead, e a lista acusava espera de horas que não
 era da empresa (Henry -6376 aparecia com 15h). A conversa "finalizada" no CRM vem como arquivada na
 API (`finished` continua false), por isso arquivada também conta como fechada.
+
+## 2026-10-10: Números internos marcados na sincronização, não apagados
+
+Números de teste da equipe ficam fora do Funil por uma marca (`interno`) que a sincronização põe
+nos leads e conversas, comparando os 8 últimos dígitos com o cadastro em `/funil/config`.
+
+**Por quê:** apagar os leads de teste não adianta (a próxima sincronização traz de novo) e perderia
+o histórico se o número for descadastrado. Os 8 últimos dígitos não dependem de +55, DDD ou do 9
+extra. O telefone fica só na tabela de números internos (só admin) e no registro de contato que já
+existia: as tabelas que o vendedor lê recebem só a marca.
+

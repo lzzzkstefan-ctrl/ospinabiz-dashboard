@@ -41,6 +41,8 @@ export type DcConversa = {
   /** ex.: ["opened"], ["automation", "opened"], ["unstarted"], ["finished"], ["archived"] */
   statuses?: string[] | null;
   attendants: { id: string }[];
+  /** atendimento atual: createdAt = quando começou; startedAt = quando alguém assumiu */
+  currentThread?: { createdAt?: string | null; startedAt?: string | null } | null;
   instance: { id: string; name: string } | null;
   contact: {
     contactId: string | null;

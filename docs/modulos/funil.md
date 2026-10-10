@@ -160,3 +160,25 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
 - **Mudanças no funil:** o admin registra (dia, etapa opcional, descrição) em `/funil/config`; viram
   linhas tracejadas nos gráficos de leads e de conversão.
 - Identificação do lead nas listas: só "primeiro nome -1234" (nunca nome completo nem telefone).
+
+## Filas e números internos (10/10/2026, migration funil_filas_internos)
+- **Filas da Data Crazy:** conversa em aberto separada como no CRM, pelo campo `statuses` da API:
+  `unstarted` = **Não iniciados** (ninguém assumiu), `opened` = **Em aberto** (só o total na tela).
+  **Aguardando:** não deu para confirmar o campo (o CRM mostrava 0 e nenhum outro status aberto
+  apareceu na API). Por enquanto, qualquer conversa aberta que não seja `opened` nem `unstarted`.
+  Conferir quando o CRM mostrar alguém em Aguardando. Conferido em 10/10: API 38 opened + 3
+  unstarted = CRM (Em aberto 38, Não iniciados 3, Aguardando 0).
+  Tempo na fila = tempo REAL desde `currentThread.createdAt` (início do atendimento atual; senão a
+  criação da conversa). Uma linha por conversa (para bater com o CRM). Vendedor vê só as dele (as
+  não iniciadas ainda não têm vendedor). Gravado em `funil_conversas.fila` / `fila_desde`.
+- **Números internos (teste):** cadastro em `/funil/config` (só admin), tabela
+  `funil_numeros_internos` (o telefone fica só lá; nunca no código nem no git). Comparação pelos
+  8 últimos dígitos (`chave`, única). A sincronização marca `interno` em `funil_leads` (telefone do
+  lead e dos contatos) e `funil_conversas` (telefone do contato); todas as leituras do Funil filtram
+  `interno = false`: leads por dia, funil, conversão, esperando resposta, aguardando o lead, filas,
+  primeira resposta, cartões do Início e público elegível dos Webinários. Cadastrar ou apagar dispara
+  uma sincronização: o que já foi contado sai (ou volta) sem apagar dado nenhum. A tela mostra só o
+  nome e o final do número.
+- **Rótulo do contato:** se o nome no CRM é (ou contém) um telefone, ele não entra no rótulo, só os
+  4 últimos dígitos (antes aparecia o telefone inteiro na lista).
+

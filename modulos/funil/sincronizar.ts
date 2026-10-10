@@ -48,11 +48,12 @@ export async function sincronizarFunil(): Promise<ResultadoSincronizacao> {
     const janela = inicioDaJanela(inicio).toISOString();
 
     const config = await sincronizarConfiguracao(db, dc);
+    const internos = await lerNumerosInternos(db);
     const leads = await lerLeadsDaJanela(dc, janela);
     contagem.leads = leads.length;
-    await gravarLeads(db, leads, janela);
+    await gravarLeads(db, leads, janela, internos);
     const { todas, leadDoContato } = await sincronizarConversas(db, dc, leads, janela, config);
-    await gravarConversas(db, todas, leadDoContato, config);
+    await gravarConversas(db, todas, leadDoContato, config, internos);
     contagem.historicos = await lerHistoricos(db, dc, config);
     await lerPrimeirasRespostas(db, dc, todas, leadDoContato, config);
     await atualizarCompras(db, janela);
@@ -227,11 +228,31 @@ async function lerLeadsDaJanela(dc: DataCrazy, janela: string): Promise<DcLead[]
   return [...vistos.values()];
 }
 
-async function gravarLeads(db: Db, leads: DcLead[], janela: string) {
-  const atuais = await lerTudo<{ dc_id: string; etiquetas_atuais: string[] }>((de, ate) =>
-    db.from("funil_leads").select("dc_id, etiquetas_atuais").gte("criado_em", janela).order("dc_id").range(de, ate),
+/**
+ * Números internos (teste), pelos 8 últimos dígitos. Ficam fora de toda a dashboard do Funil:
+ * a sincronização marca `interno` nos leads e conversas e as telas filtram.
+ */
+async function lerNumerosInternos(db: Db): Promise<Set<string>> {
+  const { data, error } = await db.from("funil_numeros_internos").select("chave");
+  if (error) throw new Error(`erro ao ler números internos: ${error.message}`);
+  return new Set(data.map((n) => String(n.chave)));
+}
+
+/** Algum dos telefones é de um número interno (compara os 8 últimos dígitos). */
+function ehInterno(internos: Set<string>, ...telefones: (string | null | undefined)[]): boolean {
+  if (!internos.size) return false;
+  return telefones.some((t) => {
+    const chave = chaveTelefone(t);
+    return !!chave && internos.has(chave);
+  });
+}
+
+async function gravarLeads(db: Db, leads: DcLead[], janela: string, internos: Set<string>) {
+  const atuais = await lerTudo<{ dc_id: string; etiquetas_atuais: string[]; interno: boolean }>((de, ate) =>
+    db.from("funil_leads").select("dc_id, etiquetas_atuais, interno").gte("criado_em", janela).order("dc_id").range(de, ate),
   );
   const noBanco = new Map(atuais.map((l) => [l.dc_id, l.etiquetas_atuais]));
+  const internoNoBanco = new Map(atuais.map((l) => [l.dc_id, l.interno]));
 
   // novo ou com etiqueta diferente → grava e marca o histórico como pendente
   const mudaram = leads.filter((l) => {
@@ -260,6 +281,16 @@ async function gravarLeads(db: Db, leads: DcLead[], janela: string) {
         { onConflict: "lead_dc_id" },
       ),
     );
+  }
+
+  // número interno: marca/desmarca (cadastrar um número tira da contagem o que já foi contado)
+  const trocar = leads
+    .map((l) => ({ id: l.id, interno: ehInterno(internos, l.rawPhone, ...(l.contacts ?? []).map((c) => c.contactId)) }))
+    .filter((l) => (internoNoBanco.get(l.id) ?? false) !== l.interno);
+  for (const valor of [true, false]) {
+    for (const lote of fatiar(trocar.filter((l) => l.interno === valor).map((l) => l.id), LOTE)) {
+      await ok(db.from("funil_leads").update({ interno: valor }).in("dc_id", lote));
+    }
   }
 }
 
@@ -346,9 +377,26 @@ async function sincronizarConversas(
 // lastSendedMessageDate inclui automação, então não precisa ler as mensagens.
 // ---------------------------------------------------------------------------
 
-async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<string, DcLead>, config: Config): Promise<void> {
-  const atuais = await lerTudo<{ dc_id: string; ultima_mensagem_em: string | null; esperando_desde: string | null; numero_dc_id: string | null; atendente_dc_id: string | null; etiquetas_atuais: string[]; finalizada: boolean }>(
-    (de, ate) => db.from("funil_conversas").select("dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, finalizada").order("dc_id").range(de, ate),
+async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<string, DcLead>, config: Config, internos: Set<string>): Promise<void> {
+  type Atual = {
+    dc_id: string;
+    ultima_mensagem_em: string | null;
+    esperando_desde: string | null;
+    numero_dc_id: string | null;
+    atendente_dc_id: string | null;
+    etiquetas_atuais: string[];
+    contato_rotulo: string | null;
+    finalizada: boolean;
+    fila: string | null;
+    fila_desde: string | null;
+    interno: boolean;
+  };
+  const atuais = await lerTudo<Atual>((de, ate) =>
+    db
+      .from("funil_conversas")
+      .select("dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, contato_rotulo, finalizada, fila, fila_desde, interno")
+      .order("dc_id")
+      .range(de, ate),
   );
   const noBanco = new Map(atuais.map((c) => [c.dc_id, c]));
   const ehAtendente = (id: string | undefined) => !!id && config.equipeDoAtendente.has(id);
@@ -367,6 +415,13 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
     const etiquetas = c.contact?.externalInfo?.tagIds ?? [];
     // fechada = finalizada OU arquivada (o "Finalizar" do CRM arquiva; finished fica false)
     const finalizada = !!c.finished || !!c.archivedAt || (c.statuses ?? []).some((s) => s === "finished" || s === "archived");
+    // fila como no CRM (só conversa aberta): unstarted = Não iniciados; opened = Em aberto;
+    // outro status aberto = Aguardando (a confirmar com o CRM)
+    const statuses = c.statuses ?? [];
+    const fila = finalizada ? null : statuses.includes("unstarted") ? "nao_iniciado" : statuses.includes("opened") ? "aberto" : "aguardando";
+    const filaDesde = fila ? (c.currentThread?.createdAt ?? c.createdAt) : null;
+    const interno = ehInterno(internos, c.contact?.phoneNumber, c.contact?.contactId);
+    const rotulo = rotuloDoContato(c.contact?.name, c.contact?.phoneNumber);
     if (
       antes &&
       !mudou &&
@@ -374,13 +429,17 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
       antes.atendente_dc_id === atendente &&
       antes.numero_dc_id === numero &&
       antes.finalizada === finalizada &&
+      antes.fila === fila &&
+      mesmoInstante(antes.fila_desde, filaDesde) &&
+      antes.interno === interno &&
+      antes.contato_rotulo === rotulo &&
       mesmasEtiquetas(antes.etiquetas_atuais, etiquetas)
     ) continue;
 
     linhas.push({
       dc_id: c.id,
       lead_dc_id: lead?.id ?? null,
-      contato_rotulo: rotuloDoContato(c.contact?.name, c.contact?.phoneNumber),
+      contato_rotulo: rotulo,
       numero_dc_id: numero,
       atendente_dc_id: atendente,
       vendedor_id: atendente ? (config.equipeDoAtendente.get(atendente) ?? null) : null,
@@ -391,6 +450,9 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
       ultima_mensagem_em: c.lastMessageDate,
       esperando_desde: esperando,
       finalizada,
+      fila,
+      fila_desde: filaDesde,
+      interno,
       sincronizado_em: new Date().toISOString(),
     });
   }
@@ -399,7 +461,8 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
 
 /** "Maria -1234": primeiro nome + 4 últimos dígitos (nunca o nome completo nem o telefone). */
 function rotuloDoContato(nome: string | null | undefined, telefone: string | null | undefined): string | null {
-  const primeiro = (nome ?? "").trim().split(/\s+/)[0] || null;
+  // nome que é (ou contém) um telefone não entra: só os 4 dígitos do final
+  const primeiro = (nome ?? "").trim().split(/\s+/).find((p) => p && !/\d{3,}/.test(p) && !p.startsWith("+")) ?? null;
   const final = (telefone ?? "").replace(/\D/g, "").slice(-4) || null;
   return primeiro || final ? [primeiro, final && `-${final}`].filter(Boolean).join(" ") : null;
 }
