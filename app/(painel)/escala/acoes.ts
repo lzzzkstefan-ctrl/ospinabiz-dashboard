@@ -9,7 +9,7 @@ import { usuarioLogado } from "@/lib/auth/papeis";
 import { createClient } from "@/lib/supabase/server";
 import { hojeSP } from "@/modulos/funil/calculo";
 import { inicioDaSemana, instante, somarDias } from "@/modulos/escala/regras";
-import { avisarPausa, avisoDeTeste, verificarAlertas } from "@/modulos/escala/alertas";
+import { avisarEntradaSaida, avisarPausa, avisoDeTeste, verificarAlertas } from "@/modulos/escala/alertas";
 import { refresh } from "next/cache";
 import { after } from "next/server";
 
@@ -50,8 +50,16 @@ function conferirAlertasDepois() {
 /** "Entrei na operação" (hora do servidor). */
 export async function entrarNaOperacao(): Promise<EstadoForm> {
   const supabase = await createClient();
-  const { error } = await supabase.rpc("escala_comecar_turno", { p_tipo: "normal" });
+  const { data: checkinId, error } = await supabase.rpc("escala_comecar_turno", { p_tipo: "normal" });
   if (error) return { erro: mensagem(error) };
+  const usuario = await usuarioLogado();
+  after(async () => {
+    try {
+      await avisarEntradaSaida(Number(checkinId), "entrada", usuario?.id ?? "");
+    } catch (e) {
+      console.error("escala: aviso de entrada falhou:", e);
+    }
+  });
   conferirAlertasDepois();
   refresh();
   return { ok: "Você está online." };
@@ -62,6 +70,19 @@ export async function sairDaOperacao(): Promise<EstadoForm> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("escala_encerrar_turno");
   if (error) return { erro: mensagem(error) };
+  const usuario = await usuarioLogado();
+  // a entrada que acabou de fechar (a mais recente da pessoa)
+  const { data: eu } = await supabase.from("equipe").select("id").eq("usuario_id", usuario?.id ?? "").maybeSingle();
+  const { data: ultima } = eu
+    ? await supabase.from("escala_checkins").select("id").eq("equipe_id", eu.id).not("fim", "is", null).order("fim", { ascending: false }).limit(1).maybeSingle()
+    : { data: null };
+  after(async () => {
+    try {
+      if (ultima) await avisarEntradaSaida(Number(ultima.id), "saida", usuario?.id ?? "");
+    } catch (e) {
+      console.error("escala: aviso de saída falhou:", e);
+    }
+  });
   conferirAlertasDepois();
   refresh();
   return { ok: "Você saiu da operação." };
@@ -249,6 +270,8 @@ export async function salvarPreferencias(_anterior: EstadoForm, form: FormData):
     pausa_longa: marcado("pausa_longa"),
     operacao_descoberta: marcado("operacao_descoberta"),
     sem_checkin: marcado("sem_checkin"),
+    entrada: marcado("entrada"),
+    saida: marcado("saida"),
   };
   const supabase = await createClient();
   // já tem escolhas salvas: atualiza (com a data); primeira vez: cria (a data o banco põe sozinho;

@@ -16,6 +16,8 @@ export const TIPOS_AVISO = [
   { id: "pausa_longa", nome: "Pausa passou do limite" },
   { id: "pausa_inicio", nome: "Alguém entrou em pausa" },
   { id: "pausa_fim", nome: "Alguém voltou da pausa" },
+  { id: "entrada", nome: "Alguém entrou na operação" },
+  { id: "saida", nome: "Alguém saiu da operação" },
 ] as const;
 export type TipoAviso = (typeof TIPOS_AVISO)[number]["id"];
 
@@ -40,33 +42,41 @@ async function avisar(db: Db, tipo: TipoAviso | "teste", chave: string, aviso: A
     .upsert({ tipo, chave, titulo: aviso.titulo, corpo: aviso.corpo }, { onConflict: "tipo,chave", ignoreDuplicates: true })
     .select("id")
     .maybeSingle();
-  if (!registro) return 0; // já avisado antes
+  if (!registro) return 0; // já avisado antes (mesmo acontecimento)
 
-  const [{ data: inscricoes }, { data: prefs }, { data: usuarios }] = await Promise.all([
-    db.from("push_inscricoes").select("id, usuario_id, endpoint, p256dh, auth"),
-    db.from("notificacoes_preferencias").select("*"),
-    db.auth.admin.listUsers({ perPage: 200 }),
-  ]);
-  const papelDe = new Map((usuarios?.users ?? []).map((u) => [u.id, (u.app_metadata as { papel?: string })?.papel ?? null]));
-  const prefDe = new Map((prefs ?? []).map((p) => [String(p.usuario_id), p as Partial<Record<TipoAviso, boolean>>]));
-  const alvo = (inscricoes ?? []).filter((i) => {
-    const u = String(i.usuario_id);
-    if (opcoes.so) return u === opcoes.so;
-    if (opcoes.exceto && u === opcoes.exceto) return false;
-    return tipo === "teste" ? false : querReceber(prefDe.get(u) ?? null, papelDe.get(u) ?? null, tipo);
-  });
+  // daqui em diante, tudo o que acontecer fica no registro do aviso (resultado por aparelho ou erro)
+  try {
+    const [{ data: inscricoes }, { data: prefs }, { data: usuarios }] = await Promise.all([
+      db.from("push_inscricoes").select("id, usuario_id, endpoint, p256dh, auth, aparelho"),
+      db.from("notificacoes_preferencias").select("*"),
+      db.auth.admin.listUsers({ perPage: 200 }),
+    ]);
+    const papelDe = new Map((usuarios?.users ?? []).map((u) => [u.id, (u.app_metadata as { papel?: string })?.papel ?? null]));
+    const prefDe = new Map((prefs ?? []).map((p) => [String(p.usuario_id), p as Partial<Record<TipoAviso, boolean>>]));
+    const alvo = (inscricoes ?? []).filter((i) => {
+      const u = String(i.usuario_id);
+      if (opcoes.so) return u === opcoes.so;
+      if (opcoes.exceto && u === opcoes.exceto) return false;
+      return tipo === "teste" ? false : querReceber(prefDe.get(u) ?? null, papelDe.get(u) ?? null, tipo);
+    });
 
-  let enviados = 0;
-  for (const i of alvo) {
-    const r = await enviarPush({ endpoint: i.endpoint, p256dh: i.p256dh, auth: i.auth }, { url: "/escala", ...aviso });
-    if (r === "ok") enviados++;
-    if (r === "expirada") await db.from("push_inscricoes").delete().eq("id", i.id);
+    // etiqueta única por acontecimento: o celular não troca um aviso pelo outro em silêncio
+    const comTag: Aviso = { url: "/escala", ...aviso, tag: `${tipo}:${chave}` };
+    const resultado: { aparelho: string | null; situacao: string; codigo?: number; detalhe?: string }[] = [];
+    let enviados = 0;
+    for (const i of alvo) {
+      const r = await enviarPush({ endpoint: i.endpoint, p256dh: i.p256dh, auth: i.auth }, comTag);
+      resultado.push({ aparelho: i.aparelho ?? null, ...r });
+      if (r.situacao === "ok") enviados++;
+      if (r.situacao === "expirada") await db.from("push_inscricoes").delete().eq("id", i.id);
+    }
+    await db.from("notificacoes_enviadas").update({ enviados, resultado }).eq("id", registro.id);
+    if (alvo.length) await db.from("push_inscricoes").update({ ultimo_envio: new Date().toISOString() }).in("id", alvo.map((i) => i.id));
+    return enviados;
+  } catch (e) {
+    await db.from("notificacoes_enviadas").update({ erro: String(e instanceof Error ? e.message : e).slice(0, 500) }).eq("id", registro.id);
+    throw e;
   }
-  if (alvo.length) {
-    await db.from("notificacoes_enviadas").update({ enviados }).eq("id", registro.id);
-    await db.from("push_inscricoes").update({ ultimo_envio: new Date().toISOString() }).in("id", alvo.map((i) => i.id));
-  }
-  return enviados;
 }
 
 const horaDe = (iso: string) => {
@@ -86,10 +96,28 @@ export async function avisarPausa(pausaId: number, quando: "inicio" | "fim", que
   const nome = pessoa?.nome ?? "Alguém";
   const motivo = motivoTexto(p.motivo as MotivoPausa, p.detalhe);
   if (quando === "inicio") {
-    await avisar(db, "pausa_inicio", `pausa:${p.id}`, { titulo: `${nome} em pausa`, corpo: `${nome} em pausa (${motivo}) desde ${horaDe(String(p.inicio))}`, tag: `pausa-${p.id}` }, { exceto: quemFez });
+    await avisar(db, "pausa_inicio", `pausa:${p.id}`, { titulo: `${nome} em pausa`, corpo: `${nome} em pausa (${motivo}) desde ${horaDe(String(p.inicio))}` }, { exceto: quemFez });
   } else if (p.fim) {
     const min = Math.max(0, Math.round((Date.parse(String(p.fim)) - Date.parse(String(p.inicio))) / 60_000));
-    await avisar(db, "pausa_fim", `pausa:${p.id}`, { titulo: `${nome} voltou da pausa`, corpo: `${nome} voltou da pausa (${motivo}, ${min} min) às ${horaDe(String(p.fim))}`, tag: `pausa-${p.id}` }, { exceto: quemFez });
+    await avisar(db, "pausa_fim", `pausa:${p.id}`, { titulo: `${nome} voltou da pausa`, corpo: `${nome} voltou da pausa (${motivo}, ${min} min) às ${horaDe(String(p.fim))}` }, { exceto: quemFez });
+  }
+}
+
+/** Entrou ou saiu da operação (chamado logo depois da ação, em segundo plano). Uma chave por entrada. */
+export async function avisarEntradaSaida(checkinId: number, quando: "entrada" | "saida", quemFez: string): Promise<void> {
+  const db = createAdminClient();
+  const { data: c } = await db.from("escala_checkins").select("id, equipe_id, inicio, fim").eq("id", checkinId).maybeSingle();
+  if (!c) return;
+  const { data: pessoa } = await db.from("equipe").select("nome, teste, teste_visivel").eq("id", c.equipe_id).maybeSingle();
+  // pessoa de teste só avisa se estiver "visível" (para testar notificações)
+  if (pessoa?.teste && !pessoa.teste_visivel) return;
+  const nome = pessoa?.nome ?? "Alguém";
+  if (quando === "entrada") {
+    await avisar(db, "entrada", `entrada:${c.id}`, { titulo: `${nome} entrou na operação`, corpo: `${nome} está online desde ${horaDe(String(c.inicio))}` }, { exceto: quemFez });
+  } else if (c.fim) {
+    const min = Math.max(0, Math.round((Date.parse(String(c.fim)) - Date.parse(String(c.inicio))) / 60_000));
+    const dur = min >= 60 ? `${Math.floor(min / 60)}h${String(min % 60).padStart(2, "0")}` : `${min} min`;
+    await avisar(db, "saida", `saida:${c.id}`, { titulo: `${nome} saiu da operação`, corpo: `${nome} saiu às ${horaDe(String(c.fim))} (entrou às ${horaDe(String(c.inicio))}, ${dur})` }, { exceto: quemFez });
   }
 }
 
