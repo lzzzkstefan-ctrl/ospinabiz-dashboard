@@ -42,6 +42,10 @@ export type Resultado = {
   /** por dia: leads, divisão por número e, só dos leads do funil, quantos chegaram em cada etapa
    * (alcance[etapaId]) e quantos compraram (Hubla ou Pix/CNPJ) — base do gráfico de conversão */
   porDia: { dia: string; qtd: number; porNumero: PorNumero; noFunil: number; compraram: number; alcance: Record<number, number> }[];
+  /** público elegível para o downsell: leads do funil que NÃO compraram e têm etiqueta de perda ou
+   * objeção (frustrados, sem dinheiro…), por dia e por motivo */
+  elegiveisPorDia: { dia: string; qtd: number }[];
+  elegiveisPorMotivo: { nome: string; qtd: number }[];
   /** conversão por número (cada lead no número da primeira conversa) */
   conversaoPorNumero: { numeroId: string | null; leads: number; compraram: number }[];
   porNumero: PorNumero;
@@ -160,6 +164,8 @@ export function calcularFunil(leads: LeadFunil[], etapas: Etapa[], etiquetas: Et
   const comprou = (l: LeadFunil) => l.compra === "hubla" || l.compra === "fora_hubla";
   // etapa mais avançada de cada lead do funil (os "fora do funil" não entram)
   const maximoDoLead = new Map(doFunil.map((a, i) => [a.lead.dc_id, maximos[i]]));
+  const motivos = new Set(etapas.filter((e) => e.tipo === "perda" || e.tipo === "objecao").map((e) => e.id));
+  const elegiveis = doFunil.filter((a) => !comprou(a.lead) && [...a.primeira.keys()].some((id) => motivos.has(id)));
   const porNumeroConv = new Map<string | null, { leads: number; compraram: number }>();
   for (const l of leads) {
     const g = porNumeroConv.get(l.numero_dc_id) ?? { leads: 0, compraram: 0 };
@@ -180,6 +186,10 @@ export function calcularFunil(leads: LeadFunil[], etapas: Etapa[], etiquetas: Et
       return { dia, qtd: lista.length, porNumero: contarPorNumero(lista), noFunil: doFunilNoDia.length, compraram: doFunilNoDia.filter(comprou).length, alcance };
     }),
     porNumero: contarPorNumero(leads),
+    elegiveisPorDia: diasDoPeriodo(desde, ate).map((dia) => ({ dia, qtd: elegiveis.filter((a) => a.lead.dia === dia).length })),
+    elegiveisPorMotivo: etapas
+      .filter((e) => e.tipo === "perda" || e.tipo === "objecao")
+      .map((e) => ({ nome: e.nome, qtd: elegiveis.filter((a) => a.primeira.has(e.id)).length })),
     conversaoPorNumero: [...porNumeroConv.entries()].map(([numeroId, g]) => ({ numeroId, ...g })).sort((a, b) => b.leads - a.leads),
     funil,
     maiorGap,

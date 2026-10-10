@@ -38,7 +38,16 @@ export default function PainelLayout({
 }) {
   return (
     <>
-      <Suspense fallback={<Navegacao admin={false} />}>
+      {/* o menu lê o endereço (usePathname): em página com parâmetro desconhecido no build
+          (ex.: /webinarios/[id]) isso só se resolve no pedido, então o menu provisório também
+          fica dentro de um Suspense (docs: use-pathname, "Cache Components") */}
+      <Suspense
+        fallback={
+          <Suspense fallback={null}>
+            <Navegacao admin={false} />
+          </Suspense>
+        }
+      >
         <Menu />
       </Suspense>
       <main className="mx-auto max-w-[1180px] px-6 pb-28 pt-8 md:pb-16 md:pt-24 print:max-w-none print:p-0">{children}</main>

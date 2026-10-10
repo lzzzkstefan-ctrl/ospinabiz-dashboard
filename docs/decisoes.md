@@ -242,3 +242,14 @@ ver as vendas individuais da Vyenna. O chefe de Vendas é o Rodrigo. A Geral do 
 valor em reais nem ticket médio da equipe: com a quantidade da equipe, revelariam o faturamento do
 outro pela diferença. A Configuração saiu do vendedor pelo mesmo motivo (a margem mostrava o
 líquido da operação).
+
+## 2026-10-09: Webinários v1 sem integração; checklist na aba Tarefas
+
+Webinários começam com tudo digitado (cadastro, sessões, mensagens, links). Plataforma, ID da oferta
+na Hubla e variação A/B são opcionais até serem definidos. O checklist de implantação vira tarefas da
+aba Tarefas (ligadas ao webinário), a partir de um modelo fixo que o admin ajusta.
+
+**Por quê:** plataforma, ofertas e formato do A/B ainda não estão definidos; digitar agora permite
+usar o funil da live e o custo de mensagens já, e a integração (webhook, vendas pela oferta) entra
+depois sem mudar o desenho. Tarefas já tem responsável, prazo e conclusão: não faz sentido duplicar.
+O vendedor só vê nome e playbook dos webinários no ar (função no banco), nunca preço ou métricas.

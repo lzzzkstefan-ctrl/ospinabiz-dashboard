@@ -10,6 +10,7 @@ import {
   Filter,
   House,
   ListChecks,
+  Presentation,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -25,6 +26,7 @@ const TODOS = [
   { href: "/tarefas", label: "Tarefas", icon: ListChecks, emBreve: false, admin: false },
   { href: "/vendas", label: "Vendas", icon: BadgeDollarSign, emBreve: false, admin: false },
   { href: "/funil", label: "Funil", icon: Filter, emBreve: false, admin: false },
+  { href: "/webinarios", label: "Webinários", icon: Presentation, emBreve: false, admin: false },
   { href: "/fechamento", label: "Fechamento", icon: CalendarCheck, emBreve: true, admin: true },
   { href: "/bms", label: "BMs", icon: Building2, emBreve: false, admin: true },
   { href: "/admin/usuarios", label: "Usuários", icon: Users, emBreve: true, admin: true },
