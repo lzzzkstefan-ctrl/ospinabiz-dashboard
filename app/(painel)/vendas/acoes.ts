@@ -6,7 +6,7 @@
 // Vendas são gravadas com a chave secreta (o RLS não deixa ninguém gravar direto).
 
 import type { EstadoForm } from "@/components/formulario";
-import { ehAdmin, usuarioLogado } from "@/lib/auth/papeis";
+import { ehChefeVendas, usuarioLogado } from "@/lib/auth/papeis";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { dadosDoFechamento } from "@/modulos/vendas/fechamento";
@@ -14,7 +14,7 @@ import { processarEvento } from "@/modulos/vendas/processar";
 import { FAIXAS, MES_NAO_ACABOU, mesJaAcabou, type Faixa } from "@/modulos/vendas/regras";
 import { refresh } from "next/cache";
 
-const SO_ADMIN: EstadoForm = { erro: "Só admin pode alterar." };
+const SO_ADMIN: EstadoForm = { erro: "Só o chefe de Vendas pode alterar." };
 
 /** Quem está mudando a venda: o banco exige isso em mês fechado e registra (vendas_alteracoes). */
 const peloAdmin = (usuarioId: string) => ({ alterado_via: "admin" as const, alterado_por: usuarioId });
@@ -49,7 +49,7 @@ function mesDoForm(form: FormData): string | null {
 /** Admin: muda o dono. destino = "<equipe_id>", "a_atribuir" ou "ninguem" (não é de nenhum vendedor). */
 export async function atribuirVenda(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
   const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") return SO_ADMIN;
+  if (usuario?.vendas !== "chefe") return SO_ADMIN;
   const vendaId = id(form);
   if (!vendaId) return { erro: "Venda não encontrada." };
 
@@ -90,7 +90,7 @@ export async function atribuirVenda(_anterior: EstadoForm, form: FormData): Prom
 /** Admin: corrige o ticket e o status (pago, reembolso, chargeback) de uma venda. */
 export async function corrigirVenda(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
   const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") return SO_ADMIN;
+  if (usuario?.vendas !== "chefe") return SO_ADMIN;
   const vendaId = id(form);
   if (!vendaId) return { erro: "Venda não encontrada." };
 
@@ -123,7 +123,7 @@ export async function corrigirVenda(_anterior: EstadoForm, form: FormData): Prom
 // ---------------------------------------------------------------------------
 export async function fecharMes(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
   const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") return SO_ADMIN;
+  if (usuario?.vendas !== "chefe") return SO_ADMIN;
   const mes = mesDoForm(form);
   const vendedorId = id(form, "vendedor_id");
   const faixa = Number(form.get("faixa")) as Faixa;
@@ -158,11 +158,27 @@ export async function fecharMes(_anterior: EstadoForm, form: FormData): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// Configuração (só admin; o RLS do banco confere de novo)
+// Meta do mês (quantidade de vendas da equipe): só o chefe; o RLS confere de novo.
+export async function salvarMeta(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (usuario?.vendas !== "chefe") return SO_ADMIN;
+  const mes = mesDoForm(form);
+  const meta = Number(String(form.get("meta_qtd") ?? "").trim());
+  if (!mes) return { erro: "Mês inválido." };
+  if (!Number.isInteger(meta) || meta <= 0) return { erro: "Meta: um número inteiro de vendas, ex.: 200." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("vendas_metas").upsert({ mes, meta_qtd: meta, atualizado_por: usuario.id, atualizado_em: new Date().toISOString() });
+  if (error) return { erro: "Não deu para salvar a meta." };
+  refresh();
+  return { ok: "Meta salva." };
+}
+
+// ---------------------------------------------------------------------------
+// Configuração (só o chefe de Vendas; o RLS do banco confere de novo)
 // ---------------------------------------------------------------------------
 export async function salvarMes(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
   const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") return SO_ADMIN;
+  if (usuario?.vendas !== "chefe") return SO_ADMIN;
   const mes = mesDoForm(form);
   if (!mes) return { erro: "Mês inválido." };
 
@@ -186,7 +202,7 @@ export async function salvarMes(_anterior: EstadoForm, form: FormData): Promise<
 }
 
 export async function salvarTicket(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   const campos = ["valor_bruto", "valor_liquido", "comissao_6", "comissao_7", "comissao_8", "comissao_9", "comissao_10"] as const;
   const valores = Object.fromEntries(campos.map((c) => [c, valorEmReais(form, c)]));
   if (Object.values(valores).some((v) => v === null || Number.isNaN(v))) return { erro: "Preencha todos os valores em reais." };
@@ -203,7 +219,7 @@ export async function salvarTicket(_anterior: EstadoForm, form: FormData): Promi
 }
 
 export async function alternarTicket(form: FormData): Promise<void> {
-  if (!(await ehAdmin())) return;
+  if (!(await ehChefeVendas())) return;
   const ticketId = id(form);
   if (!ticketId) return;
   const supabase = await createClient();
@@ -213,7 +229,7 @@ export async function alternarTicket(form: FormData): Promise<void> {
 
 /** Novo custo fixo, já com o valor a partir do mês escolhido. */
 export async function criarCusto(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   const nome = String(form.get("nome") ?? "").trim().slice(0, 60);
   const mes = mesDoForm(form);
   const valor = valorEmReais(form, "valor");
@@ -231,7 +247,7 @@ export async function criarCusto(_anterior: EstadoForm, form: FormData): Promise
 
 /** Valor de um custo a partir de um mês (os meses anteriores não mudam). */
 export async function valorDoCusto(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   const custoId = id(form);
   const mes = mesDoForm(form);
   const valor = valorEmReais(form, "valor");
@@ -249,7 +265,7 @@ export async function valorDoCusto(_anterior: EstadoForm, form: FormData): Promi
 
 /** Desativa um custo a partir de um mês (ou reativa, sem mês). */
 export async function alternarCusto(form: FormData): Promise<void> {
-  if (!(await ehAdmin())) return;
+  if (!(await ehChefeVendas())) return;
   const custoId = id(form);
   if (!custoId) return;
   const desativar = form.get("acao") === "desativar";
@@ -261,14 +277,14 @@ export async function alternarCusto(form: FormData): Promise<void> {
 }
 
 export async function reprocessar(form: FormData): Promise<void> {
-  if (!(await ehAdmin())) return;
+  if (!(await ehChefeVendas())) return;
   const eventoId = id(form);
   if (eventoId) await processarEvento(eventoId);
   refresh();
 }
 
 export async function reprocessarTodos(): Promise<void> {
-  if (!(await ehAdmin())) return;
+  if (!(await ehChefeVendas())) return;
   const db = createAdminClient();
   const { data } = await db
     .from("hubla_eventos")

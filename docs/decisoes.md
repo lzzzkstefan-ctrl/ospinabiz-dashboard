@@ -231,3 +231,14 @@ fatura, na parte do ticket. Vale para todas as formas de pagamento.
 mudar taxa (de jan a mar/2026 o Pix custava ~R$ 2 a mais por venda do que a tabela supõe).
 Agosto e setembro já foram pagos e ficam como estão; julho fechado também (a diferença de
 +R$ 30,67 a 10% ficou só como informação).
+
+## 2026-10-09: Papel em Vendas separado do admin do sistema
+
+Vendas tem papel próprio (chefe, gerente, vendedor) em `app_metadata.vendas`. As regras (RLS) de
+Vendas usam esse papel; o "admin do sistema" continua valendo para Monitor, BMs, Usuários e Funil.
+
+**Por quê:** o Davi é admin do sistema (criou e mantém a dash), mas em Vendas é vendedor e não pode
+ver as vendas individuais da Vyenna. O chefe de Vendas é o Rodrigo. A Geral do vendedor não mostra
+valor em reais nem ticket médio da equipe: com a quantidade da equipe, revelariam o faturamento do
+outro pela diferença. A Configuração saiu do vendedor pelo mesmo motivo (a margem mostrava o
+líquido da operação).

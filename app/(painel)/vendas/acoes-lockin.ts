@@ -1,10 +1,12 @@
 "use server";
 
-// Ações da tela de Vendas (formato Lock in). Todas são só do admin: o vendedor só lê.
+// Ações da tela de Vendas (formato Lock in). Só o CHEFE de Vendas administra; o vendedor (e o
+// gerente) só cadastra venda no próprio nome, que entra pendente ("A revisar") até ser
+// confirmada, e o gerente confirma só as próprias.
 // Conferem o papel ANTES de gravar; vendas são gravadas com a chave secreta (o RLS não
 // deixa ninguém gravar venda direto), o resto com o usuário logado (o RLS confere de novo).
 
-import { ehAdmin, usuarioLogado } from "@/lib/auth/papeis";
+import { ehChefeVendas, usuarioLogado } from "@/lib/auth/papeis";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { analisarCsv, resumirLI, slugDe, type LinhaImportacao, type Plataforma } from "@/modulos/vendas/lock-in";
@@ -14,7 +16,7 @@ import { refresh } from "next/cache";
 import { randomBytes, randomUUID } from "node:crypto";
 
 export type Resultado = { erro?: string };
-const SO_ADMIN: Resultado = { erro: "Só admin pode alterar." };
+const SO_ADMIN: Resultado = { erro: "Só o chefe de Vendas pode alterar." };
 const mesOk = (m: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(m);
 const dataOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(new Date(`${d}T12:00:00Z`).getTime());
 const idOk = (n: number) => Number.isInteger(n) && n > 0;
@@ -25,6 +27,12 @@ const peloAdmin = (usuarioId: string) => ({ alterado_via: "admin" as const, alte
 /** Erro do banco → mensagem para a tela. A trava de mês fechado já vem em português. */
 function erroDoBanco(error: { message: string }, padrao: string): string {
   return /m[eê]s fechado|reabr/i.test(error.message) ? error.message : padrao;
+}
+
+/** Pessoa da equipe ligada a este login (null = não ligado). */
+async function minhaEquipeId(usuarioId: string): Promise<number | null> {
+  const { data } = await createAdminClient().from("equipe").select("id").eq("usuario_id", usuarioId).maybeSingle();
+  return data ? Number(data.id) : null;
 }
 
 async function vendedorExiste(id: number): Promise<boolean> {
@@ -42,7 +50,7 @@ async function plataformaOk(slug: string, exigirAtiva: boolean): Promise<boolean
 
 // ---------- plataformas (Configuração de vendas, só admin) ----------
 export async function criarPlataforma(nome: string, cor: string): Promise<Resultado> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   const n = nome.trim().replace(/\s+/g, " ");
   const slug = slugDe(n);
   if (!n || !slug) return { erro: "Digite o nome da plataforma." };
@@ -56,7 +64,7 @@ export async function criarPlataforma(nome: string, cor: string): Promise<Result
 }
 
 export async function editarPlataforma(slug: string, campos: { cor?: string; ativa?: boolean }): Promise<Resultado> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   if (campos.cor !== undefined && !/^#[0-9a-f]{6}$/i.test(campos.cor)) return { erro: "Cor inválida." };
   const supabase = await createClient();
   const { error } = await supabase
@@ -70,7 +78,7 @@ export async function editarPlataforma(slug: string, campos: { cor?: string; ati
 
 // ---------- mês do vendedor: observações e link público ----------
 export async function salvarObservacoes(mes: string, vendedorId: number, texto: string): Promise<Resultado> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   if (!mesOk(mes) || !idOk(vendedorId)) return { erro: "Mês ou vendedor inválido." };
   const supabase = await createClient();
   const { error } = await supabase
@@ -80,7 +88,7 @@ export async function salvarObservacoes(mes: string, vendedorId: number, texto: 
 }
 
 export async function gerarLinkMes(mes: string, vendedorId: number): Promise<Resultado> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   if (!mesOk(mes) || !idOk(vendedorId)) return { erro: "Mês ou vendedor inválido." };
   const supabase = await createClient();
   const { error } = await supabase
@@ -92,7 +100,7 @@ export async function gerarLinkMes(mes: string, vendedorId: number): Promise<Res
 }
 
 export async function desativarLinkMes(mes: string, vendedorId: number): Promise<Resultado> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   const supabase = await createClient();
   const { error } = await supabase
     .from("vendas_meses_vendedor")
@@ -106,7 +114,7 @@ export async function desativarLinkMes(mes: string, vendedorId: number): Promise
 
 // ---------- adiantamentos ----------
 export async function criarAdiantamento(mes: string, vendedorId: number, valorCentavos: number, data: string): Promise<Resultado> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   if (!mesOk(mes) || !idOk(vendedorId)) return { erro: "Mês ou vendedor inválido." };
   if (!Number.isInteger(valorCentavos) || valorCentavos <= 0) return { erro: "Valor inválido." };
   if (!dataOk(data) || !data.startsWith(mes)) return { erro: "O dia tem que ser do mês do fechamento." };
@@ -118,7 +126,7 @@ export async function criarAdiantamento(mes: string, vendedorId: number, valorCe
 }
 
 export async function removerAdiantamento(id: number): Promise<Resultado> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   const supabase = await createClient();
   const { error } = await supabase.from("vendas_adiantamentos").delete().eq("id", id);
   if (error) return { erro: "Não deu para remover." };
@@ -128,7 +136,7 @@ export async function removerAdiantamento(id: number): Promise<Resultado> {
 
 // ---------- WhatsApp do Rodrigo ----------
 export async function salvarWhatsapp(numero: string): Promise<Resultado> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   const digitos = numero.replace(/\D/g, "");
   if (digitos && !/^\d{10,15}$/.test(digitos)) return { erro: "Use DDI + DDD + número, só dígitos." };
   const supabase = await createClient();
@@ -141,7 +149,7 @@ export async function salvarWhatsapp(numero: string): Promise<Resultado> {
 // O "Enviar pro Rodrigo" NÃO chama isto: só manda a mensagem.
 export async function registrarFechamento(mes: string, vendedorId: number, faixa: Faixa, confirmarMesAberto = false): Promise<Resultado> {
   const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") return SO_ADMIN;
+  if (usuario?.vendas !== "chefe") return SO_ADMIN;
   if (!mesOk(mes) || !idOk(vendedorId) || !FAIXAS.includes(faixa)) return { erro: "Dados inválidos." };
   if (!mesJaAcabou(mes) && !confirmarMesAberto) return { erro: MES_NAO_ACABOU };
   const [a, m] = mes.split("-").map(Number);
@@ -194,18 +202,21 @@ function validar(v: VendaInput): string | null {
 
 export async function criarVenda(v: VendaInput): Promise<Resultado> {
   const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") return SO_ADMIN;
+  if (!usuario) return SO_ADMIN;
+  const chefe = usuario.vendas === "chefe";
   const erro = validar(v);
   if (erro) return { erro };
   if (!(await plataformaOk(v.plataforma, true))) return { erro: "Plataforma inválida ou desativada." };
-  if (!v.vendedorId || !(await vendedorExiste(v.vendedorId))) return { erro: "Escolha o vendedor." };
+  // vendedor e gerente: o vendedor é SEMPRE quem está logado (o que veio da tela é ignorado)
+  const vendedorId = chefe ? v.vendedorId : await minhaEquipeId(usuario.id);
+  if (!vendedorId || !(await vendedorExiste(vendedorId))) return { erro: chefe ? "Escolha o vendedor." : "Seu login não está ligado a um vendedor." };
   const db = createAdminClient();
   const agora = new Date().toISOString();
   const { data, error } = await db
     .from("vendas")
     .insert({
       id_fatura: `manual-${randomUUID()}`,
-      vendedor_id: v.vendedorId,
+      vendedor_id: vendedorId,
       forma_atribuicao: "manual",
       atribuida_por: usuario.id,
       atribuida_em: agora,
@@ -220,13 +231,15 @@ export async function criarVenda(v: VendaInput): Promise<Resultado> {
       final_lead: v.digitos || null,
       plataforma: v.plataforma,
       origem: "manual",
-      ...peloAdmin(usuario.id),
+      // venda do vendedor fica pendente até o chefe (ou o gerente, se for dele) confirmar
+      aguardando_confirmacao: !chefe,
+      ...(chefe ? peloAdmin(usuario.id) : {}),
     })
     .select("id")
     .single();
   if (error) return { erro: erroDoBanco(error, "Não deu para salvar a venda.") };
   await db.from("vendas_clientes").insert({ venda_id: data.id, nome: v.nome.trim().split(/\s+/)[0] });
-  await db.from("vendas_atribuicoes").insert({ venda_id: data.id, para_vendedor_id: v.vendedorId, forma: "admin", por: usuario.id });
+  await db.from("vendas_atribuicoes").insert({ venda_id: data.id, para_vendedor_id: vendedorId, forma: chefe ? "admin" : "e_minha", por: usuario.id });
   refresh();
   return {};
 }
@@ -234,7 +247,7 @@ export async function criarVenda(v: VendaInput): Promise<Resultado> {
 /** Admin: ticket, status, data, dono e o nome/final do cliente de uma venda. */
 export async function editarVenda(id: number, v: VendaInput & { semVendedor: boolean }): Promise<Resultado> {
   const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") return SO_ADMIN;
+  if (usuario?.vendas !== "chefe") return SO_ADMIN;
   if (!idOk(id)) return { erro: "Venda não encontrada." };
   const erro = validar(v);
   if (erro) return { erro };
@@ -288,14 +301,14 @@ export async function editarVenda(id: number, v: VendaInput & { semVendedor: boo
 
 // ---------- importar CSV (formato do Notion do Lock in) ----------
 export async function previaImportacao(texto: string): Promise<{ erro: string } | { linhas: LinhaImportacao[] }> {
-  if (!(await ehAdmin())) return { erro: SO_ADMIN.erro! };
+  if (!(await ehChefeVendas())) return { erro: SO_ADMIN.erro! };
   if (texto.length > 2_000_000) return { erro: "Arquivo grande demais." };
   return analisarCsv(texto, await listarTicketsLI());
 }
 
 export async function gravarImportacao(texto: string, vendedorId: number): Promise<Resultado & { gravadas?: number }> {
   const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") return SO_ADMIN;
+  if (usuario?.vendas !== "chefe") return SO_ADMIN;
   if (!idOk(vendedorId) || !(await vendedorExiste(vendedorId))) return { erro: "Escolha o vendedor." };
   const r = analisarCsv(texto, await listarTicketsLI());
   if ("erro" in r) return r;
@@ -334,10 +347,30 @@ export async function gravarImportacao(texto: string, vendedorId: number): Promi
   return { gravadas };
 }
 
+// ---------- venda pendente (cadastrada pelo vendedor): confirmar ----------
+/** Chefe confirma qualquer venda pendente; gerente só as próprias; vendedor não confirma. */
+export async function confirmarVenda(id: number): Promise<Resultado> {
+  const usuario = await usuarioLogado();
+  if (!usuario || (usuario.vendas !== "chefe" && usuario.vendas !== "gerente")) return { erro: "Só o chefe de Vendas confirma vendas." };
+  if (!idOk(id)) return { erro: "Venda não encontrada." };
+  const db = createAdminClient();
+  const { data: v } = await db.from("vendas").select("vendedor_id, aguardando_confirmacao").eq("id", id).single();
+  if (!v) return { erro: "Venda não encontrada." };
+  if (!v.aguardando_confirmacao) return { erro: "Essa venda já está confirmada." };
+  if (usuario.vendas === "gerente" && v.vendedor_id !== (await minhaEquipeId(usuario.id))) return { erro: "Você só confirma as suas vendas." };
+  const { error } = await db
+    .from("vendas")
+    .update({ aguardando_confirmacao: false, confirmada_por: usuario.id, confirmada_em: new Date().toISOString(), ...peloAdmin(usuario.id) })
+    .eq("id", id);
+  if (error) return { erro: erroDoBanco(error, "Não deu para confirmar.") };
+  refresh();
+  return {};
+}
+
 // ---------- mês fechado: reabrir (com motivo) e ajuste manual ----------
 /** Reabre um mês fechado. O banco confere se é admin, exige o motivo e registra. */
 export async function reabrirMes(mes: string, vendedorId: number, motivo: string): Promise<Resultado> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   if (!mesOk(mes) || !idOk(vendedorId)) return { erro: "Mês ou vendedor inválido." };
   if (motivo.trim().length < 5) return { erro: "Escreva o motivo (mínimo 5 letras)." };
   const supabase = await createClient();
@@ -349,7 +382,7 @@ export async function reabrirMes(mes: string, vendedorId: number, motivo: string
 
 /** Ajuste manual num mês fechado: + paga a mais, − desconta. Não se apaga: corrige-se com outro. */
 export async function criarAjuste(mes: string, vendedorId: number, valorCentavos: number, motivo: string): Promise<Resultado> {
-  if (!(await ehAdmin())) return SO_ADMIN;
+  if (!(await ehChefeVendas())) return SO_ADMIN;
   if (!mesOk(mes) || !idOk(vendedorId)) return { erro: "Mês ou vendedor inválido." };
   if (!Number.isInteger(valorCentavos) || valorCentavos === 0) return { erro: "Valor inválido." };
   const m = motivo.trim();

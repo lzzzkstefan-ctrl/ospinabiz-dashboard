@@ -106,6 +106,23 @@ Faixas (o limite de baixo entra na faixa de cima): <10% → 6% · 10–<20% → 
 
 ## Quem vê o quê
 
+> **Papel em Vendas** (`app_metadata.vendas`, migration `vendas_papeis`, 09/10/2026), separado do
+> admin do sistema (Monitor, BMs, Usuários, Funil). Sem o campo: admin = chefe, os outros = vendedor.
+> | | chefe | gerente | vendedor |
+> |---|---|---|---|
+> | Abas | todos os vendedores + Geral | a própria + Geral | a própria + Geral |
+> | Geral | completa (por vendedor) | completa (só números agregados) | equipe: quantidade, % da meta e o ticket médio dele (sem R$ da equipe) |
+> | Vendas que lê (RLS) | todas | só as próprias | só as próprias |
+> | Configuração, fechar/reabrir mês, ajustes, adiantamentos, meta, PDF/CSV | sim | não | não |
+> | Nova venda | qualquer vendedor | só no próprio nome, pendente | só no próprio nome, pendente |
+> | Confirmar venda pendente | todas | só as próprias | não |
+>
+> Geral sai de duas funções do banco que devolvem só números (`vendas_geral_completa`,
+> `vendas_geral_equipe`). Venda pendente (`aguardando_confirmacao`) e de teste não contam em nada.
+> Hoje: Rodrigo = chefe (admin); Davi = chefe até o Rodrigo ativar a conta, depois gerente
+> (continua admin do sistema); Vyenna = vendedora.
+
+
 | | Admin | Vendedor |
 |---|---|---|
 | Vendas | todas | **só as dele** (RLS) |

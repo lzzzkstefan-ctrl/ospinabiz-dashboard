@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { atribuirVenda, corrigirVenda, criarCusto, fecharMes, salvarMes, salvarTicket, valorDoCusto } from "../acoes";
+import { atribuirVenda, corrigirVenda, criarCusto, fecharMes, salvarMes, salvarMeta, salvarTicket, valorDoCusto } from "../acoes";
 
 // Formulários da aba Vendas (os que mostram mensagem de resultado ou precisam do navegador).
 
@@ -151,6 +151,21 @@ export function CorrigirVenda({
 const reaisTexto = (v: number | null) => (v === null ? "" : (v / 100).toFixed(2).replace(".", ","));
 
 /** Admin: valores do mês que entram na margem. Valores em centavos. */
+/** Meta do mês: quantidade de vendas da equipe (só o chefe; o RLS confere de novo). */
+export function FormMeta({ mes, meta }: { mes: string; meta: number | null }) {
+  const [estado, acao] = useActionState<EstadoForm, FormData>(salvarMeta, {});
+  return (
+    <form action={acao} className="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="mes" value={mes} />
+      <Campo rotulo="Meta (vendas)">
+        <Input name="meta_qtd" inputMode="numeric" defaultValue={meta ?? ""} placeholder="ex.: 200" className="w-36 tabular-nums" />
+      </Campo>
+      <Salvar />
+      <Aviso estado={estado} />
+    </form>
+  );
+}
+
 export function FormMes({
   mes,
   gasto,

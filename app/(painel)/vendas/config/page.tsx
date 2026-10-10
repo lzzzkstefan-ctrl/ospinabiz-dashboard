@@ -1,25 +1,23 @@
 import { Gaveta } from "@/components/formulario";
 import { Button } from "@/components/ui/button";
 import { Etiqueta } from "@/components/ui/etiqueta";
-import { Input } from "@/components/ui/input";
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { listarCustos, listarEventosComErro, listarTickets, margemDoMes, type MargemDoMes } from "@/modulos/vendas/dados";
-import { custosParaLeitura, listarPlataformas } from "@/modulos/vendas/tela";
+import { geralEquipe, listarPlataformas } from "@/modulos/vendas/tela";
 import { Plataformas } from "./plataformas";
 import { centavos, custosDoMes, diaSP, lerMes, mesDe, nomeDoMes, precoCurto, reais, somarMes } from "@/modulos/vendas/regras";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { alternarCusto, alternarTicket, reprocessar, reprocessarTodos } from "../acoes";
-import { FormMes, FormNovoCusto, FormTicket, FormValorCusto } from "../_componentes/formularios";
+import { FormMes, FormMeta, FormNovoCusto, FormTicket, FormValorCusto } from "../_componentes/formularios";
 
 type Props = { searchParams: Promise<{ mes?: string | string[] }> };
 
-// Configuração de Vendas. Admin: edita valores do mês, custos fixos, tickets e vê eventos
-// da Hubla com erro. Atendente: SÓ LEITURA do mês, dos custos fixos e da conta da margem
-// (campos desabilitados, sem salvar). Gravar continua só do admin: as ações conferem o
-// papel e o RLS do banco não deixa atendente inserir nem editar essas tabelas.
-// O único número da operação que aparece é o líquido total usado na conta.
+// Configuração de Vendas: SÓ o chefe de Vendas (vê e edita meta, valores do mês, custos fixos,
+// plataformas, tickets e eventos da Hubla com erro). Vendedor e gerente não veem: a margem
+// mostra o líquido da operação, que revelaria o faturamento do outro vendedor. As ações
+// conferem o papel e o RLS do banco também só deixa o chefe ler e editar essas tabelas.
 export default function ConfigVendasPage({ searchParams }: Props) {
   return (
     <div className="flex flex-col gap-8">
@@ -46,17 +44,18 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 async function ConteudoConfig({ searchParams }: Props) {
   const usuario = await usuarioLogado();
   if (!usuario) notFound();
-  if (usuario.papel !== "admin") return <ConfigLeitura searchParams={searchParams} />;
+  if (usuario.vendas !== "chefe") return <p className="text-[13.5px] text-ink-dim">A Configuração de vendas é só do chefe de Vendas.</p>;
   const sp = await searchParams;
   const mesAtual = mesDe(diaSP(new Date())!);
   const mes = lerMes(sp.mes, mesAtual);
 
-  const [margem, tickets, custos, eventos, plataformas] = await Promise.all([
+  const [margem, tickets, custos, eventos, plataformas, equipe] = await Promise.all([
     margemDoMes(mes),
     listarTickets(),
     listarCustos(),
     listarEventosComErro(),
     listarPlataformas(),
+    geralEquipe(mes),
   ]);
   const doMes = custosDoMes(
     mes,
@@ -70,6 +69,13 @@ async function ConteudoConfig({ searchParams }: Props) {
         <span className="font-semibold capitalize text-white">{nomeDoMes(mes)}</span>
         <Link href={`/vendas/config?mes=${somarMes(mes, 1)}`} className="rounded-full px-3 py-1.5 text-ink-dim hover:bg-bg-raised-2 hover:text-white">→</Link>
       </div>
+
+      <Secao titulo="Meta do mês">
+        <p className="text-[12.5px] text-ink-dim">
+          Quantidade de vendas da equipe em {nomeDoMes(mes)}. Aparece na Geral de todos (vendas pagas: {equipe.pagas}).
+        </p>
+        <FormMeta mes={mes} meta={equipe.meta} />
+      </Secao>
 
       <Secao titulo="Margem do mês">
         <FormMes mes={mes} gasto={margem.entradas.gastoAnuncios} imposto={margem.entradas.impostoMeta} mensagens={margem.entradas.custoMensagens} />
@@ -183,67 +189,5 @@ function ContaDaMargem({ margem }: { margem: MargemDoMes }) {
       </p>
       <p className="text-[12px] text-ink-faint">Faixas: abaixo de 10% → 6% · 10% a 20% → 7% · 20% a 35% → 8% · 35% a 50% → 9% · acima de 50% → 10%. A comissão não entra na margem. O % que vale é o do fechamento, escolhido pelo admin.</p>
     </div>
-  );
-}
-
-const valorCampo = (c: number | null) => (c === null ? "" : (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-
-function CampoLeitura({ rotulo, valor }: { rotulo: string; valor: number | null }) {
-  return (
-    <label className="flex flex-col gap-1.5 text-[13px] text-ink-dim">
-      {rotulo}
-      <Input value={valorCampo(valor)} placeholder="não informado" disabled readOnly className="tabular-nums" />
-    </label>
-  );
-}
-
-/** Atendente: a mesma tela em modo leitura (sem tickets nem eventos da Hubla). */
-async function ConfigLeitura({ searchParams }: Props) {
-  const sp = await searchParams;
-  const mesAtual = mesDe(diaSP(new Date())!);
-  const mes = lerMes(sp.mes, mesAtual);
-  const [margem, custos] = await Promise.all([margemDoMes(mes), custosParaLeitura()]);
-  const doMes = custosDoMes(
-    mes,
-    custos,
-    custos.flatMap((c) => c.valores.map((v) => ({ custo_id: c.id, vigente_desde: v.vigente_desde, valor: v.valor }))),
-  );
-
-  return (
-    <>
-      <p className="-mt-4 text-[12.5px] text-ink-faint">Só leitura: quem edita estes valores é o admin.</p>
-      <div className="flex items-center gap-3 text-[13.5px]">
-        <Link href={`/vendas/config?mes=${somarMes(mes, -1)}`} className="rounded-full px-3 py-1.5 text-ink-dim hover:bg-bg-raised-2 hover:text-white">←</Link>
-        <span className="font-semibold capitalize text-white">{nomeDoMes(mes)}</span>
-        <Link href={`/vendas/config?mes=${somarMes(mes, 1)}`} className="rounded-full px-3 py-1.5 text-ink-dim hover:bg-bg-raised-2 hover:text-white">→</Link>
-      </div>
-
-      <Secao titulo="Margem do mês">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <CampoLeitura rotulo="Gasto em anúncios (R$)" valor={margem.entradas.gastoAnuncios} />
-          <CampoLeitura rotulo="Imposto Meta (R$)" valor={margem.entradas.impostoMeta} />
-          <CampoLeitura rotulo="Custo de mensagens (R$)" valor={margem.entradas.custoMensagens} />
-        </div>
-        <ContaDaMargem margem={margem} />
-      </Secao>
-
-      <Secao titulo="Custos fixos">
-        <ul className="flex flex-col">
-          {custos.map((c) => {
-            const atual = doMes.find((d) => d.id === c.id);
-            return (
-              <li key={c.id} className="flex flex-wrap items-center gap-3 border-b border-line-soft py-2 last:border-b-0">
-                <span className="w-32 text-[14px] text-white">{c.nome}</span>
-                {atual ? (
-                  <Input value={valorCampo(atual.valor)} placeholder="sem valor" disabled readOnly className="w-36 tabular-nums" aria-label={`Valor de ${c.nome}`} />
-                ) : (
-                  <Etiqueta cor="cinza">{c.desativado_desde && `${mes}-01` >= c.desativado_desde ? `desativado desde ${c.desativado_desde.slice(0, 7)}` : "sem valor neste mês"}</Etiqueta>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </Secao>
-    </>
   );
 }

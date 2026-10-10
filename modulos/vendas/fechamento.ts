@@ -34,6 +34,7 @@ export async function dadosDoFechamento(mes: string, vendedorId: number): Promis
       .from("vendas")
       .select(COLUNAS_VENDA)
       .eq("vendedor_id", vendedorId)
+      .eq("aguardando_confirmacao", false)
       .gte("data", inicio)
       .lt("data", fim)
       .order("data")

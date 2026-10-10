@@ -1,4 +1,4 @@
-import { ehAdmin } from "@/lib/auth/papeis";
+import { ehChefeVendas } from "@/lib/auth/papeis";
 import { carregarRelatorio, lerParametrosRelatorio } from "@/modulos/vendas/fechamento";
 import { nomeDoMes, reais } from "@/modulos/vendas/regras";
 import Link from "next/link";
@@ -22,7 +22,8 @@ const dataBR = (iso: string) =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(iso));
 
 async function Relatorio({ searchParams }: Props) {
-  if (!(await ehAdmin())) notFound();
+  // lê com a chave secreta: só o chefe de Vendas (o gerente é admin do sistema, mas não vê o outro)
+  if (!(await ehChefeVendas())) notFound();
   const sp = await searchParams;
   const p = lerParametrosRelatorio(sp.mes, sp.vendedor);
   if (!p) notFound();

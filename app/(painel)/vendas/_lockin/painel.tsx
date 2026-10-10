@@ -4,7 +4,7 @@
 // período, Copiar resumo / Importar CSV / Nova venda, 4 cards, margem, rosca, resumo
 // por ticket, comissão em cada margem, fechamento e a lista (Pago / Reembolso / Tabela).
 
-import { criarVenda, editarVenda, gravarImportacao, previaImportacao, type VendaInput } from "../acoes-lockin";
+import { confirmarVenda, criarVenda, editarVenda, gravarImportacao, previaImportacao, type VendaInput } from "../acoes-lockin";
 import {
   brutoVenda,
   comissaoVenda,
@@ -27,6 +27,7 @@ import {
   botaoPrimario,
   botaoSecundario,
   campo,
+  ConfirmButton,
   dataBR,
   formatBRL,
   Janela,
@@ -76,9 +77,19 @@ export function PainelVendas({
   ver,
   hoje,
   base,
+  podeCriar,
+  vendedorFixo,
+  confirmaProprias,
   fechamento,
 }: {
+  /** chefe de Vendas: edita, importa, fecha o mês, escolhe o vendedor */
   admin: boolean;
+  /** pode abrir o "Nova venda" (chefe; ou o vendedor/gerente na própria aba) */
+  podeCriar: boolean;
+  /** o vendedor da venda nova é sempre o da aba (vendedor e gerente) */
+  vendedorFixo: boolean;
+  /** gerente na própria aba: confirma as próprias vendas pendentes */
+  confirmaProprias: boolean;
   /** null = visão Geral (admin) */
   vendedor: VendedorOpcao | null;
   vendedores: VendedorOpcao[];
@@ -166,10 +177,12 @@ export function PainelVendas({
             {copiado ? "Copiado" : "Copiar resumo"}
           </button>
           {admin && (
+            <button type="button" onClick={() => setModal("importar")} className={cn(botaoSecundario, "inline-flex items-center gap-1.5")}>
+              <Upload size={13} /> Importar CSV
+            </button>
+          )}
+          {podeCriar && (
             <>
-              <button type="button" onClick={() => setModal("importar")} className={cn(botaoSecundario, "inline-flex items-center gap-1.5")}>
-                <Upload size={13} /> Importar CSV
-              </button>
               <button
                 type="button"
                 onClick={() => setModal("nova")}
@@ -412,7 +425,18 @@ export function PainelVendas({
 
       {modal === "nova" && (
         <Janela titulo="Nova venda" onFechar={() => setModal(null)}>
-          <VendaForm tickets={tickets} vendedores={vendedores} plataformas={plataformas} vendedorInicial={vendedor?.id ?? null} hoje={hoje} onSalvo={() => setModal(null)} />
+          {vendedorFixo && (
+            <p className="-mt-1 mb-3 text-[12.5px] text-ink-dim">A venda entra pendente (“aguardando confirmação”) e só conta depois que o chefe de Vendas confirmar.</p>
+          )}
+          <VendaForm
+            tickets={tickets}
+            vendedores={vendedorFixo && vendedor ? [vendedor] : vendedores}
+            plataformas={plataformas}
+            vendedorInicial={vendedor?.id ?? null}
+            vendedorFixo={vendedorFixo}
+            hoje={hoje}
+            onSalvo={() => setModal(null)}
+          />
         </Janela>
       )}
       {modal === "importar" && <ImportarCsv vendedores={vendedores} vendedorInicial={vendedor?.id ?? null} onFechar={() => setModal(null)} />}
@@ -420,6 +444,7 @@ export function PainelVendas({
         <DetalheVenda
           key={vendaAberta.id}
           admin={admin}
+          podeConfirmar={admin || confirmaProprias}
           venda={vendaAberta}
           tickets={tickets}
           vendedores={vendedores}
@@ -434,12 +459,13 @@ export function PainelVendas({
 }
 
 // ---------- filtros ----------
-type FiltroVendas = "todas" | "ticket" | "produto" | "indefinido";
+type FiltroVendas = "todas" | "ticket" | "produto" | "indefinido" | "pendente";
 const FILTROS: { id: FiltroVendas; nome: string; teste: (v: VendaLI) => boolean }[] = [
   { id: "todas", nome: "Todas", teste: () => true },
   { id: "ticket", nome: "Com ticket", teste: (v) => v.ticket_id != null },
   { id: "produto", nome: "Sem comissão (produto)", teste: (v) => v.ticket_id == null && v.principal_produto },
   { id: "indefinido", nome: "A revisar", teste: (v) => v.ticket_id == null && !v.principal_produto },
+  { id: "pendente", nome: "Aguardando confirmação", teste: (v) => !!v.aguardando_confirmacao },
 ];
 const filtrar = (vendas: VendaLI[], f: FiltroVendas) => vendas.filter(FILTROS.find((x) => x.id === f)!.teste);
 
@@ -495,6 +521,7 @@ function Grade({ vendas, ticketDe, onAbrir, vazio }: { vendas: VendaLI[]; ticket
               {t ? <TicketTag ticket={t} /> : <SemComissaoTag oferta={ofertaDe(v)} produto={v.principal_produto} />}
               <PlataformaTag plataforma={v.plataforma} />
               <StatusTag status={v.status} />
+              {v.aguardando_confirmacao && <span className="etiqueta etiqueta-laranja">aguardando confirmação</span>}
             </span>
           </button>
         );
@@ -599,6 +626,7 @@ function TabelaVendas({
 // ---------- detalhe da venda ----------
 function DetalheVenda({
   admin,
+  podeConfirmar,
   venda: v,
   tickets,
   vendedores,
@@ -607,6 +635,8 @@ function DetalheVenda({
   onFechar,
 }: {
   admin: boolean;
+  /** chefe confirma qualquer pendente; gerente só as próprias (o servidor confere) */
+  podeConfirmar: boolean;
   venda: VendaLI;
   tickets: TicketLI[];
   vendedores: VendedorOpcao[];
@@ -646,6 +676,19 @@ function DetalheVenda({
           <span className={v.status === "pago" ? "text-white" : "line-through"}>
             comissão {margem}% {formatBRL(comissaoVenda(v, t, margem) ?? 0)}
           </span>
+        </div>
+      )}
+      {v.aguardando_confirmacao && (
+        <div className="-mt-1 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[rgb(var(--tag-laranja)/0.5)] px-3 py-2 text-[12.5px] text-ink">
+          <span>Aguardando confirmação: cadastrada pelo vendedor, ainda não conta em nada.</span>
+          {podeConfirmar && (
+            <ConfirmButton
+              label="Confirmar venda"
+              pergunta="Confirmar esta venda? Ela passa a contar na comissão."
+              action={() => confirmarVenda(v.id)}
+              className={botaoSecundario}
+            />
+          )}
         </div>
       )}
       <p className="mb-4 text-[11.5px] text-ink-faint">Fatura {v.id_fatura}</p>
@@ -715,6 +758,7 @@ function VendaForm({
   plataformas,
   venda,
   vendedorInicial,
+  vendedorFixo = false,
   hoje,
   onSalvo,
 }: {
@@ -723,6 +767,8 @@ function VendaForm({
   plataformas: PlataformaLI[];
   venda?: VendaLI;
   vendedorInicial: number | null;
+  /** vendedor e gerente: o vendedor é sempre ele (o servidor ignora o que vier da tela) */
+  vendedorFixo?: boolean;
   hoje: string;
   onSalvo: () => void;
 }) {
@@ -783,6 +829,11 @@ function VendaForm({
         </label>
       </div>
 
+      {vendedorFixo ? (
+        <div className="text-xs text-ink-dim">
+          Vendedor <span className="ml-1 text-[13px] font-semibold text-white">{vendedores[0]?.nome}</span>
+        </div>
+      ) : (
       <div className="text-xs text-ink-dim">
         <div className="mb-1.5">Vendedor</div>
         <Botoes
@@ -793,6 +844,7 @@ function VendaForm({
           render={(id) => (id === "nenhum" ? "não é de vendedor" : (vendedores.find((v) => v.id === id)?.nome ?? String(id)))}
         />
       </div>
+      )}
 
       <div className="text-xs text-ink-dim">
         <div className="mb-1.5">Ticket</div>

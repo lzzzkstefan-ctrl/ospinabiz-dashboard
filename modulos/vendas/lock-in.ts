@@ -60,6 +60,8 @@ export type VendaLI = {
   receita_liquida?: number | string | null;
   /** venda de teste: fora da receita da operação */
   teste?: boolean;
+  /** cadastrada pelo vendedor e ainda não confirmada: não conta em nada */
+  aguardando_confirmacao?: boolean;
   snap_liquido: number | string | null;
   snap_comissao_6: number | string | null;
   snap_comissao_7: number | string | null;
@@ -116,6 +118,7 @@ export function resumirLI(vendas: VendaLI[], tickets: TicketLI[]): ResumoLI {
   let reembolsos = 0;
   let chargebacks = 0;
   for (const v of vendas) {
+    if (v.aguardando_confirmacao) continue; // pendente: não conta até ser confirmada
     if (v.status === "reembolso") reembolsos++;
     if (v.status === "chargeback") chargebacks++;
     if (v.status !== "pago") continue;

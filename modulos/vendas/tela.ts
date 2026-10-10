@@ -15,7 +15,7 @@ import { calcularMargem, centavos, custosDoMes, resumir, type Faixa, type Ticket
 
 const COLUNAS =
   "id, id_fatura, vendedor_id, sem_vendedor, ticket_id, principal_produto, motivo_sem_ticket, itens, bumps, status, data, pago_em, final_lead, origem, plataforma, " +
-  "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, receita_liquida, teste";
+  "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, receita_liquida, teste, aguardando_confirmacao";
 
 async function todas<T>(pagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
   const tudo: T[] = [];
@@ -225,6 +225,7 @@ export async function faixasSugeridas(ano: number): Promise<Map<string, Faixa | 
         .select("id, status, ticket_id, snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, data")
         .gte("data", `${ano}-01-01`)
         .lt("data", `${ano + 1}-01-01`)
+        .eq("aguardando_confirmacao", false)
         .order("id")
         .range(de, ate)
         .returns<Venda[]>(),
@@ -256,22 +257,6 @@ export async function faixasSugeridas(ano: number): Promise<Map<string, Faixa | 
     r.set(chave, margem.faixa);
   }
   return r;
-}
-
-/** Custos fixos e seus valores, para a tela de configuração em modo leitura (atendente).
- * As tabelas são só do admin no RLS; aqui o servidor lê com a chave secreta e devolve só
- * nome, desativação e valores (o mesmo que entra na conta da margem). */
-export async function custosParaLeitura(): Promise<
-  { id: number; nome: string; desativado_desde: string | null; valores: { vigente_desde: string; valor: number | null }[] }[]
-> {
-  const db = createAdminClient();
-  const { data, error } = await db
-    .from("custos_fixos")
-    .select("id, nome, desativado_desde, valores:custos_fixos_valores(vigente_desde, valor)")
-    .order("nome");
-  if (error) throw new Error(`Erro ao carregar custos: ${error.message}`);
-  type Bruto = { id: number; nome: string; desativado_desde: string | null; valores: { vigente_desde: string; valor: string | number | null }[] };
-  return (data as unknown as Bruto[]).map((c) => ({ ...c, valores: c.valores.map((v) => ({ ...v, valor: v.valor === null ? null : Number(v.valor) })) }));
 }
 
 /** WhatsApp do Rodrigo (só admin; para os outros volta null). */
@@ -313,7 +298,7 @@ export async function buscarMesPublico(codigo: string) {
 
   const [vendas, ticketsQ, fechamento, adiant, plataformasQ] = await Promise.all([
     todas<Omit<VendaLI, "cliente">>((de, ate) =>
-      db.from("vendas").select(COLUNAS).eq("vendedor_id", vendedorId).gte("data", `${mes}-01`).lt("data", fim).order("data").order("pago_em").range(de, ate).returns<Omit<VendaLI, "cliente">[]>(),
+      db.from("vendas").select(COLUNAS).eq("vendedor_id", vendedorId).eq("aguardando_confirmacao", false).gte("data", `${mes}-01`).lt("data", fim).order("data").order("pago_em").range(de, ate).returns<Omit<VendaLI, "cliente">[]>(),
     ),
     db.from("tickets").select("*").order("ordem"),
     db.from("vendas_fechamentos").select("faixa").eq("mes", `${mes}-01`).eq("vendedor_id", vendedorId).maybeSingle(),
@@ -362,4 +347,50 @@ export async function buscarMesPublico(codigo: string) {
       };
     }),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Geral (funções do banco que devolvem SÓ números agregados, nunca uma venda)
+// ---------------------------------------------------------------------------
+export type LinhaGeral = {
+  vendedorId: number | null;
+  pagas: number;
+  reembolsos: number;
+  chargebacks: number;
+  bruto: number;
+  liquido: number;
+  comissao: Record<Faixa, number>;
+  receita: number;
+  semReceita: number;
+};
+
+/** Geral completa (chefe e gerente), por vendedor, em centavos. */
+export async function geralCompleta(mes: string): Promise<LinhaGeral[]> {
+  const supabase = await createClient();
+  const [a, m] = mes.split("-").map(Number);
+  const fim = new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10);
+  const { data, error } = await supabase.rpc("vendas_geral_completa", { p_inicio: `${mes}-01`, p_fim: fim });
+  if (error) throw new Error(`Erro ao carregar a Geral: ${error.message}`);
+  return (data as Record<string, unknown>[]).map((r) => ({
+    vendedorId: r.vendedor_id === null ? null : Number(r.vendedor_id),
+    pagas: Number(r.pagas),
+    reembolsos: Number(r.reembolsos),
+    chargebacks: Number(r.chargebacks),
+    bruto: centavos(r.bruto as number),
+    liquido: centavos(r.liquido as number),
+    comissao: { 6: centavos(r.comissao_6 as number), 7: centavos(r.comissao_7 as number), 8: centavos(r.comissao_8 as number), 9: centavos(r.comissao_9 as number), 10: centavos(r.comissao_10 as number) },
+    receita: centavos(r.receita as number),
+    semReceita: Number(r.sem_receita),
+  }));
+}
+
+/** Geral da equipe (todos): quantidade de vendas pagas e a meta do mês. Sem valores. */
+export async function geralEquipe(mes: string): Promise<{ pagas: number; meta: number | null }> {
+  const supabase = await createClient();
+  const [a, m] = mes.split("-").map(Number);
+  const fim = new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10);
+  const { data, error } = await supabase.rpc("vendas_geral_equipe", { p_inicio: `${mes}-01`, p_fim: fim });
+  if (error) throw new Error(`Erro ao carregar a equipe: ${error.message}`);
+  const r = (data as { pagas: number; meta_qtd: number | null }[])[0];
+  return { pagas: Number(r?.pagas ?? 0), meta: r?.meta_qtd == null ? null : Number(r.meta_qtd) };
 }

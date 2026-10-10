@@ -11,7 +11,7 @@ const texto = (msg: string, status: number) => new Response(msg, { status, heade
 export async function GET(request: Request) {
   const usuario = await usuarioLogado();
   if (!usuario) return texto("Faça login.", 401);
-  if (usuario.papel !== "admin") return texto("Só admin pode exportar.", 403);
+  if (usuario.vendas !== "chefe") return texto("Só o chefe de Vendas pode exportar.", 403);
 
   const url = new URL(request.url);
   const p = lerParametrosRelatorio(url.searchParams.get("mes"), url.searchParams.get("vendedor"));

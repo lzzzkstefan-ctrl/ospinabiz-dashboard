@@ -197,7 +197,7 @@ export async function margemDoMes(mes: string): Promise<MargemDoMes> {
   const { inicio, fim } = intervaloMes(mes);
 
   const [vendas, tickets, mesQ, custos, valores] = await Promise.all([
-    db.from("vendas").select(COLUNAS_VENDA).gte("data", inicio).lt("data", fim).returns<Venda[]>(),
+    db.from("vendas").select(COLUNAS_VENDA).gte("data", inicio).lt("data", fim).eq("aguardando_confirmacao", false).returns<Venda[]>(),
     db.from("tickets").select("*"),
     db.from("vendas_meses").select("gasto_anuncios, imposto_meta, custo_mensagens").eq("mes", inicio).maybeSingle(),
     db.from("custos_fixos").select("id, nome, desativado_desde"),
