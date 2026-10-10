@@ -80,7 +80,8 @@ export async function avisarPausa(pausaId: number, quando: "inicio" | "fim", que
   const db = createAdminClient();
   const { data: p } = await db.from("escala_pausas").select("id, equipe_id, motivo, detalhe, inicio, fim").eq("id", pausaId).maybeSingle();
   if (!p) return;
-  const { data: pessoa } = await db.from("equipe").select("nome").eq("id", p.equipe_id).maybeSingle();
+  const { data: pessoa } = await db.from("equipe").select("nome, teste").eq("id", p.equipe_id).maybeSingle();
+  if (pessoa?.teste) return; // pessoa de teste não gera aviso
   const nome = pessoa?.nome ?? "Alguém";
   const motivo = motivoTexto(p.motivo as MotivoPausa, p.detalhe);
   if (quando === "inicio") {
@@ -110,13 +111,20 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
     db.from("escala_config").select("pausa_longa_min").maybeSingle(),
     db.from("escala_checkins").select("id, equipe_id, inicio").is("fim", null),
     db.from("escala_pausas").select("id, checkin_id, equipe_id, motivo, detalhe, inicio").is("fim", null),
-    db.from("equipe").select("id, nome, ativo"),
+    db.from("equipe").select("id, nome, ativo, teste"),
     db.from("escala_padrao").select("id, dia_semana, equipe_id, inicio, fim, tipo, desde, ate"),
     // entradas que começaram hoje (Brasília) ou ainda estão abertas
     db.from("escala_checkins").select("equipe_id, inicio").gte("inicio", new Date(Date.parse(`${hoje}T03:00:00Z`)).toISOString()),
     db.from("escala_alerta_estado").select("descoberta_desde").maybeSingle(),
   ]);
   const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
+  // pessoa de teste (equipe.teste): o check-in e as pausas dela não contam para nenhum aviso
+  const testes = new Set((equipe.data ?? []).filter((p) => p.teste).map((p) => Number(p.id)));
+  const real = <T extends { equipe_id: unknown }>(l: T[] | null) => (l ?? []).filter((x) => !testes.has(Number(x.equipe_id)));
+  abertos.data = real(abertos.data);
+  pausas.data = real(pausas.data);
+  padroes.data = real(padroes.data);
+  entradasHoje.data = real(entradasHoje.data);
   const limite = Number(cfgEscala.data?.pausa_longa_min ?? 30);
   const ini = minutos(String(cfgFunil.data?.atendimento_inicio ?? "09:00"));
   const fim = minutos(String(cfgFunil.data?.atendimento_fim ?? "22:00"));

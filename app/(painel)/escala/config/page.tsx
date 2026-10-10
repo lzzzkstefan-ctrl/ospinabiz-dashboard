@@ -28,7 +28,7 @@ async function Conteudo() {
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") notFound();
   const supabase = await createClient();
-  const { data } = await supabase.from("equipe").select("id, nome, usuario_id, ativo").order("nome");
+  const { data } = await supabase.from("equipe").select("id, nome, usuario_id, ativo, teste").order("nome");
   const pessoas = (data ?? []).filter((p) => p.ativo);
   return (
     <section className="flex flex-col gap-3">
@@ -40,7 +40,14 @@ async function Conteudo() {
       <ul className="m-0 flex list-none flex-col p-0">
         {pessoas.map((p) => (
           <li key={p.id} className="flex flex-wrap items-center gap-3 border-b border-line-soft py-2 text-[13.5px] last:border-b-0">
-            <span className="flex-1 text-white">{p.nome}</span>
+            <span className="flex-1 text-white">
+              {p.nome}
+              {p.teste && (
+                <Etiqueta cor="roxo" className="ml-2">
+                  teste
+                </Etiqueta>
+              )}
+            </span>
             {p.usuario_id ? <Etiqueta cor="verde">tem login</Etiqueta> : <Etiqueta cor="cinza">sem login (não entra na operação)</Etiqueta>}
           </li>
         ))}

@@ -33,7 +33,8 @@ const TODOS: { href: string; label: string; icon: typeof House; emBreve: boolean
   { href: "/webinarios", label: "Webinários", icon: Presentation, emBreve: false, para: "equipe" },
   { href: "/fechamento", label: "Fechamento", icon: CalendarCheck, emBreve: true, para: "admin" },
   { href: "/bms", label: "BMs", icon: Building2, emBreve: false, para: "admin" },
-  { href: "/admin/usuarios", label: "Usuários", icon: Users, emBreve: true, para: "admin" },
+  // a página confere de novo: só chefe e gerente em Vendas
+  { href: "/admin/usuarios", label: "Usuários", icon: Users, emBreve: false, para: "admin" },
 ];
 
 export type PapelMenu = "admin" | "atendente" | "plantonista";

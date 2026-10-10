@@ -302,3 +302,14 @@ com os juros do parcelamento, fica guardado à parte (`vendas.liquido_real`) e a
 **Por quê:** decisão do Davi: a comissão tem que ser previsível pela tabela; os juros do cartão
 parcelado são receita da operação, não base de comissão.
 
+## 2026-10-10: Aba Usuários: um papel na tela, desativar sem apagar
+
+Chefe, gerente, vendedor e plantonista viram o par (papel do sistema, papel em Vendas) que o banco já
+usa. Desativar bloqueia o login (ban) e marca a pessoa inativa, sem apagar nada. Rodrigo virou o
+chefe (ativou em 10/10) e o Davi, com o ok dele, gerente em Vendas.
+
+**Por quê:** apagar a conta perderia o vínculo com vendas, check-ins e atendimentos; o ban é
+reversível. Só o chefe mexe em chefe e sempre fica um chefe ativo, para ninguém se trancar fora.
+A conta de teste é marcada (`equipe.teste`) em vez de ser um vendedor comum, para não aparecer em
+escala, avisos e relatórios.
+

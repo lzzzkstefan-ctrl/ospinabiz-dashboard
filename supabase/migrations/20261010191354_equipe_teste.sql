@@ -1,0 +1,3 @@
+-- Vazia de propósito: em 10/10/2026 este arquivo foi aplicado sem conteúdo (erro ao gravar o texto
+-- no script). Não mudou nada no banco. O conteúdo de verdade está em 20261010191719_equipe_teste_coluna.sql.
+-- Fica aqui porque o Supabase já registrou esta versão como aplicada.
