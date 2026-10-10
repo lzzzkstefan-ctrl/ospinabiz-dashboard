@@ -4,8 +4,9 @@ import type { MetadataRoute } from "next";
 // receber notificação (iOS 16.4+, abrindo pelo ícone). Docs: guides/progressive-web-apps.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Ospinabiz",
-    short_name: "Ospinabiz",
+    name: "GCS Staff · Ospinabiz",
+    // nome embaixo do ícone no celular (pedido do Davi, 10/10/2026)
+    short_name: "GCS Staff",
     description: "Dashboard interno da Ospinabiz",
     start_url: "/escala",
     scope: "/",
@@ -16,7 +17,9 @@ export default function manifest(): MetadataRoute.Manifest {
     icons: [
       { src: "/icone-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icone-512.png", sizes: "512x512", type: "image/png" },
+      // Android corta em círculo: versão com o desenho menor e fundo preto
       { src: "/icone-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/icone-1024.png", sizes: "1024x1024", type: "image/png" },
     ],
   };
 }

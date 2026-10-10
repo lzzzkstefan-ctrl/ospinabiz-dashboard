@@ -151,4 +151,9 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
 - Testado em 10/10: ativação no Edge (serviço de push do Windows aceitou), "Testar", ainda não
   entrou, pausa, volta e pausa longa com pessoa de teste (apagada); decisão da operação descoberta
   com 10 cenários (`decidirDescoberta` em regras.ts), incluindo sábado sem horário fixo.
+- **Ícone GCS Staff (10/10/2026):** imagem do Davi (1254×1254, 2,2 MB) → `public/icone-1024.png`
+  (cópia mestra otimizada), 512, 192, maskable 512 (desenho a 78% no fundo preto, para o corte em
+  círculo do Android), `apple-touch-icon.png` (180), `favicon-32.png` e `app/favicon.ico` (16/32/48).
+  Nome curto no celular: "GCS Staff". O selo da barra de notificação do Android
+  (`selo-notificacao.png`) continua o anel branco: ele precisa ser uma silhueta de uma cor só.
 

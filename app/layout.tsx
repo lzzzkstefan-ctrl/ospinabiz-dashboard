@@ -13,8 +13,15 @@ export const metadata: Metadata = {
   description: "Dashboard interno da Ospinabiz",
   robots: { index: false, follow: false },
   // iPhone: instalado pela "Adicionar à Tela de Início" abre como app (sem barra do Safari)
-  appleWebApp: { capable: true, title: "Ospinabiz", statusBarStyle: "black-translucent" },
-  icons: { icon: "/icone-192.png", apple: "/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "GCS Staff", statusBarStyle: "black-translucent" },
+  // ícone GCS Staff (imagem do Davi, 10/10/2026): aba do navegador (app/favicon.ico + 32px) e iPhone
+  icons: {
+    icon: [
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icone-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
