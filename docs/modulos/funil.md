@@ -127,13 +127,21 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
   chamadas/min por rota, dividido com o cron).
 
 ## Atendimento (09/10/2026, migration funil_atendimento)
-- **Esperando resposta:** conversa ABERTA (não finalizada na Data Crazy) em que a última mensagem do
-  lead não teve resposta de atendente de verdade (automação e suporte Data Crazy não contam) há mais
-  de X horas, contando só o horário de atendimento, todos os dias. Padrão 2h, 8h–22h; o admin muda em
-  `/funil/config`. Vale para lead antigo que voltou a falar (base = `funil_conversas`, as conversas
-  com mensagem nos últimos 90 dias). Conversa finalizada não conta: se o lead escrever de novo, ela
-  reabre. A sincronização grava `esperando_desde`; quando a última mensagem é automação, confere as
-  mensagens recentes (no máximo 40 conversas por rodada). Vendedor vê só as dele. Cartão no Início.
+- **Esperando resposta (regra de 10/10/2026):** conversa ABERTA em que a ÚLTIMA mensagem é do lead
+  (`received = true`) e nenhuma mensagem da empresa veio depois, seja de atendente ou de automação,
+  há mais de X horas, contando só o horário de atendimento, todos os dias. Padrão 2h, 8h–22h; o admin
+  muda em `/funil/config`. Vale para lead antigo que voltou a falar (base = `funil_conversas`, as
+  conversas com mensagem nos últimos 90 dias). Vem de `ultima_recebida_em` > `ultima_enviada_em`
+  (`lastSendedMessageDate` da API inclui automação), sem ler mensagens. Vendedor vê só as dele.
+  Cartão no Início.
+  - **Antes (09/10):** "automação não conta como resposta": se a automação respondeu, o lead seguia
+    esperando até um atendente responder. **Errado:** ex.: Henry -6376 aparecia esperando 15h, mas a
+    última mensagem era a automação PARTE 2 TOPO perguntando o caminho: quem tinha que responder era
+    o lead. **Agora:** qualquer mensagem da empresa depois do lead conta como resposta.
+- **Aguardando o lead:** conversa ABERTA em que a última mensagem é da empresa (atendente ou
+  automação) e o lead não responde há mais de X horas (mesmo limite e horário). Mostra a etapa em que
+  parou. São os candidatos a follow-up e ao webinar de downsell. Só leads (alunos ficam fora); o lead
+  que está esperando a empresa em outro número não entra.
   - **Aberta x fechada (10/10/2026):** o "Finalizar" do CRM ARQUIVA a conversa: na API, `finished`
     continua `false`, mas vem `archivedAt` e `statuses: ["archived"]`. Fechada = `finished` OU
     `archivedAt` OU `statuses` com `finished`/`archived` (gravado em `funil_conversas.finalizada`).

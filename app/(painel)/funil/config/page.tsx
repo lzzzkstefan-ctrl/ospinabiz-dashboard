@@ -42,8 +42,8 @@ async function Conteudo() {
       <section className="flex flex-col gap-3">
         <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Esperando resposta</h2>
         <p className="text-[12.5px] text-ink-dim">
-          O lead aparece em “Esperando resposta” quando a última mensagem é dele e nenhum atendente respondeu (automação não conta) há mais do que estas horas, contando só o
-          horário de atendimento, todos os dias.
+          O lead aparece em “Esperando resposta” quando a última mensagem é dele e nenhuma mensagem da empresa veio depois (atendente ou automação) há mais do que estas
+          horas, e em “Aguardando o lead” quando a última é da empresa e ele não responde há mais do que estas horas. Conta só o horário de atendimento, todos os dias.
         </p>
         <FormConfigFunil horas={cfg.horasEspera} inicio={cfg.inicio} fim={cfg.fim} />
       </section>

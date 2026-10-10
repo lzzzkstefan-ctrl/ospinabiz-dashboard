@@ -253,3 +253,15 @@ aba Tarefas (ligadas ao webinário), a partir de um modelo fixo que o admin ajus
 usar o funil da live e o custo de mensagens já, e a integração (webhook, vendas pela oferta) entra
 depois sem mudar o desenho. Tarefas já tem responsável, prazo e conclusão: não faz sentido duplicar.
 O vendedor só vê nome e playbook dos webinários no ar (função no banco), nunca preço ou métricas.
+
+## 2026-10-10: Funil: qualquer mensagem da empresa depois do lead conta como resposta
+
+"Esperando resposta" = conversa em aberto (nem finalizada nem arquivada na Data Crazy) cuja ÚLTIMA
+mensagem é do lead, sem nenhuma mensagem da empresa depois, seja de atendente ou de automação.
+Quando a última é da empresa, o lead vai para "Aguardando o lead" (follow-up e webinar de downsell).
+Antes (09/10): "automação não conta como resposta".
+
+**Por quê:** a automação muitas vezes faz uma pergunta ao lead (ex.: PARTE 2 TOPO, "qual caminho
+você vai escolher?"). Aí quem precisa responder é o lead, e a lista acusava espera de horas que não
+era da empresa (Henry -6376 aparecia com 15h). A conversa "finalizada" no CRM vem como arquivada na
+API (`finished` continua false), por isso arquivada também conta como fechada.

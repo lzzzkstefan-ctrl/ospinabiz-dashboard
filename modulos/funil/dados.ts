@@ -121,25 +121,27 @@ export type Esperando = {
   esperaMs: number;
 };
 
-/** Esperando resposta, separado: leads (sem etiqueta de Aluno) e alunos (suporte). */
-export type ListasEsperando = { leads: Esperando[]; alunos: Esperando[] };
+/**
+ * Listas de atendimento (só conversas EM ABERTO: finalizada ou arquivada na Data Crazy não entra):
+ * - leads / alunos: a última mensagem é do lead e nenhuma da empresa veio depois (atendente ou automação);
+ * - aguardandoLead: a última mensagem é da empresa e o lead não responde (candidatos a follow-up e
+ *   ao webinar de downsell). Só leads (alunos ficam fora).
+ * Todas passando de X horas, contando só o horário de atendimento. Aluno = etiqueta de etapa de compra.
+ */
+export type ListasEsperando = { leads: Esperando[]; alunos: Esperando[]; aguardandoLead: Esperando[] };
 
 /**
- * Conversas EM ABERTO (nem finalizadas nem arquivadas na Data Crazy) cuja última mensagem do lead
- * não teve resposta de atendente há mais de X horas de atendimento. Uma linha por lead: o mesmo
- * lead em mais de um número vira uma linha só, com os números juntos e o maior tempo de espera.
- * Aluno = tem etiqueta de uma etapa de compra (ex.: 👽 ALUNO, ALUNO PAGOU NO PIX/CNPJ).
+ * Uma linha por lead: o mesmo lead em mais de um número vira uma linha só, com os números juntos e o
+ * maior tempo de espera (o resto vem da conversa que espera há mais tempo).
  */
 export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: number | null; numeroId: string | null } = { vendedorId: null, numeroId: null }): Promise<ListasEsperando> {
   const supabase = await createClient();
   let q = supabase
     .from("funil_conversas")
-    .select("dc_id, lead_dc_id, contato_rotulo, vendedor_id, numero_dc_id, etiquetas_atuais, esperando_desde")
-    .not("esperando_desde", "is", null)
-    // finalizada = finalizada ou arquivada na Data Crazy: não está esperando (se o lead escrever de novo, reabre)
+    .select("dc_id, lead_dc_id, contato_rotulo, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em")
+    // finalizada = finalizada ou arquivada na Data Crazy (se o lead escrever de novo, ela reabre)
     .eq("finalizada", false)
-    .order("esperando_desde")
-    .limit(1000);
+    .limit(5000);
   if (filtro.vendedorId) q = q.eq("vendedor_id", filtro.vendedorId);
   if (filtro.numeroId) q = q.eq("numero_dc_id", filtro.numeroId);
   const [conversas, etapas, etiquetas, equipe, numeros] = await Promise.all([
@@ -156,42 +158,55 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
   const etapaDeCompra = new Set(listaEtapas.filter((e) => e.comprou).map((e) => e.id));
   const etiquetasDeAluno = new Set(listaEtiquetas.filter((t) => t.etapa_id !== null && etapaDeCompra.has(t.etapa_id)).map((t) => t.dc_id));
   const agora = Date.now();
+  const limite = cfg.horasEspera * 3_600_000;
 
   type Linha = Esperando & { aluno: boolean };
-  const porLead = new Map<string, Linha>();
+  const esperando = new Map<string, Linha>();
+  const aguardando = new Map<string, Linha>();
   for (const c of conversas.data) {
-    const esperaMs = tempoEmAtendimento(String(c.esperando_desde), agora, cfg.inicio, cfg.fim);
-    if (esperaMs <= cfg.horasEspera * 3_600_000) continue;
+    const recebida = c.ultima_recebida_em ? String(c.ultima_recebida_em) : null;
+    const enviada = c.ultima_enviada_em ? String(c.ultima_enviada_em) : null;
+    // quem mandou a última: o lead (sem nada da empresa depois) ou a empresa
+    const doLead = !!recebida && (!enviada || Date.parse(recebida) > Date.parse(enviada));
+    const desde = doLead ? recebida : enviada;
+    if (!desde) continue;
+    const esperaMs = tempoEmAtendimento(desde, agora, cfg.inicio, cfg.fim);
+    if (esperaMs <= limite) continue;
     const tags: string[] = c.etiquetas_atuais ?? [];
+    const aluno = tags.some((t) => etiquetasDeAluno.has(t));
+    if (!doLead && aluno) continue;
     const numero = c.numero_dc_id ? (numeros.get(String(c.numero_dc_id)) ?? null) : null;
-    // mesmo lead = mesmo lead da Data Crazy; sem lead ligado, o rótulo (primeiro nome + 4 dígitos)
-    const chave = c.lead_dc_id ? `l:${c.lead_dc_id}` : c.contato_rotulo ? `r:${c.contato_rotulo}` : `c:${c.dc_id}`;
-    const atual = porLead.get(chave);
     const linha: Linha = {
       conversaId: String(c.dc_id),
       rotulo: c.contato_rotulo,
       vendedor: c.vendedor_id ? (nomeDe.get(Number(c.vendedor_id)) ?? null) : null,
       numeros: numero ? [numero] : [],
       etapa: etapaAtual(tags, listaEtiquetas, listaEtapas),
-      desde: String(c.esperando_desde),
+      desde,
       esperaMs,
-      aluno: tags.some((t) => etiquetasDeAluno.has(t)),
+      aluno,
     };
+    // mesmo lead = mesmo lead da Data Crazy; sem lead ligado, o rótulo (primeiro nome + 4 dígitos)
+    const chave = c.lead_dc_id ? `l:${c.lead_dc_id}` : c.contato_rotulo ? `r:${c.contato_rotulo}` : `c:${c.dc_id}`;
+    const grupo = doLead ? esperando : aguardando;
+    const atual = grupo.get(chave);
     if (!atual) {
-      porLead.set(chave, linha);
+      grupo.set(chave, linha);
       continue;
     }
-    // junta: números de todas as conversas; o resto vem da que espera há mais tempo
     const maior = linha.esperaMs > atual.esperaMs ? linha : atual;
-    porLead.set(chave, {
+    grupo.set(chave, {
       ...maior,
       vendedor: maior.vendedor ?? atual.vendedor ?? linha.vendedor,
       numeros: [...new Set([...atual.numeros, ...linha.numeros])].sort(),
       aluno: atual.aluno || linha.aluno,
     });
   }
-  const todos = [...porLead.values()].sort((a, b) => b.esperaMs - a.esperaMs);
-  return { leads: todos.filter((e) => !e.aluno), alunos: todos.filter((e) => e.aluno) };
+  // lead esperando a empresa em um número não entra em "Aguardando o lead" (a vez é da empresa)
+  for (const chave of esperando.keys()) aguardando.delete(chave);
+  const ordenar = (m: Map<string, Linha>) => [...m.values()].sort((a, b) => b.esperaMs - a.esperaMs);
+  const todos = ordenar(esperando);
+  return { leads: todos.filter((e) => !e.aluno), alunos: todos.filter((e) => e.aluno), aguardandoLead: ordenar(aguardando) };
 }
 
 export type PrimeiraResposta = { vendedor: string; leads: number; mediaMs: number; medianaMs: number };

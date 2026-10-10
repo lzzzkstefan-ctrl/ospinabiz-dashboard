@@ -52,7 +52,7 @@ export async function sincronizarFunil(): Promise<ResultadoSincronizacao> {
     contagem.leads = leads.length;
     await gravarLeads(db, leads, janela);
     const { todas, leadDoContato } = await sincronizarConversas(db, dc, leads, janela, config);
-    await gravarConversas(db, dc, todas, leadDoContato, config);
+    await gravarConversas(db, todas, leadDoContato, config);
     contagem.historicos = await lerHistoricos(db, dc, config);
     await lerPrimeirasRespostas(db, dc, todas, leadDoContato, config);
     await atualizarCompras(db, janela);
@@ -338,54 +338,28 @@ async function sincronizarConversas(
 }
 
 // ---------------------------------------------------------------------------
-// 3b. Conversas: quem está esperando resposta de um atendente de verdade
-//   - última mensagem do lead depois da última enviada → esperando desde a do lead;
-//   - última enviada foi automação → lê as mensagens recentes (1 chamada, só quando a conversa
-//     mudou) e confere se um atendente de verdade respondeu depois da última do lead;
-//   - senão (alguém da operação respondeu por último) → respondida.
-// Automação = mensagem enviada sem atendente; suporte Data Crazy não é atendente de verdade.
+// 3b. Conversas: quem está esperando resposta da empresa (decisão do Davi, 10/10/2026)
+//   - esperando = a ÚLTIMA mensagem é do lead, sem nenhuma da empresa depois (atendente OU
+//     automação: qualquer mensagem da empresa depois do lead conta como resposta);
+//   - a última é da empresa → quem precisa responder é o lead ("Aguardando o lead" na tela,
+//     calculado de ultima_enviada_em).
+// lastSendedMessageDate inclui automação, então não precisa ler as mensagens.
 // ---------------------------------------------------------------------------
 
-/** Máximo de conversas conferidas pelas mensagens por rodada (limite de 60 chamadas/min). */
-const CONFERE_POR_RODADA = 40;
-
-async function gravarConversas(db: Db, dc: DataCrazy, todas: DcConversa[], leadDoContato: Map<string, DcLead>, config: Config): Promise<number> {
+async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<string, DcLead>, config: Config): Promise<void> {
   const atuais = await lerTudo<{ dc_id: string; ultima_mensagem_em: string | null; esperando_desde: string | null; numero_dc_id: string | null; atendente_dc_id: string | null; etiquetas_atuais: string[]; finalizada: boolean }>(
     (de, ate) => db.from("funil_conversas").select("dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, finalizada").order("dc_id").range(de, ate),
   );
   const noBanco = new Map(atuais.map((c) => [c.dc_id, c]));
   const ehAtendente = (id: string | undefined) => !!id && config.equipeDoAtendente.has(id);
 
-  let conferidas = 0;
   const linhas = [];
   for (const c of todas) {
     const antes = noBanco.get(c.id);
     const mudou = !antes || !mesmoInstante(antes.ultima_mensagem_em, c.lastMessageDate);
     const recebida = c.lastReceivedMessageDate;
     const enviada = c.lastSendedMessageDate;
-
-    let esperando: string | null = antes?.esperando_desde ?? null;
-    let ultimaGravada = c.lastMessageDate;
-    if (!recebida) esperando = null;
-    else if (!enviada || recebida > enviada) esperando = recebida;
-    else if (!c.lastMessageIsAutomation) esperando = null; // alguém da operação respondeu por último
-    else if (mudou) {
-      // automação respondeu por último: confere se houve atendente de verdade depois do lead
-      if (conferidas >= CONFERE_POR_RODADA) {
-        ultimaGravada = antes?.ultima_mensagem_em ?? null; // fica para a próxima rodada
-      } else {
-        try {
-          const msgs = await dc.mensagens(c.id, 0, 30);
-          conferidas++;
-          const doLead = msgs.find((m) => m.received);
-          const respondeu = !!doLead && msgs.some((m) => !m.received && !m.isInternal && m.createdAt > doLead.createdAt && ehAtendente(m.attendant?.id));
-          esperando = doLead && !respondeu ? doLead.createdAt : null;
-        } catch (e) {
-          if (!(e instanceof PrazoEsgotado)) throw e;
-          ultimaGravada = antes?.ultima_mensagem_em ?? null;
-        }
-      }
-    }
+    const esperando = recebida && (!enviada || recebida > enviada) ? recebida : null;
 
     const lead = c.contact?.contactId ? leadDoContato.get(c.contact.contactId) : undefined;
     const atendente = c.attendants?.find((x) => ehAtendente(x.id))?.id ?? null;
@@ -414,14 +388,13 @@ async function gravarConversas(db: Db, dc: DataCrazy, todas: DcConversa[], leadD
       ultima_recebida_em: recebida,
       ultima_enviada_em: enviada,
       ultima_e_automacao: !!c.lastMessageIsAutomation,
-      ultima_mensagem_em: ultimaGravada,
+      ultima_mensagem_em: c.lastMessageDate,
       esperando_desde: esperando,
       finalizada,
       sincronizado_em: new Date().toISOString(),
     });
   }
   for (const lote of fatiar(linhas, LOTE)) await ok(db.from("funil_conversas").upsert(lote, { onConflict: "dc_id" }));
-  return conferidas;
 }
 
 /** "Maria -1234": primeiro nome + 4 últimos dígitos (nunca o nome completo nem o telefone). */

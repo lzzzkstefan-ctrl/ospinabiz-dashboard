@@ -244,7 +244,17 @@ async function Conteudo({ searchParams }: Props) {
         inicio={cfg.inicio}
         fim={cfg.fim}
         admin={false}
-        aluno
+        tipo="aluno"
+      />
+      <ListaEsperando
+        id="aguardando-lead"
+        titulo="Aguardando o lead"
+        itens={esperando.aguardandoLead}
+        horas={cfg.horasEspera}
+        inicio={cfg.inicio}
+        fim={cfg.fim}
+        admin={false}
+        tipo="aguardando"
       />
 
       <section className="glass-lite glass-static p-4">
@@ -438,7 +448,7 @@ function ListaEsperando({
   inicio,
   fim,
   admin,
-  aluno = false,
+  tipo = "lead",
 }: {
   id: string;
   titulo: string;
@@ -447,11 +457,13 @@ function ListaEsperando({
   inicio: string;
   fim: string;
   admin: boolean;
-  aluno?: boolean;
+  /** lead / aluno: a vez é da empresa · aguardando: a vez é do lead */
+  tipo?: "lead" | "aluno" | "aguardando";
 }) {
+  const aguardando = tipo === "aguardando";
   return (
     // scroll-mt: ao abrir pelo link (#esperando), o título não fica escondido atrás do menu fixo do topo
-    <section id={id} className={cn("glass-lite glass-static scroll-mt-28 p-4", itens.length > 0 && "border-[rgb(var(--tag-laranja)/0.5)]")}>
+    <section id={id} className={cn("glass-lite glass-static scroll-mt-28 p-4", itens.length > 0 && !aguardando && "border-[rgb(var(--tag-laranja)/0.5)]")}>
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-[15px] font-semibold text-white">
           {titulo} · {itens.length}
@@ -463,24 +475,24 @@ function ListaEsperando({
         )}
       </div>
       <p className="m-0 mb-3 text-[12px] text-ink-faint">
-        {aluno
-          ? "Contatos com etiqueta de Aluno (suporte), na mesma regra dos leads: "
-          : "Sem etiqueta de Aluno. "}
-        Conversa em aberto na Data Crazy (finalizada não entra), a última mensagem é do lead e nenhum atendente respondeu (automação não conta) há mais de{" "}
-        {String(horas).replace(".", ",")}h de atendimento ({inicio}–{fim}). Lead em mais de um número aparece uma vez, com o maior tempo. Atualiza a cada 15 minutos.
+        {aguardando
+          ? "A última mensagem é da empresa (atendente ou automação) e o lead não responde. Candidatos a follow-up e ao webinar de downsell (alunos ficam fora). "
+          : `${tipo === "aluno" ? "Contatos com etiqueta de Aluno (suporte). " : "Sem etiqueta de Aluno. "}A última mensagem é do lead e nenhuma mensagem da empresa veio depois (atendente ou automação). `}
+        Só conversa em aberto na Data Crazy (finalizada não entra), há mais de {String(horas).replace(".", ",")}h de atendimento ({inicio}–{fim}). Lead em mais de um
+        número aparece uma vez, com o maior tempo. Atualiza a cada 15 minutos.
       </p>
       {itens.length === 0 ? (
-        <p className="m-0 py-2 text-center text-[13px] italic text-ink-faint">Ninguém esperando. 👌</p>
+        <p className="m-0 py-2 text-center text-[13px] italic text-ink-faint">{aguardando ? "Nenhum lead parado." : "Ninguém esperando. 👌"}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left text-[13px] tabular-nums">
             <thead className="text-[11.5px] text-ink-dim">
               <tr>
-                <th className="py-1.5 pr-3 font-medium">{aluno ? "Aluno" : "Lead"}</th>
+                <th className="py-1.5 pr-3 font-medium">{tipo === "aluno" ? "Aluno" : "Lead"}</th>
                 <th className="py-1.5 pr-3 font-medium">Vendedor</th>
                 <th className="py-1.5 pr-3 font-medium">Número</th>
-                <th className="py-1.5 pr-3 font-medium">Etapa atual</th>
-                <th className="py-1.5 text-right font-medium">Esperando</th>
+                <th className="py-1.5 pr-3 font-medium">{aguardando ? "Parou em" : "Etapa atual"}</th>
+                <th className="py-1.5 text-right font-medium">{aguardando ? "Sem responder há" : "Esperando"}</th>
               </tr>
             </thead>
             <tbody>
@@ -490,7 +502,7 @@ function ListaEsperando({
                   <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">sem vendedor</span>}</td>
                   <td className="whitespace-nowrap py-1.5 pr-3">{e.numeros.length ? e.numeros.join(" · ") : "—"}</td>
                   <td className="py-1.5 pr-3 text-ink-dim">{e.etapa ?? "—"}</td>
-                  <td className="whitespace-nowrap py-1.5 text-right font-semibold text-[rgb(var(--tag-laranja))]">{duracao(e.esperaMs)}</td>
+                  <td className={cn("whitespace-nowrap py-1.5 text-right font-semibold", aguardando ? "text-ink" : "text-[rgb(var(--tag-laranja))]")}>{duracao(e.esperaMs)}</td>
                 </tr>
               ))}
             </tbody>
