@@ -135,8 +135,10 @@
   .glass {
     position: relative;
     background: linear-gradient(165deg, rgba(147, 186, 222, 0.12), rgba(147, 186, 222, 0.03));
-    backdrop-filter: blur(28px) saturate(160%);
+    /* -webkit- primeiro e o padrão por último: o otimizador de CSS fica só com a última das duas
+       (antes ficava só a -webkit- e o Chrome/Edge não desfocavam) */
     -webkit-backdrop-filter: blur(28px) saturate(160%);
+    backdrop-filter: blur(28px) saturate(160%);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     box-shadow:
@@ -154,10 +156,10 @@
     background: conic-gradient(
       from var(--angle),
       transparent 0deg,
-      rgba(255, 255, 255, 0.85) 12deg,
+      rgba(255, 255, 255, 0.35) 12deg,
       transparent 45deg,
       transparent 315deg,
-      rgba(255, 255, 255, 0.5) 348deg,
+      rgba(255, 255, 255, 0.2) 348deg,
       transparent 360deg
     );
     -webkit-mask:
@@ -173,9 +175,18 @@
   .glass.glass-fora-da-tela::before {
     animation-play-state: paused;
   }
-  @media (prefers-reduced-motion: reduce) {
+  /* Celular (tela pequena ou toque) e "menos movimento": sem a borda girando. O Safari do iPhone às
+     vezes não aplica a máscara que deixa só a borda e mostrava o degradê inteiro como uma faixa
+     branca em diagonal. Aqui fica um reflexo parado e bem leve, sem máscara; o desfoque do fundo
+     (backdrop-filter) continua. */
+  @media (max-width: 767px), (pointer: coarse), (prefers-reduced-motion: reduce) {
     .glass::before {
       animation: none;
+      will-change: auto;
+      padding: 0;
+      -webkit-mask: none;
+      mask: none;
+      background: linear-gradient(160deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 45%);
     }
   }
 
@@ -183,8 +194,10 @@
   .glass-lite {
     position: relative;
     background: linear-gradient(165deg, rgba(147, 186, 222, 0.12), rgba(147, 186, 222, 0.04));
-    backdrop-filter: blur(14px) saturate(150%);
+    /* -webkit- primeiro e o padrão por último: o otimizador de CSS fica só com a última das duas
+       (antes ficava só a -webkit- e o Chrome/Edge não desfocavam) */
     -webkit-backdrop-filter: blur(14px) saturate(150%);
+    backdrop-filter: blur(14px) saturate(150%);
     border: 1px solid var(--line-soft);
     border-radius: 18px;
     box-shadow:
