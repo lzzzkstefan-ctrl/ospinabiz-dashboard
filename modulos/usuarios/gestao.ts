@@ -81,7 +81,11 @@ async function contexto(db: Db, quemId: string, alvoId: string | null) {
   return { logins, quem, alvo, quemPapel: papelDo(quem?.app_metadata), alvoPapel: alvo ? papelDo(alvo.app_metadata) : null, chefesAtivos };
 }
 
-const linkDeConvite = (site: string, hash: string) => `${site.replace(/\/$/, "")}/confirmar?token_hash=${hash}&type=invite&next=/definir-senha`;
+// conta que já confirmou o e-mail mas nunca entrou (clicou no convite e não criou a senha): o Supabase
+// não aceita mais "invite"; o link certo é o de criar senha ("recovery"), que leva à mesma tela
+const tipoDoLink = (u: { email_confirmed_at?: string | null } | undefined) => (u?.email_confirmed_at ? "recovery" : "invite");
+const linkDeConvite = (site: string, hash: string, tipo: "invite" | "recovery" = "invite") =>
+  `${site.replace(/\/$/, "")}/confirmar?token_hash=${hash}&type=${tipo}&next=/definir-senha`;
 
 export type Resultado = { erro?: string; ok?: string; link?: string };
 
@@ -102,7 +106,8 @@ export async function convidar(quemId: string, dados: { email: string; nome: str
   const { data: pessoa } = await db.from("equipe").select("id, usuario_id").eq("nome", nome).maybeSingle();
   if (pessoa?.usuario_id && pessoa.usuario_id !== existente?.id) return { erro: `"${nome}" já está ligado a outro login. Use outro nome.` };
 
-  const r = await db.auth.admin.generateLink({ type: "invite", email });
+  const tipo = tipoDoLink(existente);
+  const r = tipo === "recovery" ? await db.auth.admin.generateLink({ type: "recovery", email }) : await db.auth.admin.generateLink({ type: "invite", email });
   if (r.error) return { erro: `Não deu para gerar o convite: ${r.error.message}` };
   const id = r.data.user.id;
   const { error: ep } = await db.auth.admin.updateUserById(id, { app_metadata: { ...r.data.user.app_metadata, ...metadataDo(dados.papel) } });
@@ -113,7 +118,7 @@ export async function convidar(quemId: string, dados: { email: string; nome: str
     if (!ligada) await db.from("equipe").insert({ nome, usuario_id: id });
   }
   await registrar(db, quemId, { id, nome }, existente ? "novo_link" : "convite", existente ? { email } : null, { email, papel: dados.papel });
-  return { ok: existente ? "Link novo gerado (o anterior deixa de valer)." : "Convite criado.", link: linkDeConvite(site, r.data.properties.hashed_token) };
+  return { ok: existente ? "Link novo gerado (o anterior deixa de valer)." : "Convite criado.", link: linkDeConvite(site, r.data.properties.hashed_token, tipo) };
 }
 
 /** Link novo para quem ainda não entrou (o anterior deixa de valer). */
@@ -124,11 +129,15 @@ export async function novoLink(quemId: string, alvoId: string, site: string): Pr
   if (c.alvo.last_sign_in_at) return { erro: "Essa pessoa já entrou; não precisa de convite." };
   const proibido = podeMudar({ quem: c.quemPapel, quemId, alvoId, alvoPapel: c.alvoPapel, acao: "novo_link", chefesAtivos: c.chefesAtivos });
   if (proibido) return { erro: proibido };
-  const r = await db.auth.admin.generateLink({ type: "invite", email: c.alvo.email });
+  const tipo = tipoDoLink(c.alvo);
+  const r = tipo === "recovery" ? await db.auth.admin.generateLink({ type: "recovery", email: c.alvo.email }) : await db.auth.admin.generateLink({ type: "invite", email: c.alvo.email });
   if (r.error) return { erro: `Não deu para gerar: ${r.error.message}` };
   const { data: p } = await db.from("equipe").select("nome").eq("usuario_id", alvoId).maybeSingle();
   await registrar(db, quemId, { id: alvoId, nome: p?.nome ?? c.alvo.email }, "novo_link", null, null);
-  return { ok: "Link novo gerado (o anterior deixa de valer).", link: linkDeConvite(site, r.data.properties.hashed_token) };
+  return {
+    ok: tipo === "recovery" ? "Link novo gerado: a pessoa já confirmou o e-mail, então é o link de criar a senha." : "Link novo gerado (o anterior deixa de valer).",
+    link: linkDeConvite(site, r.data.properties.hashed_token, tipo),
+  };
 }
 
 export async function mudarPapel(quemId: string, alvoId: string, novo: PapelUsuario): Promise<Resultado> {

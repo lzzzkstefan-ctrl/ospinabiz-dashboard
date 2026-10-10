@@ -25,6 +25,9 @@ pessoa renova (até 1 h) ou ela sai e entra.
 - **Convidar:** e-mail + nome + papel → `generateLink({type:"invite"})` + papel no app_metadata +
   pessoa na equipe (liga a uma pessoa sem login com o mesmo nome, ou cria). Mostra o link com
   "Copiar link" (vale ~1 h). Convite pendente: "Gerar novo link" (o anterior deixa de valer).
+  Conta que **já confirmou o e-mail mas nunca entrou** (clicou no convite e não criou a senha): o
+  Supabase não aceita mais "invite"; a aba gera o link de criar senha (`type=recovery`), que leva à
+  mesma tela `/definir-senha` (caso da conta Teste em 10/10/2026).
 - **Editar:** papel; atendente da Data Crazy (um por pessoa; `funil_atendentes.equipe_id`, o gatilho
   repassa o vendedor aos leads); código UTM da Hubla (`vendedores.utm_term`, único; vazio = desliga,
   histórico fica).
