@@ -184,8 +184,8 @@ async function Mes({
     vendedor ? null : geralEquipe(mes),
   ]);
   const fechado = fechamentos.find((f) => f.mes === mes) ?? null;
-  // registro de alterações: só o chefe, só de mês fechado
-  const alteracoes = chefe && vendedor && fechado ? await listarAlteracoes(mes, vendedor.id) : [];
+  // registro de alterações: só o chefe, de qualquer mês (desde 10/10/2026 o mês aberto também é registrado)
+  const alteracoes = chefe && vendedor ? await listarAlteracoes(mes, vendedor.id) : [];
   const margemPadrao: Faixa = fechado?.faixa ?? margem ?? 10;
 
   return (

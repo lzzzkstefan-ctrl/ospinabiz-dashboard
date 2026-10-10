@@ -184,3 +184,17 @@ Vendas:
 - Até a versão da empresa ser validada, o masterview continua recebendo as vendas do Davi.
   Ainda não está confirmado se a Hubla aceita duas regras de webhook para o mesmo evento:
   testar criando a segunda regra e conferindo que as duas recebem a próxima venda.
+
+## Registro de alterações completo (10/10/2026, migration `vendas_registro_completo`)
+
+Davi e Rodrigo são os dois **chefes** em Vendas (pedido do Davi, 10/10). Para que tudo o que um chefe
+faz fique rastreável, `vendas_alteracoes` passou a registrar também o **mês aberto**:
+- venda criada, alterada (só os campos que mudaram, antes e depois) ou **apagada** (a venda inteira
+  em "antes") por uma pessoa: `por` = quem a tela informou (`alterado_por`) ou o login;
+- **mês fechado** (quem fechou, faixa, quantidade, bruto, líquido, comissão), além de mês reaberto
+  (com motivo), ajuste e estorno, como já era;
+- o webhook da Hubla em mês aberto não entra (não é pessoa); em mês fechado continua entrando.
+Só o chefe lê (RLS `vendas_chefe()`); ninguém escreve nem apaga direto (testado em 10/10 com
+chefe, gerente e vendedor temporários). Na tela: "Registro de alterações" no painel do mês, para o
+chefe, em qualquer mês (antes só em mês fechado).
+

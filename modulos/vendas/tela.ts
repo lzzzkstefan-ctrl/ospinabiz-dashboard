@@ -184,7 +184,7 @@ export type Alteracao = {
   campos: { campo: string; antes: unknown; depois: unknown }[];
 };
 
-/** Registro de alterações do mês fechado de um vendedor (só admin: o RLS devolve vazio ao vendedor). */
+/** Registro de alterações do mês de um vendedor (só o chefe: o RLS devolve vazio aos outros). */
 export async function listarAlteracoes(mes: string, vendedorId: number): Promise<Alteracao[]> {
   const supabase = await createClient();
   const [{ data, error }, equipe] = await Promise.all([
@@ -202,7 +202,10 @@ export async function listarAlteracoes(mes: string, vendedorId: number): Promise
   return data.map((a) => {
     const antes = (a.antes ?? {}) as Record<string, unknown>;
     const depois = (a.depois ?? {}) as Record<string, unknown>;
-    const campos = a.tipo === "venda_alterada" ? Object.keys(depois).map((campo) => ({ campo, antes: antes[campo], depois: depois[campo] })) : [];
+    const campos =
+      a.tipo === "venda_alterada" || a.tipo === "mes_fechado"
+        ? Object.keys(depois).map((campo) => ({ campo, antes: antes[campo], depois: depois[campo] }))
+        : [];
     return {
       id: Number(a.id),
       em: String(a.em),

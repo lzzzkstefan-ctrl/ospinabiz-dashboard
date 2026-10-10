@@ -546,6 +546,8 @@ function Reabrir({ mes, vendedorId, vendedorNome, onFechar }: { mes: string; ven
 const ROTULO_TIPO: Record<string, string> = {
   venda_criada: "venda criada",
   venda_alterada: "venda alterada",
+  venda_apagada: "venda apagada",
+  mes_fechado: "mês fechado",
   mes_reaberto: "mês reaberto",
   ajuste_criado: "ajuste",
   estorno_criado: "estorno criado",

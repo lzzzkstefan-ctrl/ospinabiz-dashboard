@@ -1,6 +1,7 @@
 # Usuários
 
-Aba `/admin/usuarios` (menu "Usuários"). Só **chefe e gerente** em Vendas (a página confere; o
+Aba `/admin/usuarios` (menu "Usuários"). Chefes em 10/10/2026: **Rodrigo e Davi** (um chefe só
+altera outro chefe sendo chefe; tudo fica no registro). Só **chefe e gerente** em Vendas (a página confere; o
 proxy ainda exige admin do sistema, que os dois são). Feita em 10/10/2026 (plano aprovado pelo Davi).
 
 ## Papéis (um na tela, dois por dentro)
