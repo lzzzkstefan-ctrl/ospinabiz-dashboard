@@ -46,8 +46,9 @@ async function Conteudo() {
         <p className="text-[12.5px] text-ink-dim">
           O lead aparece em “Esperando resposta” quando a última mensagem é dele e nenhuma mensagem da empresa veio depois (atendente ou automação) há mais do que estas
           horas, e em “Aguardando o lead” quando a última é da empresa e ele não responde há mais do que estas horas. Conta só o horário de atendimento, todos os dias.
+          Em “Leads sem atendimento na chegada”, quem chega dentro do horário e não tem resposta de atendente em até os minutos abaixo conta como sem atendente.
         </p>
-        <FormConfigFunil horas={cfg.horasEspera} inicio={cfg.inicio} fim={cfg.fim} />
+        <FormConfigFunil horas={cfg.horasEspera} inicio={cfg.inicio} fim={cfg.fim} minutos={cfg.minutosResposta} />
       </section>
 
       <section className="flex flex-col gap-3">

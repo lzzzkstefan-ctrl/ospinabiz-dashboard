@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useActionState } from "react";
 import { criarMudanca, criarNumeroInterno, salvarConfigFunil } from "../acoes";
 
-export function FormConfigFunil({ horas, inicio, fim }: { horas: number; inicio: string; fim: string }) {
+export function FormConfigFunil({ horas, inicio, fim, minutos }: { horas: number; inicio: string; fim: string; minutos: number }) {
   const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(salvarConfigFunil, {});
   return (
     <form action={acao} className="flex flex-wrap items-end gap-3">
@@ -20,6 +20,9 @@ export function FormConfigFunil({ horas, inicio, fim }: { horas: number; inicio:
       </Campo>
       <Campo rotulo="Atendimento termina">
         <Input name="fim" type="time" defaultValue={fim} className="w-32 [color-scheme:dark]" />
+      </Campo>
+      <Campo rotulo="1ª resposta em até (min)">
+        <Input name="minutos_resposta" inputMode="numeric" defaultValue={String(minutos)} className="w-28 tabular-nums" />
       </Campo>
       <Button type="submit" disabled={pendente}>
         {pendente ? "Salvando…" : "Salvar"}

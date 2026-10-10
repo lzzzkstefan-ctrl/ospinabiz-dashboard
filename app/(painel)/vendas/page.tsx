@@ -48,7 +48,8 @@ const um = (x: string | string[] | undefined) => (typeof x === "string" ? x : un
 
 async function Conteudo({ searchParams }: Props) {
   const usuario = await usuarioLogado();
-  if (!usuario) return null;
+  // plantonista não tem Vendas (o proxy já tira da tela; o banco não deixa ler)
+  if (!usuario || usuario.vendas === "nenhum") return null;
   const sp = await searchParams;
   const papel = usuario.vendas;
   const chefe = papel === "chefe";

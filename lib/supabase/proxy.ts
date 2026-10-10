@@ -14,6 +14,10 @@ const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/confirmar", "/erro", "/api",
 // /vendas/config fica liberada: atendente vê em modo leitura (a página decide o que mostra).
 const ADMIN_PATHS = ["/monitor", "/bms", "/fechamento", "/admin", "/vendas/fechamento"];
 
+// Telas que o plantonista (só cobre turnos) não abre. O bloqueio dos dados é no banco (RLS);
+// aqui só evita a tela. Manter igual a `para` em components/painel-nav.tsx.
+const BLOQUEADO_PLANTONISTA = ["/vendas", "/webinarios"];
+
 function comecaCom(pathname: string, caminhos: string[]) {
   return caminhos.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
@@ -75,7 +79,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   const papel = (user?.app_metadata as { papel?: unknown } | undefined)?.papel;
-  if (user && papel !== "admin" && comecaCom(pathname, ADMIN_PATHS)) {
+  if (user && ((papel !== "admin" && comecaCom(pathname, ADMIN_PATHS)) || (papel === "plantonista" && comecaCom(pathname, BLOQUEADO_PLANTONISTA)))) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";

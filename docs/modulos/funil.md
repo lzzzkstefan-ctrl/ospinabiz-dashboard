@@ -189,3 +189,20 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
 - **Rótulo do contato:** se o nome no CRM é (ou contém) um telefone, ele não entra no rótulo, só os
   4 últimos dígitos (antes aparecia o telefone inteiro na lista).
 
+## Leads sem atendimento na chegada (10/10/2026, migration funil_minutos_chegada)
+- Substitui na tela a lista "Alunos esperando (suporte)" (o cálculo continua separando aluno de
+  lead nas listas de espera).
+- Leads que ENTRARAM no período (filtros de vendedor e número valem; vendedor vê só os dele pelo
+  RLS; número interno fora). Chegada = 1ª mensagem do lead (`primeira_msg_lead_em`; sem ela, a
+  criação do lead). Resposta = 1ª mensagem de atendente de verdade (`primeira_resposta_em`).
+  - **Fora do horário:** chegada fora de `atendimento_inicio`–`atendimento_fim` (9h–22h desde 10/10).
+  - **Dentro do horário, sem atendente:** chegou no horário e não teve resposta em até
+    `minutos_primeira_resposta` (padrão 30, editável em /funil/config).
+  - **Atendidos a tempo:** chegou no horário e teve resposta nesse prazo.
+  - Quem chegou no horário há menos de X minutos e ainda não teve resposta fica "no prazo" (fora dos
+    grupos).
+  - Por grupo: quantidade, % do total, tempo REAL médio até a 1ª resposta (só de quem teve resposta;
+    a madrugada conta) e % que virou Aluno (venda na Hubla ou Pix/CNPJ, a mesma regra do funil).
+  - Gráfico de leads por hora de chegada (0h–23h, Brasília), com a faixa fora do horário em laranja.
+- Cálculo em `chegadaDosLeads` (modulos/funil/calculo.ts).
+

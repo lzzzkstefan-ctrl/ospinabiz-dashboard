@@ -2,7 +2,19 @@
 // leads dele (e o registro de contato, com nome e telefone, nunca é lido aqui).
 
 import { createClient } from "@/lib/supabase/server";
-import { calcularFunil, etapaAtual, mediana, tempoEmAtendimento, type Etapa, type EtiquetaEtapa, type LeadFunil, type Resultado } from "./calculo";
+import {
+  calcularFunil,
+  chegadaDosLeads,
+  etapaAtual,
+  mediana,
+  tempoEmAtendimento,
+  type Chegada,
+  type Etapa,
+  type EtiquetaEtapa,
+  type LeadChegada,
+  type LeadFunil,
+  type Resultado,
+} from "./calculo";
 
 export type FiltrosFunil = { desde: string; ate: string; vendedorId: number | null; numeroId: string | null };
 
@@ -98,15 +110,16 @@ export async function nomesDosNumeros(): Promise<Map<string, string>> {
 // Atendimento (migration funil_atendimento). Tudo com o login de quem vê: o vendedor só recebe
 // as conversas e os leads dele (RLS).
 // ---------------------------------------------------------------------------
-export type ConfigFunil = { horasEspera: number; inicio: string; fim: string };
+export type ConfigFunil = { horasEspera: number; inicio: string; fim: string; minutosResposta: number };
 
 export async function configDoFunil(): Promise<ConfigFunil> {
   const supabase = await createClient();
-  const { data } = await supabase.from("funil_config").select("horas_espera, atendimento_inicio, atendimento_fim").maybeSingle();
+  const { data } = await supabase.from("funil_config").select("horas_espera, atendimento_inicio, atendimento_fim, minutos_primeira_resposta").maybeSingle();
   return {
     horasEspera: Number(data?.horas_espera ?? 2),
-    inicio: String(data?.atendimento_inicio ?? "08:00").slice(0, 5),
+    inicio: String(data?.atendimento_inicio ?? "09:00").slice(0, 5),
     fim: String(data?.atendimento_fim ?? "22:00").slice(0, 5),
+    minutosResposta: Number(data?.minutos_primeira_resposta ?? 30),
   };
 }
 
@@ -249,6 +262,38 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
   filas.atendimento.sort((a, b) => (a.situacao === b.situacao ? b.esperaMs - a.esperaMs : a.situacao === "nao_iniciado" ? -1 : 1));
   filas.aguardando.sort((a, b) => b.esperaMs - a.esperaMs);
   return { leads: todos.filter((e) => !e.aluno), alunos: todos.filter((e) => e.aluno), aguardandoLead: ordenar(aguardando), filas };
+}
+
+/**
+ * Leads sem atendimento na chegada, dos leads que entraram no período (o RLS mostra ao vendedor só
+ * os dele). Número interno fica fora.
+ */
+export async function chegadaNoPeriodo(f: FiltrosFunil, cfg: ConfigFunil): Promise<Chegada> {
+  const supabase = await createClient();
+  const leads: LeadChegada[] = [];
+  for (let de = 0; ; de += 1000) {
+    let q = supabase
+      .from("funil_leads")
+      .select("criado_em, primeira_msg_lead_em, primeira_resposta_em, compra")
+      .gte("dia", f.desde)
+      .lte("dia", f.ate)
+      .eq("interno", false)
+      .order("dc_id")
+      .range(de, de + 999);
+    if (f.vendedorId) q = q.eq("vendedor_id", f.vendedorId);
+    if (f.numeroId) q = q.eq("numero_dc_id", f.numeroId);
+    const { data, error } = await q;
+    if (error) throw new Error(`Erro ao carregar a chegada dos leads: ${error.message}`);
+    for (const l of data) {
+      leads.push({
+        chegada: String(l.primeira_msg_lead_em ?? l.criado_em),
+        resposta: l.primeira_resposta_em ? String(l.primeira_resposta_em) : null,
+        comprou: l.compra === "hubla" || l.compra === "fora_hubla",
+      });
+    }
+    if (data.length < 1000) break;
+  }
+  return chegadaDosLeads(leads, cfg.inicio, cfg.fim, cfg.minutosResposta, Date.now());
 }
 
 export type PrimeiraResposta = { vendedor: string; leads: number; mediaMs: number; medianaMs: number };

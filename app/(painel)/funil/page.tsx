@@ -1,9 +1,10 @@
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { cn } from "@/lib/utils";
-import { duracao, hojeSP, lerPeriodo, minimoParaGap, type Periodo } from "@/modulos/funil/calculo";
+import { duracao, hojeSP, lerPeriodo, minimoParaGap, type Chegada, type GrupoChegada, type Periodo } from "@/modulos/funil/calculo";
 import {
   bmDosNumeros,
   carregarFunil,
+  chegadaNoPeriodo,
   configDoFunil,
   leadsEsperando,
   mudancasDoFunil,
@@ -66,7 +67,7 @@ async function Conteudo({ searchParams }: Props) {
 
   // card, tooltip por número e tabela por número saem do MESMO resultado (uma leitura dos leads)
   const cfg = await configDoFunil();
-  const [r, sync, nomes, esperando, respostas, bms, mudancas] = await Promise.all([
+  const [r, sync, nomes, esperando, respostas, bms, mudancas, chegada] = await Promise.all([
     carregarFunil({ desde, ate, vendedorId, numeroId }),
     statusDaSincronizacao(),
     nomesDosNumeros(),
@@ -74,6 +75,7 @@ async function Conteudo({ searchParams }: Props) {
     primeiraResposta({ desde, ate, vendedorId, numeroId }, cfg),
     bmDosNumeros(),
     mudancasDoFunil(desde, ate),
+    chegadaNoPeriodo({ desde, ate, vendedorId, numeroId }, cfg),
   ]);
   // marcas de mudança no funil, por dia
   const marcas = new Map<string, string[]>();
@@ -239,16 +241,7 @@ async function Conteudo({ searchParams }: Props) {
         fim={cfg.fim}
         admin={admin}
       />
-      <ListaEsperando
-        id="alunos-esperando"
-        titulo="Alunos esperando (suporte)"
-        itens={esperando.alunos}
-        horas={cfg.horasEspera}
-        inicio={cfg.inicio}
-        fim={cfg.fim}
-        admin={false}
-        tipo="aluno"
-      />
+      <ChegadaDosLeads chegada={chegada} inicio={cfg.inicio} fim={cfg.fim} minutos={cfg.minutosResposta} admin={admin} />
       <ListaEsperando
         id="aguardando-lead"
         titulo="Aguardando o lead"
@@ -521,6 +514,98 @@ function TabelaFila({
     </div>
   );
 }
+
+/**
+ * Leads sem atendimento na chegada (no período): fora do horário, dentro do horário sem atendente em
+ * até X minutos e atendidos a tempo, com tempo médio até a 1ª resposta e conversão em Aluno; e os
+ * leads por hora de chegada.
+ */
+function ChegadaDosLeads({ chegada: c, inicio, fim, minutos, admin }: { chegada: Chegada; inicio: string; fim: string; minutos: number; admin: boolean }) {
+  const grupos: { nome: string; detalhe: string; g: GrupoChegada; alerta: boolean }[] = [
+    { nome: "Fora do horário", detalhe: `1ª mensagem fora das ${inicio}–${fim}`, g: c.fora, alerta: c.fora.leads > 0 },
+    { nome: "Dentro do horário, sem atendente", detalhe: `sem resposta de atendente em até ${minutos} min`, g: c.semAtendente, alerta: c.semAtendente.leads > 0 },
+    { nome: "Atendidos a tempo", detalhe: `resposta de atendente em até ${minutos} min`, g: c.aTempo, alerta: false },
+  ];
+  const max = Math.max(1, ...c.porHora.map((h) => h.qtd));
+  return (
+    <section id="chegada" className="glass-lite glass-static scroll-mt-28 p-4">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-[15px] font-semibold text-white">Leads sem atendimento na chegada · {c.total} leads no período</h2>
+        {admin && (
+          <Link href="/funil/config" className="text-[12px] text-ink-dim underline-offset-4 hover:underline">
+            Configurar horário e minutos
+          </Link>
+        )}
+      </div>
+      <p className="m-0 mb-3 text-[12px] text-ink-faint">
+        Chegada = 1ª mensagem do lead (sem ela, a criação do lead). Resposta = 1ª mensagem de atendente de verdade (automação e suporte Data Crazy não contam). Tempos em
+        tempo real (a madrugada conta). Aluno = venda na Hubla ou Pix/CNPJ.
+        {c.noPrazo > 0 && ` ${c.noPrazo} lead(s) chegaram há menos de ${minutos} min e ainda estão no prazo (fora dos grupos).`}
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {grupos.map(({ nome, detalhe, g, alerta }) => (
+          <div key={nome} className={cn("rounded-xl border border-line-soft p-3", alerta && "border-[rgb(var(--tag-laranja)/0.5)]")}>
+            <p className="m-0 text-[12.5px] font-semibold text-ink">{nome}</p>
+            <p className="m-0 text-[11.5px] text-ink-faint">{detalhe}</p>
+            <p className="m-0 mt-2 flex items-baseline gap-2">
+              <span className={cn("text-[26px] font-semibold tabular-nums", alerta ? "text-[rgb(var(--tag-laranja))]" : "text-white")}>{g.leads}</span>
+              <span className="text-[12.5px] tabular-nums text-ink-dim">{pctOuTraco(c.total ? g.pct : null)} do total</span>
+            </p>
+            <dl className="m-0 mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12.5px] tabular-nums">
+              <dt className="text-ink-dim">1ª resposta (média)</dt>
+              <dd className="m-0 text-right text-white">
+                {g.mediaMs === null ? "—" : duracao(g.mediaMs)}
+                <span className="text-ink-faint">
+                  {" "}
+                  · {g.respondidos} de {g.leads} respondidos
+                </span>
+              </dd>
+              <dt className="text-ink-dim">Viraram Aluno</dt>
+              <dd className="m-0 text-right text-white">
+                {pctOuTraco(g.conversao)}
+                <span className="text-ink-faint"> · {g.alunos}</span>
+              </dd>
+            </dl>
+          </div>
+        ))}
+      </div>
+
+      <h3 className="mb-2 mt-5 text-[13px] font-semibold text-ink">Leads por hora de chegada</h3>
+      <div className="flex h-36 items-end gap-[3px]" role="img" aria-label="Leads por hora de chegada, de 0h a 23h">
+        {c.porHora.map((h) => (
+          <div
+            key={h.hora}
+            className={cn("relative flex h-full flex-1 flex-col justify-end rounded-t-[3px]", h.fora && "bg-[rgb(var(--tag-laranja)/0.08)]")}
+            title={`${h.hora}h: ${h.qtd} lead(s)${h.fora ? " · fora do horário" : ""}`}
+          >
+            <span className="mb-0.5 text-center text-[10px] tabular-nums text-ink-faint">{h.qtd || ""}</span>
+            <div
+              className={cn("w-full rounded-t-[3px]", h.fora ? "bg-[rgb(var(--tag-laranja))]" : "bg-accent")}
+              style={{ height: h.qtd ? `${Math.max(3, (h.qtd / max) * 85)}%` : 0 }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex gap-[3px] text-center text-[10px] tabular-nums text-ink-faint">
+        {c.porHora.map((h) => (
+          <span key={h.hora} className="flex-1">
+            {h.hora}
+          </span>
+        ))}
+      </div>
+      <p className="m-0 mt-2 flex items-center gap-3 text-[11.5px] text-ink-faint">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[rgb(var(--tag-laranja))]" /> fora do horário ({fim}–{inicio})
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-accent" /> dentro do horário
+        </span>
+      </p>
+    </section>
+  );
+}
+
+const pctOuTraco = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 
 /** Leads (ou alunos) esperando resposta de um atendente há mais de X horas de atendimento. */
 function ListaEsperando({

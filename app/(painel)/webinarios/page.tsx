@@ -36,7 +36,7 @@ const dataBR = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
 async function Conteudo({ searchParams }: Props) {
   const usuario = await usuarioLogado();
-  if (!usuario) return null;
+  if (!usuario || usuario.papel === "plantonista") return null;
   if (usuario.papel !== "admin") return <VisaoVendedor />;
 
   const sp = await searchParams;

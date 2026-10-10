@@ -202,7 +202,7 @@ function validar(v: VendaInput): string | null {
 
 export async function criarVenda(v: VendaInput): Promise<Resultado> {
   const usuario = await usuarioLogado();
-  if (!usuario) return SO_ADMIN;
+  if (!usuario || usuario.vendas === "nenhum") return SO_ADMIN;
   const chefe = usuario.vendas === "chefe";
   const erro = validar(v);
   if (erro) return { erro };

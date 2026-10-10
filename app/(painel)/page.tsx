@@ -122,12 +122,14 @@ async function ConteudoInicio() {
         </div>
       </section>
 
-      <section className="mt-8 flex flex-col gap-3">
-        <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Vendas</h2>
-        <div className="rounded-[18px] border border-dashed border-line px-4 py-6 text-center text-[13.5px] text-ink-faint">
-          Vendas · fase 2
-        </div>
-      </section>
+      {usuario?.papel !== "plantonista" && (
+        <section className="mt-8 flex flex-col gap-3">
+          <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Vendas</h2>
+          <div className="rounded-[18px] border border-dashed border-line px-4 py-6 text-center text-[13.5px] text-ink-faint">
+            Vendas · fase 2
+          </div>
+        </section>
+      )}
     </>
   );
 }

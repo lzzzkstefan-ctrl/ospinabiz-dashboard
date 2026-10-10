@@ -276,3 +276,19 @@ o histórico se o número for descadastrado. Os 8 últimos dígitos não depende
 extra. O telefone fica só na tabela de números internos (só admin) e no registro de contato que já
 existia: as tabelas que o vendedor lê recebem só a marca.
 
+## 2026-10-10: Escala: papel "plantonista" travado no banco; check-in pela hora do servidor
+
+Quem só cobre turnos (irmãos do Davi, alguém só para sábado) ganha o papel `plantonista`: vê a
+escala, faz check-in, os leads dele no Funil e as tarefas dele. Não vê Vendas, comissão, Webinários
+nem Monitor, e o bloqueio está nas regras do banco (não só no menu). Começar e encerrar turno são
+funções do banco que usam a hora do servidor; o admin corrige com motivo registrado.
+
+**Por quê:** algumas tabelas eram legíveis por qualquer logado (tickets com comissão, meta, números
+monitorados com telefone); para alguém de fora da equipe de vendas isso é demais. Hora digitada
+permitiria "ajustar" presença. A escala padrão guarda vigência (desde/até) para que mudar a escala
+não reescreva o escalado dos dias passados.
+
+**Exceção ao "Supabase é o relógio, a Vercel faz o trabalho":** o fechamento do turno esquecido
+(22h05) roda direto no banco (`privado.escala_encerrar_esquecidos`), sem chamar rota: é uma
+atualização simples de dados, sem serviço externo nem regra que precise do código.
+

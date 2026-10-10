@@ -1,0 +1,217 @@
+// Regras da Escala e check-in (sem tela, sem banco). Contexto em docs/modulos/escala.md.
+// Datas "AAAA-MM-DD" e horários "HH:MM" no fuso de Brasília (UTC-3, sem horário de verão).
+// Dias da semana: 0 = domingo ... 6 = sábado.
+
+export type Tipo = "normal" | "raspagem";
+export type SituacaoPlantao = "pendente" | "confirmado" | "recusado" | "cancelado";
+
+export type Padrao = { id: number; dia_semana: number; equipe_id: number; inicio: string; fim: string; tipo: Tipo; desde: string; ate: string | null };
+export type Plantao = { id: number; dia: string; equipe_id: number; inicio: string; fim: string; tipo: Tipo; situacao: SituacaoPlantao; motivo: string | null };
+export type Checkin = { id: number; equipe_id: number; tipo: Tipo; inicio: string; fim: string | null; encerrado_auto: boolean };
+
+export type Entrada = {
+  origem: "padrao" | "plantao";
+  id: number;
+  equipeId: number;
+  nome: string;
+  inicio: string;
+  fim: string;
+  tipo: Tipo;
+};
+
+export type Faixa = { inicio: string; fim: string };
+
+export type DiaEscala = {
+  dia: string;
+  diaSemana: number;
+  /** escala padrão + plantões confirmados */
+  entradas: Entrada[];
+  /** plantões pedidos que o admin ainda não confirmou (aparecem apagados) */
+  pendentes: Entrada[];
+  /** horário da operação sem ninguém (nem normal nem raspagem) */
+  descoberto: Faixa[];
+  /** coberto = turno normal no horário todo; parcial = tem alguém, mas sobra buraco ou só raspagem;
+   * descoberto = ninguém */
+  situacao: "coberto" | "parcial" | "descoberto";
+  temRaspagem: boolean;
+};
+
+export const NOME_DIA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+export const NOME_DIA_CURTO = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+
+const FUSO_MS = 3 * 3_600_000;
+
+export const minutos = (hhmm: string) => {
+  const [h, m] = hhmm.slice(0, 5).split(":").map(Number);
+  return h * 60 + (m || 0);
+};
+export const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+/** "09:00" → "9h"; "14:30" → "14h30" */
+export const horaCurta = (h: string) => {
+  const [hh, mm] = h.slice(0, 5).split(":");
+  return `${Number(hh)}h${mm === "00" ? "" : mm}`;
+};
+
+/** Dia da semana de uma data (0 = domingo). */
+export function diaDaSemana(dia: string): number {
+  return new Date(`${dia}T12:00:00Z`).getUTCDay();
+}
+
+export function somarDias(dia: string, n: number): string {
+  return new Date(Date.parse(`${dia}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Domingo da semana do dia. */
+export function inicioDaSemana(dia: string): string {
+  return somarDias(dia, -diaDaSemana(dia));
+}
+
+export function diasDaSemana(domingo: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => somarDias(domingo, i));
+}
+
+/** Data e minuto do dia (Brasília) de um instante. */
+export function emBrasilia(iso: string): { dia: string; minuto: number } {
+  const d = new Date(Date.parse(iso) - FUSO_MS);
+  return { dia: d.toISOString().slice(0, 10), minuto: d.getUTCHours() * 60 + d.getUTCMinutes() };
+}
+
+/** Instante (ISO) de um dia + horário de Brasília. */
+export function instante(dia: string, hora: string): string {
+  return new Date(Date.parse(`${dia}T${hora.slice(0, 5)}:00Z`) + FUSO_MS).toISOString();
+}
+
+export const padraoVale = (p: Padrao, dia: string) => p.dia_semana === diaDaSemana(dia) && p.desde <= dia && (!p.ate || p.ate >= dia);
+
+/** Junta faixas que se encostam ou se sobrepõem (em minutos). */
+function unir(faixas: [number, number][]): [number, number][] {
+  const ord = [...faixas].sort((a, b) => a[0] - b[0]);
+  const r: [number, number][] = [];
+  for (const [a, b] of ord) {
+    const ult = r[r.length - 1];
+    if (ult && a <= ult[1]) ult[1] = Math.max(ult[1], b);
+    else r.push([a, b]);
+  }
+  return r;
+}
+
+/** Partes de [ini, fim] que nenhuma faixa cobre. */
+function buracos(ini: number, fim: number, cobertas: [number, number][]): [number, number][] {
+  const r: [number, number][] = [];
+  let t = ini;
+  for (const [a, b] of unir(cobertas)) {
+    if (b <= t) continue;
+    if (a >= fim) break;
+    if (a > t) r.push([t, Math.min(a, fim)]);
+    t = Math.max(t, b);
+    if (t >= fim) break;
+  }
+  if (t < fim) r.push([t, fim]);
+  return r;
+}
+
+/** Um dia da escala: padrão que vale no dia + plantões confirmados; pendentes à parte. */
+export function montarDia(
+  dia: string,
+  padroes: Padrao[],
+  plantoes: Plantao[],
+  nomeDe: Map<number, string>,
+  operacao: { inicio: string; fim: string },
+): DiaEscala {
+  const nome = (id: number) => nomeDe.get(id) ?? "?";
+  const entradas: Entrada[] = [
+    ...padroes.filter((p) => padraoVale(p, dia)).map((p) => ({ origem: "padrao" as const, id: p.id, equipeId: p.equipe_id, nome: nome(p.equipe_id), inicio: p.inicio.slice(0, 5), fim: p.fim.slice(0, 5), tipo: p.tipo })),
+    ...plantoes
+      .filter((p) => p.dia === dia && p.situacao === "confirmado")
+      .map((p) => ({ origem: "plantao" as const, id: p.id, equipeId: p.equipe_id, nome: nome(p.equipe_id), inicio: p.inicio.slice(0, 5), fim: p.fim.slice(0, 5), tipo: p.tipo })),
+  ].sort((a, b) => a.inicio.localeCompare(b.inicio) || a.nome.localeCompare(b.nome));
+  const pendentes: Entrada[] = plantoes
+    .filter((p) => p.dia === dia && p.situacao === "pendente")
+    .map((p) => ({ origem: "plantao" as const, id: p.id, equipeId: p.equipe_id, nome: nome(p.equipe_id), inicio: p.inicio.slice(0, 5), fim: p.fim.slice(0, 5), tipo: p.tipo }));
+
+  const ini = minutos(operacao.inicio);
+  const fim = minutos(operacao.fim);
+  const faixa = (e: Entrada): [number, number] => [minutos(e.inicio), minutos(e.fim)];
+  const descoberto = buracos(ini, fim, entradas.map(faixa)).map(([a, b]) => ({ inicio: hhmm(a), fim: hhmm(b) }));
+  const semNormal = buracos(ini, fim, entradas.filter((e) => e.tipo === "normal").map(faixa));
+  const situacao = !entradas.length ? "descoberto" : semNormal.length ? "parcial" : "coberto";
+  return { dia, diaSemana: diaDaSemana(dia), entradas, pendentes, descoberto, situacao, temRaspagem: entradas.some((e) => e.tipo === "raspagem") };
+}
+
+// ---------------------------------------------------------------------------
+// Presença: escalado x realizado, por pessoa e por dia
+// ---------------------------------------------------------------------------
+
+/** Tolerância de atraso na entrada (minutos). */
+export const TOLERANCIA_ATRASO_MIN = 10;
+
+export type Presenca = {
+  dia: string;
+  equipeId: number;
+  nome: string;
+  escalado: Faixa[];
+  /** turnos (check-ins) do dia, já cortados no dia */
+  feito: (Faixa & { checkinId: number; aberto: boolean; auto: boolean; tipo: Tipo })[];
+  minutosEscalados: number;
+  minutosFeitos: number;
+  /** minutos entre o início escalado e o primeiro check-in (só quando positivo) */
+  atrasoMin: number | null;
+  situacao: "ok" | "atrasou" | "faltou" | "extra" | "em_andamento" | "a_fazer";
+};
+
+/**
+ * Para cada dia da lista e cada pessoa com escala OU check-in no dia. `agoraIso` decide o que já
+ * passou: falta só conta depois que o horário escalado começou.
+ */
+export function presencas(dias: DiaEscala[], checkins: Checkin[], nomeDe: Map<number, string>, agoraIso: string): Presenca[] {
+  const agora = emBrasilia(agoraIso);
+  const r: Presenca[] = [];
+  for (const d of dias) {
+    // turnos do dia (Brasília), cortados no dia
+    const doDia = new Map<number, Presenca["feito"]>();
+    for (const c of checkins) {
+      const a = emBrasilia(c.inicio);
+      const b = c.fim ? emBrasilia(c.fim) : agora;
+      if (a.dia > d.dia || b.dia < d.dia) continue;
+      const ini = a.dia < d.dia ? 0 : a.minuto;
+      const fim = b.dia > d.dia ? 24 * 60 : b.minuto;
+      const lista = doDia.get(c.equipe_id) ?? [];
+      lista.push({ checkinId: c.id, inicio: hhmm(ini), fim: hhmm(Math.min(fim, 24 * 60 - 1)), aberto: !c.fim, auto: c.encerrado_auto, tipo: c.tipo });
+      doDia.set(c.equipe_id, lista);
+    }
+    const pessoas = new Set<number>([...d.entradas.map((e) => e.equipeId), ...doDia.keys()]);
+    for (const id of pessoas) {
+      const escaladoFaixas = unir(d.entradas.filter((e) => e.equipeId === id).map((e) => [minutos(e.inicio), minutos(e.fim)] as [number, number]));
+      const feito = (doDia.get(id) ?? []).sort((a, b) => a.inicio.localeCompare(b.inicio));
+      const minutosEscalados = escaladoFaixas.reduce((s, [a, b]) => s + (b - a), 0);
+      const minutosFeitos = feito.reduce((s, f) => s + Math.max(0, minutos(f.fim) - minutos(f.inicio)), 0);
+      const primeiroEscalado = escaladoFaixas[0]?.[0] ?? null;
+      const atraso = primeiroEscalado !== null && feito.length ? minutos(feito[0].inicio) - primeiroEscalado : null;
+      const jaComecou = d.dia < agora.dia || (d.dia === agora.dia && primeiroEscalado !== null && agora.minuto >= primeiroEscalado);
+      let situacao: Presenca["situacao"];
+      if (!escaladoFaixas.length) situacao = "extra";
+      else if (!feito.length) situacao = jaComecou ? "faltou" : "a_fazer";
+      else if (feito.some((f) => f.aberto)) situacao = "em_andamento";
+      else situacao = atraso !== null && atraso > TOLERANCIA_ATRASO_MIN ? "atrasou" : "ok";
+      r.push({
+        dia: d.dia,
+        equipeId: id,
+        nome: nomeDe.get(id) ?? "?",
+        escalado: escaladoFaixas.map(([a, b]) => ({ inicio: hhmm(a), fim: hhmm(b) })),
+        feito,
+        minutosEscalados,
+        minutosFeitos,
+        atrasoMin: atraso !== null && atraso > 0 ? atraso : null,
+        situacao,
+      });
+    }
+  }
+  return r.sort((a, b) => a.dia.localeCompare(b.dia) || a.nome.localeCompare(b.nome));
+}
+
+/** "7h30" a partir de minutos. */
+export function horas(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h ? `${h}h${m ? String(m).padStart(2, "0") : ""}` : `${m}min`;
+}

@@ -1,22 +1,22 @@
-import { PainelNav, PainelNavMobile } from "@/components/painel-nav";
+import { PainelNav, PainelNavMobile, type PapelMenu } from "@/components/painel-nav";
 import { UsuarioAtual } from "@/components/usuario-atual";
-import { ehAdmin } from "@/lib/auth/papeis";
+import { usuarioLogado } from "@/lib/auth/papeis";
 import { Suspense } from "react";
 
 // O papel vem do login (pedido), então o menu fica dentro do Suspense. Enquanto carrega,
-// mostra o menu de atendente: nunca aparece aba de admin para quem não é admin.
+// mostra o menu mais restrito (o do plantonista): nunca aparece aba que a pessoa não pode abrir.
 async function Menu() {
-  const admin = await ehAdmin();
-  return <Navegacao admin={admin} />;
+  const papel = (await usuarioLogado())?.papel ?? "plantonista";
+  return <Navegacao papel={papel} />;
 }
 
-function Navegacao({ admin }: { admin: boolean }) {
+function Navegacao({ papel }: { papel: PapelMenu }) {
   return (
     <>
       {/* na impressão (relatório de fechamento em PDF) o menu some */}
       <div className="print:hidden">
         <PainelNav
-          admin={admin}
+          papel={papel}
           usuario={
             <Suspense>
               <UsuarioAtual />
@@ -25,7 +25,7 @@ function Navegacao({ admin }: { admin: boolean }) {
         />
       </div>
       <div className="print:hidden">
-        <PainelNavMobile admin={admin} />
+        <PainelNavMobile papel={papel} />
       </div>
     </>
   );
@@ -44,7 +44,7 @@ export default function PainelLayout({
       <Suspense
         fallback={
           <Suspense fallback={null}>
-            <Navegacao admin={false} />
+            <Navegacao papel="plantonista" />
           </Suspense>
         }
       >

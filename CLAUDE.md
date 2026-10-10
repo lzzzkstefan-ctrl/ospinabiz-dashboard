@@ -98,7 +98,8 @@ Regras de convivência:
   em `app/api`. O pg_cron só chama essas rotas no horário. Não usar cron da Vercel (Hobby: 1x/dia, ±59 min).
 - pg_cron roda em UTC. America/Sao_Paulo é UTC-3 (sem horário de verão desde 2019):
   7h30 = `30 10 * * *`, 17h = `0 20 * * *`.
-- Papéis `admin` e `atendente`, guardados em `app_metadata` (nunca `user_metadata`).
+- Papéis `admin`, `atendente` e `plantonista` (só cobre turnos; sem Vendas), guardados em
+  `app_metadata` (nunca `user_metadata`). Vendas tem papel próprio (`app_metadata.vendas`).
 - RLS ligado em toda tabela do schema `public`.
 - O plano gratuito do Supabase pausa o projeto após 7 dias sem atividade. Manter um ping diário externo.
 

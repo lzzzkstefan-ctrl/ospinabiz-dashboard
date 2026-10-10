@@ -289,3 +289,88 @@ export function mediana(valores: number[]): number | null {
   const m = Math.floor(v.length / 2);
   return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
 }
+
+// ---------------------------------------------------------------------------
+// Leads sem atendimento na chegada (pedido do Davi, 10/10/2026)
+// ---------------------------------------------------------------------------
+
+export type LeadChegada = {
+  /** chegada = 1ª mensagem do lead; sem ela, a criação do lead */
+  chegada: string;
+  /** 1ª resposta de atendente de verdade (automação e suporte Data Crazy não contam) */
+  resposta: string | null;
+  comprou: boolean;
+};
+
+export type GrupoChegada = {
+  leads: number;
+  /** % do total de leads do período */
+  pct: number;
+  /** quantos já tiveram resposta de atendente */
+  respondidos: number;
+  /** tempo REAL médio até a 1ª resposta de atendente (só de quem teve resposta) */
+  mediaMs: number | null;
+  alunos: number;
+  /** % que virou Aluno (venda na Hubla ou Pix/CNPJ) */
+  conversao: number | null;
+};
+
+export type Chegada = {
+  total: number;
+  /** chegou dentro do horário há menos de X minutos e ninguém respondeu ainda: fica fora dos grupos */
+  noPrazo: number;
+  fora: GrupoChegada;
+  semAtendente: GrupoChegada;
+  aTempo: GrupoChegada;
+  /** leads por hora de chegada (0h a 23h, Brasília); fora = hora fora do horário de atendimento */
+  porHora: { hora: number; qtd: number; fora: boolean }[];
+};
+
+/**
+ * Separa os leads do período pela chegada:
+ * - fora: 1ª mensagem fora do horário de atendimento;
+ * - semAtendente: chegou dentro do horário e não teve resposta de atendente em até X minutos;
+ * - aTempo: chegou dentro do horário e teve resposta em até X minutos.
+ * Tempos em tempo REAL (a madrugada de quem chegou fora do horário conta).
+ */
+export function chegadaDosLeads(leads: LeadChegada[], inicio: string, fim: string, minutosResposta: number, agora: number): Chegada {
+  const fuso = 3 * 3_600_000;
+  const ini = minutos(inicio);
+  const fi = minutos(fim);
+  const limite = minutosResposta * 60_000;
+  const minutoDoDia = (ms: number) => {
+    const d = new Date(ms - fuso);
+    return d.getUTCHours() * 60 + d.getUTCMinutes();
+  };
+  const grupos: Record<"fora" | "semAtendente" | "aTempo", LeadChegada[]> = { fora: [], semAtendente: [], aTempo: [] };
+  const porHora = Array.from({ length: 24 }, (_, hora) => ({ hora, qtd: 0, fora: hora * 60 + 59 < ini || hora * 60 >= fi }));
+  let noPrazo = 0;
+  for (const l of leads) {
+    const chegada = Date.parse(l.chegada);
+    const m = minutoDoDia(chegada);
+    porHora[Math.floor(m / 60)].qtd++;
+    if (m < ini || m >= fi) {
+      grupos.fora.push(l);
+      continue;
+    }
+    const espera = l.resposta ? Date.parse(l.resposta) - chegada : null;
+    if (espera !== null && espera <= limite) grupos.aTempo.push(l);
+    else if (espera === null && agora - chegada <= limite) noPrazo++;
+    else grupos.semAtendente.push(l);
+  }
+  const total = leads.length;
+  const resumo = (g: LeadChegada[]): GrupoChegada => {
+    const tempos = g.filter((l) => l.resposta).map((l) => Math.max(0, Date.parse(l.resposta!) - Date.parse(l.chegada)));
+    const alunos = g.filter((l) => l.comprou).length;
+    return {
+      leads: g.length,
+      pct: total ? g.length / total : 0,
+      respondidos: tempos.length,
+      mediaMs: tempos.length ? tempos.reduce((a, b) => a + b, 0) / tempos.length : null,
+      alunos,
+      conversao: g.length ? alunos / g.length : null,
+    };
+  };
+  return { total, noPrazo, fora: resumo(grupos.fora), semAtendente: resumo(grupos.semAtendente), aTempo: resumo(grupos.aTempo), porHora };
+}
+

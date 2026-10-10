@@ -22,10 +22,19 @@ export async function salvarConfigFunil(_anterior: EstadoForm, form: FormData): 
   if (!Number.isFinite(horas) || horas <= 0 || horas > 72) return { erro: "Horas de espera: entre 0,5 e 72." };
   if (!horaOk(inicio) || !horaOk(fim)) return { erro: "Horário no formato 08:00." };
   if (fim <= inicio) return { erro: "O fim do atendimento tem que ser depois do início." };
+  const minutosResposta = Number(String(form.get("minutos_resposta") ?? ""));
+  if (!Number.isInteger(minutosResposta) || minutosResposta < 1 || minutosResposta > 600) return { erro: "Minutos para a 1ª resposta: inteiro entre 1 e 600." };
   const supabase = await createClient();
   const { error } = await supabase
     .from("funil_config")
-    .update({ horas_espera: Math.round(horas * 10) / 10, atendimento_inicio: inicio, atendimento_fim: fim, atualizado_por: usuario.id, atualizado_em: new Date().toISOString() })
+    .update({
+      horas_espera: Math.round(horas * 10) / 10,
+      atendimento_inicio: inicio,
+      atendimento_fim: fim,
+      minutos_primeira_resposta: minutosResposta,
+      atualizado_por: usuario.id,
+      atualizado_em: new Date().toISOString(),
+    })
     .eq("id", true);
   if (error) return { erro: "Não deu para salvar." };
   refresh();
