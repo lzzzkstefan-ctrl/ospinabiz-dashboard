@@ -39,7 +39,11 @@ export type Resultado = {
   totalLeads: number;
   foraDoFunil: number;
   noFunil: number;
-  porDia: { dia: string; qtd: number; porNumero: PorNumero }[];
+  /** por dia: leads, divisão por número e, só dos leads do funil, quantos chegaram em cada etapa
+   * (alcance[etapaId]) e quantos compraram (Hubla ou Pix/CNPJ) — base do gráfico de conversão */
+  porDia: { dia: string; qtd: number; porNumero: PorNumero; noFunil: number; compraram: number; alcance: Record<number, number> }[];
+  /** conversão por número (cada lead no número da primeira conversa) */
+  conversaoPorNumero: { numeroId: string | null; leads: number; compraram: number }[];
   porNumero: PorNumero;
   funil: LinhaFunil[];
   maiorGap: Gap | null;
@@ -153,6 +157,16 @@ export function calcularFunil(leads: LeadFunil[], etapas: Etapa[], etiquetas: Et
 
   const doDia = new Map<string, LeadFunil[]>();
   for (const l of leads) doDia.set(l.dia, [...(doDia.get(l.dia) ?? []), l]);
+  const comprou = (l: LeadFunil) => l.compra === "hubla" || l.compra === "fora_hubla";
+  // etapa mais avançada de cada lead do funil (os "fora do funil" não entram)
+  const maximoDoLead = new Map(doFunil.map((a, i) => [a.lead.dc_id, maximos[i]]));
+  const porNumeroConv = new Map<string | null, { leads: number; compraram: number }>();
+  for (const l of leads) {
+    const g = porNumeroConv.get(l.numero_dc_id) ?? { leads: 0, compraram: 0 };
+    g.leads++;
+    if (comprou(l)) g.compraram++;
+    porNumeroConv.set(l.numero_dc_id, g);
+  }
 
   return {
     totalLeads: leads.length,
@@ -160,9 +174,13 @@ export function calcularFunil(leads: LeadFunil[], etapas: Etapa[], etiquetas: Et
     noFunil: total,
     porDia: diasDoPeriodo(desde, ate).map((dia) => {
       const lista = doDia.get(dia) ?? [];
-      return { dia, qtd: lista.length, porNumero: contarPorNumero(lista) };
+      const doFunilNoDia = lista.filter((l) => maximoDoLead.has(l.dc_id));
+      const alcance: Record<number, number> = {};
+      for (const p of passos) alcance[p.id] = doFunilNoDia.filter((l) => maximoDoLead.get(l.dc_id)! >= p.ordem!).length;
+      return { dia, qtd: lista.length, porNumero: contarPorNumero(lista), noFunil: doFunilNoDia.length, compraram: doFunilNoDia.filter(comprou).length, alcance };
     }),
     porNumero: contarPorNumero(leads),
+    conversaoPorNumero: [...porNumeroConv.entries()].map(([numeroId, g]) => ({ numeroId, ...g })).sort((a, b) => b.leads - a.leads),
     funil,
     maiorGap,
     perdas,
@@ -210,4 +228,54 @@ export function duracao(ms: number): string {
   if (h < 24) return `${h}h${min % 60 ? ` ${min % 60}min` : ""}`;
   const d = Math.floor(h / 24);
   return `${d}d${h % 24 ? ` ${h % 24}h` : ""}`;
+}
+
+// ---------------------------------------------------------------------------
+// Atendimento
+// ---------------------------------------------------------------------------
+
+/** "08:00" | "08:00:00" → minutos desde 0h */
+const minutos = (hhmm: string) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + (m || 0);
+};
+
+/**
+ * Tempo (ms) entre `desde` e `ate` contando só o horário de atendimento, todos os dias, no fuso de
+ * Brasília (UTC-3). Ex.: 8h–22h, lead às 21h30 → às 8h30 do dia seguinte conta 1h.
+ */
+export function tempoEmAtendimento(desdeIso: string, ateMs: number, inicio: string, fim: string): number {
+  const fuso = 3 * 3_600_000;
+  const ini = minutos(inicio) * 60_000;
+  const fi = minutos(fim) * 60_000;
+  let t = Date.parse(desdeIso);
+  let total = 0;
+  // anda dia a dia (no máximo ~400 dias)
+  for (let i = 0; t < ateMs && i < 400; i++) {
+    const local = t - fuso;
+    const meiaNoite = local - (((local % 86_400_000) + 86_400_000) % 86_400_000);
+    const abre = meiaNoite + ini + fuso;
+    const fecha = meiaNoite + fi + fuso;
+    const a = Math.max(t, abre);
+    const b = Math.min(ateMs, fecha);
+    if (b > a) total += b - a;
+    t = meiaNoite + 86_400_000 + fuso;
+  }
+  return total;
+}
+
+/** Etapa atual a partir das etiquetas de agora: a etapa mais avançada; senão, perda/objeção/fora. */
+export function etapaAtual(tagIds: string[], etiquetas: EtiquetaEtapa[], etapas: Etapa[]): string | null {
+  const porId = new Map(etapas.map((e) => [e.id, e]));
+  const daEtiqueta = new Map(etiquetas.filter((t) => t.etapa_id !== null).map((t) => [t.dc_id, porId.get(t.etapa_id!)]));
+  const minhas = tagIds.map((id) => daEtiqueta.get(id)).filter((e): e is Etapa => !!e);
+  const passo = minhas.filter((e) => e.tipo === "etapa").sort((a, b) => (b.ordem ?? 0) - (a.ordem ?? 0))[0];
+  return passo?.nome ?? minhas[0]?.nome ?? null;
+}
+
+export function mediana(valores: number[]): number | null {
+  if (!valores.length) return null;
+  const v = [...valores].sort((a, b) => a - b);
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
 }

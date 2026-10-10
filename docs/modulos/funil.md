@@ -125,3 +125,22 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
 - A tela lê a cópia do banco (atualizada a cada 15 min); o card mostra "contado até HH:MM" e o
   admin tem "Sincronizar agora". A tela não consulta a Data Crazy a cada acesso (limite de 60
   chamadas/min por rota, dividido com o cron).
+
+## Atendimento (09/10/2026, migration funil_atendimento)
+- **Esperando resposta:** conversa ABERTA (não finalizada na Data Crazy) em que a última mensagem do
+  lead não teve resposta de atendente de verdade (automação e suporte Data Crazy não contam) há mais
+  de X horas, contando só o horário de atendimento, todos os dias. Padrão 2h, 8h–22h; o admin muda em
+  `/funil/config`. Vale para lead antigo que voltou a falar (base = `funil_conversas`, as conversas
+  com mensagem nos últimos 90 dias). Conversa finalizada não conta: se o lead escrever de novo, ela
+  reabre. A sincronização grava `esperando_desde`; quando a última mensagem é automação, confere as
+  mensagens recentes (no máximo 40 conversas por rodada). Vendedor vê só as dele. Cartão no Início.
+- **Tempo de primeira resposta:** 1ª mensagem do lead → 1ª mensagem depois dela de um atendente de
+  verdade, na 1ª conversa do lead, em horário de atendimento. Lido uma vez por lead (até 40 por rodada;
+  sem resposta, tenta por 7 dias). Média e mediana por quem respondeu.
+- **Conversão por número e por BM:** número = o da 1ª conversa; BM pela ligação `funil_numeros →
+  monitor_numeros` (os 18 números ligados pelo final em 09/10/2026).
+- **Conversão por dia:** % dos leads do funil do dia que viraram Aluno ou chegaram numa etapa
+  (padrão Parte 2), com seletor.
+- **Mudanças no funil:** o admin registra (dia, etapa opcional, descrição) em `/funil/config`; viram
+  linhas tracejadas nos gráficos de leads e de conversão.
+- Identificação do lead nas listas: só "primeiro nome -1234" (nunca nome completo nem telefone).

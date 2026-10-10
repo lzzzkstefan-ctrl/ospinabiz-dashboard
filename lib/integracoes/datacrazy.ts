@@ -31,9 +31,30 @@ export type DcConversa = {
   id: string;
   createdAt: string;
   lastMessageDate: string | null;
+  /** última mensagem que veio do lead / que saiu da operação (inclui automação) */
+  lastReceivedMessageDate: string | null;
+  lastSendedMessageDate: string | null;
+  lastMessageIsAutomation: boolean | null;
+  finished: boolean | null;
   attendants: { id: string }[];
   instance: { id: string; name: string } | null;
-  contact: { contactId: string | null } | null;
+  contact: {
+    contactId: string | null;
+    name?: string | null;
+    phoneNumber?: string | null;
+    /** etiquetas atuais do contato (dão a etapa) */
+    externalInfo?: { tagIds?: string[] | null } | null;
+  } | null;
+};
+/** Mensagem de uma conversa (só o que o painel usa; o texto nunca é lido). */
+export type DcMensagem = {
+  id: string;
+  createdAt: string;
+  /** true = veio do lead */
+  received: boolean;
+  isInternal: boolean | null;
+  /** atendente que mandou (vazio = automação ou envio pelo celular) */
+  attendant: { id: string } | null;
 };
 export type DcEventoHistorico = {
   id: string;
@@ -113,6 +134,16 @@ export class DataCrazy {
   async conversas(skip: number, take = 100): Promise<DcConversa[]> {
     const r = await this.get<{ data?: DcConversa[] }>("/conversations", "/conversations", { skip, take });
     return lista(r);
+  }
+
+  /** Mensagens de uma conversa, da mais nova para a mais antiga. */
+  async mensagens(conversaId: string, skip = 0, take = 100): Promise<DcMensagem[]> {
+    const r = await this.get<{ messages?: DcMensagem[] }>(
+      "/conversations/:id/messages",
+      `/conversations/${encodeURIComponent(conversaId)}/messages`,
+      { skip, take },
+    );
+    return r.messages ?? [];
   }
 
   async historicoDoLead(leadId: string, skip = 0, take = 200): Promise<{ eventos: DcEventoHistorico[]; total: number }> {

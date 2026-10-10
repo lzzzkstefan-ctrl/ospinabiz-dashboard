@@ -1,16 +1,28 @@
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { cn } from "@/lib/utils";
 import { duracao, hojeSP, lerPeriodo, minimoParaGap, type Periodo } from "@/modulos/funil/calculo";
-import { carregarFunil, nomesDosNumeros, opcoesDoFunil, statusDaSincronizacao, type StatusSincronizacao } from "@/modulos/funil/dados";
+import {
+  bmDosNumeros,
+  carregarFunil,
+  configDoFunil,
+  leadsEsperando,
+  mudancasDoFunil,
+  nomesDosNumeros,
+  opcoesDoFunil,
+  primeiraResposta,
+  statusDaSincronizacao,
+  type Esperando,
+  type StatusSincronizacao,
+} from "@/modulos/funil/dados";
 import Link from "next/link";
 import { Suspense } from "react";
-import { BarrasPorDia, FunilEtapas, TabelaPorNumero } from "./_componentes/graficos";
+import { BarrasConversao, BarrasPorDia, FunilEtapas, TabelaPorNumero } from "./_componentes/graficos";
 import { SincronizarAgora } from "./_componentes/sincronizar-agora";
 
 // Funil e Leads (v1). Contexto e regras em docs/modulos/funil.md; cálculo em modulos/funil/calculo.ts.
 // Admin vê tudo e filtra por vendedor/número; o vendedor vê só o funil dele (garantido pelo RLS).
 
-type Busca = { p?: string; de?: string; ate?: string; v?: string; n?: string };
+type Busca = { p?: string; de?: string; ate?: string; v?: string; n?: string; conv?: string };
 type Props = { searchParams: Promise<Busca> };
 
 export default function FunilPage({ searchParams }: Props) {
@@ -51,7 +63,36 @@ async function Conteudo({ searchParams }: Props) {
   const numeroId = admin && opcoes.numeros.some((n) => n.id === sp.n) ? sp.n! : null;
 
   // card, tooltip por número e tabela por número saem do MESMO resultado (uma leitura dos leads)
-  const [r, sync, nomes] = await Promise.all([carregarFunil({ desde, ate, vendedorId, numeroId }), statusDaSincronizacao(), nomesDosNumeros()]);
+  const cfg = await configDoFunil();
+  const [r, sync, nomes, esperando, respostas, bms, mudancas] = await Promise.all([
+    carregarFunil({ desde, ate, vendedorId, numeroId }),
+    statusDaSincronizacao(),
+    nomesDosNumeros(),
+    leadsEsperando(cfg, { vendedorId, numeroId }),
+    primeiraResposta({ desde, ate, vendedorId, numeroId }, cfg),
+    bmDosNumeros(),
+    mudancasDoFunil(desde, ate),
+  ]);
+  // marcas de mudança no funil, por dia
+  const marcas = new Map<string, string[]>();
+  for (const m of mudancas) marcas.set(m.dia, [...(marcas.get(m.dia) ?? []), m.etapa ? `${m.etapa}: ${m.descricao}` : m.descricao]);
+  // conversão por dia: "aluno" (comprou) ou uma etapa (padrão: Parte 2)
+  const padraoConv = r.funil.find((l) => l.nome === "Parte 2") ?? r.funil[2] ?? r.funil[0];
+  const alvo = sp.conv === "aluno" ? "aluno" : (r.funil.find((l) => String(l.etapaId) === sp.conv) ?? padraoConv);
+  const conversao = r.porDia.map((d) => ({
+    dia: d.dia,
+    base: d.noFunil,
+    chegaram: alvo === "aluno" ? d.compraram : alvo ? (d.alcance[alvo.etapaId] ?? 0) : 0,
+  }));
+  // conversão por BM (soma dos números de cada BM)
+  const porBm = new Map<string, { leads: number; compraram: number }>();
+  for (const n of r.conversaoPorNumero) {
+    const bm = n.numeroId ? (bms.get(n.numeroId) ?? "sem BM") : "ainda sem conversa";
+    const g = porBm.get(bm) ?? { leads: 0, compraram: 0 };
+    g.leads += n.leads;
+    g.compraram += n.compraram;
+    porBm.set(bm, g);
+  }
   const contadoAte = sync.ultimaOk
     ? new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(sync.ultimaOk))
     : null;
@@ -68,6 +109,16 @@ async function Conteudo({ searchParams }: Props) {
       q.set("ate", ate);
     }
     return `/funil?${q.toString()}`;
+  };
+  const linkConv = (c: string) => {
+    const q = new URLSearchParams(filtros);
+    q.set("p", periodo);
+    if (periodo === "personalizado") {
+      q.set("de", desde);
+      q.set("ate", ate);
+    }
+    q.set("conv", c);
+    return `/funil?${q.toString()}#conversao`;
   };
 
   const compradores = r.compradores.hubla + r.compradores.foraHubla;
@@ -150,6 +201,8 @@ async function Conteudo({ searchParams }: Props) {
         </form>
       </section>
 
+      <ListaEsperando itens={esperando} horas={cfg.horasEspera} inicio={cfg.inicio} fim={cfg.fim} admin={admin} />
+
       {/* números principais */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Numero
@@ -178,7 +231,7 @@ async function Conteudo({ searchParams }: Props) {
 
       <section className="glass-lite glass-static p-4">
         <h2 className="mb-3 text-[15px] font-semibold text-white">Leads por dia</h2>
-        <BarrasPorDia dias={r.porDia} nomes={nomes} />
+        <BarrasPorDia dias={r.porDia} nomes={nomes} marcas={marcas} />
       </section>
 
       <section className="glass-lite glass-static p-4">
@@ -197,6 +250,79 @@ async function Conteudo({ searchParams }: Props) {
         </p>
         <FunilEtapas linhas={r.funil} total={r.noFunil} gapPara={r.maiorGap?.para ?? null} />
       </section>
+
+      <section id="conversao" className="glass-lite glass-static p-4">
+        <h2 className="mb-1 text-[15px] font-semibold text-white">Conversão por dia</h2>
+        <p className="m-0 mb-3 text-[12px] text-ink-faint">Dos leads do funil que entraram em cada dia, a % que chegou no alvo. Linhas tracejadas = mudanças registradas no funil.</p>
+        <nav className="mb-3 flex flex-wrap gap-1.5" aria-label="Alvo da conversão">
+          {[{ id: "aluno", nome: "Virou Aluno" }, ...r.funil.map((l) => ({ id: String(l.etapaId), nome: `Chegou em ${l.nome}` }))].map((o) => {
+            const ativo = alvo === "aluno" ? o.id === "aluno" : o.id === String(alvo?.etapaId);
+            return (
+              <Link
+                key={o.id}
+                href={linkConv(o.id)}
+                aria-current={ativo ? "true" : undefined}
+                className={cn("rounded-full px-3 py-1 text-[12px] transition-colors", ativo ? "bg-accent/15 text-white" : "text-ink-dim hover:text-white")}
+              >
+                {o.nome}
+              </Link>
+            );
+          })}
+        </nav>
+        <BarrasConversao dias={conversao} marcas={marcas} />
+        {mudancas.length > 0 && (
+          <ul className="m-0 mt-3 flex list-none flex-col gap-1 border-t border-line-soft p-0 pt-2 text-[12.5px] text-ink-dim">
+            {mudancas.map((m) => (
+              <li key={m.id}>
+                <span className="tabular-nums text-ink-faint">{dataBR(m.dia)}</span> · {m.etapa ? `${m.etapa}: ` : ""}
+                {m.descricao}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="glass-lite glass-static p-4">
+          <h2 className="mb-1 text-[15px] font-semibold text-white">Tempo de primeira resposta</h2>
+          <p className="m-0 mb-3 text-[12px] text-ink-faint">
+            1ª mensagem do lead → 1ª resposta de um atendente (sem automação e sem suporte Data Crazy), contando só o horário de atendimento ({cfg.inicio}–{cfg.fim}).
+          </p>
+          {respostas.length === 0 ? (
+            <p className="m-0 py-4 text-center text-[13px] italic text-ink-faint">Ainda sem respostas medidas neste período.</p>
+          ) : (
+            <table className="w-full border-collapse text-left text-[13px] tabular-nums">
+              <thead className="text-[11.5px] text-ink-dim">
+                <tr>
+                  <th className="py-1.5 pr-3 font-medium">Quem respondeu</th>
+                  <th className="py-1.5 pr-3 text-right font-medium">Leads</th>
+                  <th className="py-1.5 pr-3 text-right font-medium">Média</th>
+                  <th className="py-1.5 text-right font-medium">Mediana</th>
+                </tr>
+              </thead>
+              <tbody>
+                {respostas.map((x) => (
+                  <tr key={x.vendedor} className="border-t border-line-soft text-ink">
+                    <td className="py-1.5 pr-3">{x.vendedor}</td>
+                    <td className="py-1.5 pr-3 text-right">{x.leads}</td>
+                    <td className="py-1.5 pr-3 text-right text-white">{duracao(x.mediaMs)}</td>
+                    <td className="py-1.5 text-right text-white">{duracao(x.medianaMs)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        <section className="glass-lite glass-static overflow-x-auto p-4">
+          <h2 className="mb-1 text-[15px] font-semibold text-white">Conversão por BM e por número</h2>
+          <p className="m-0 mb-3 text-[12px] text-ink-faint">Leads que entraram no período (cada um no número da primeira conversa) e quantos compraram (Hubla ou Pix/CNPJ).</p>
+          <TabelaConversao linhas={[...porBm.entries()].map(([nome, g]) => ({ nome, ...g }))} titulo="BM" />
+          <div className="mt-4">
+            <TabelaConversao linhas={r.conversaoPorNumero.map((n) => ({ nome: n.numeroId ? (nomes.get(n.numeroId) ?? "número sem nome") : "ainda sem conversa", leads: n.leads, compraram: n.compraram }))} titulo="Número" />
+          </div>
+        </section>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="glass-lite glass-static p-4">
@@ -282,5 +408,80 @@ function AvisoSincronizacao({ sync }: { sync: StatusSincronizacao }) {
       {!falhou && parada && " Mais de 45 minutos sem sincronizar: confira o cron do Supabase."}
       {u.situacao === "rodando" && !parada && " Sincronizando agora…"}
     </div>
+  );
+}
+
+/** Leads esperando resposta de um atendente há mais de X horas de atendimento. */
+function ListaEsperando({ itens, horas, inicio, fim, admin }: { itens: Esperando[]; horas: number; inicio: string; fim: string; admin: boolean }) {
+  return (
+    <section className={cn("glass-lite glass-static p-4", itens.length > 0 && "border-[rgb(var(--tag-laranja)/0.5)]")}>
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-[15px] font-semibold text-white">Esperando resposta · {itens.length}</h2>
+        {admin && (
+          <Link href="/funil/config" className="text-[12px] text-ink-dim underline-offset-4 hover:underline">
+            Configurar horário, espera e mudanças
+          </Link>
+        )}
+      </div>
+      <p className="m-0 mb-3 text-[12px] text-ink-faint">
+        A última mensagem é do lead e nenhum atendente respondeu (automação não conta) há mais de {String(horas).replace(".", ",")}h de atendimento ({inicio}–{fim}). Inclui lead
+        antigo que voltou a falar. Atualiza a cada 15 minutos.
+      </p>
+      {itens.length === 0 ? (
+        <p className="m-0 py-2 text-center text-[13px] italic text-ink-faint">Ninguém esperando. 👌</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-[13px] tabular-nums">
+            <thead className="text-[11.5px] text-ink-dim">
+              <tr>
+                <th className="py-1.5 pr-3 font-medium">Lead</th>
+                <th className="py-1.5 pr-3 font-medium">Vendedor</th>
+                <th className="py-1.5 pr-3 font-medium">Número</th>
+                <th className="py-1.5 pr-3 font-medium">Etapa atual</th>
+                <th className="py-1.5 text-right font-medium">Esperando</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.slice(0, 100).map((e) => (
+                <tr key={e.conversaId} className="border-t border-line-soft text-ink">
+                  <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
+                  <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">sem vendedor</span>}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3">{e.numero ?? "—"}</td>
+                  <td className="py-1.5 pr-3 text-ink-dim">{e.etapa ?? "—"}</td>
+                  <td className="whitespace-nowrap py-1.5 text-right font-semibold text-[rgb(var(--tag-laranja))]">{duracao(e.esperaMs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {itens.length > 100 && <p className="m-0 mt-2 text-[12px] text-ink-faint">Mostrando os 100 que esperam há mais tempo.</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TabelaConversao({ linhas, titulo }: { linhas: { nome: string; leads: number; compraram: number }[]; titulo: string }) {
+  const ordenadas = [...linhas].sort((a, b) => b.leads - a.leads);
+  return (
+    <table className="w-full border-collapse text-left text-[13px] tabular-nums">
+      <thead className="text-[11.5px] text-ink-dim">
+        <tr>
+          <th className="py-1.5 pr-3 font-medium">{titulo}</th>
+          <th className="py-1.5 pr-3 text-right font-medium">Leads</th>
+          <th className="py-1.5 pr-3 text-right font-medium">Compraram</th>
+          <th className="py-1.5 text-right font-medium">Conversão</th>
+        </tr>
+      </thead>
+      <tbody>
+        {ordenadas.map((l) => (
+          <tr key={l.nome} className="border-t border-line-soft text-ink">
+            <td className="whitespace-nowrap py-1.5 pr-3">{l.nome}</td>
+            <td className="py-1.5 pr-3 text-right">{l.leads}</td>
+            <td className="py-1.5 pr-3 text-right">{l.compraram}</td>
+            <td className="py-1.5 text-right text-white">{l.leads ? pct(l.compraram / l.leads) : "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

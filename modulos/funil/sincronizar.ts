@@ -9,7 +9,7 @@
 // Usa a chave secreta (roda só no servidor). Grava uma linha em funil_sincronizacoes.
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { DataCrazy, PrazoEsgotado, type DcEventoHistorico, type DcLead } from "@/lib/integracoes/datacrazy";
+import { DataCrazy, PrazoEsgotado, type DcConversa, type DcEventoHistorico, type DcLead, type DcMensagem } from "@/lib/integracoes/datacrazy";
 import {
   chaveTelefone,
   decidirCompra,
@@ -51,8 +51,10 @@ export async function sincronizarFunil(): Promise<ResultadoSincronizacao> {
     const leads = await lerLeadsDaJanela(dc, janela);
     contagem.leads = leads.length;
     await gravarLeads(db, leads, janela);
-    await sincronizarConversas(db, dc, leads, janela, config);
+    const { todas, leadDoContato } = await sincronizarConversas(db, dc, leads, janela, config);
+    await gravarConversas(db, dc, todas, leadDoContato, config);
     contagem.historicos = await lerHistoricos(db, dc, config);
+    await lerPrimeirasRespostas(db, dc, todas, leadDoContato, config);
     await atualizarCompras(db, janela);
 
     contagem.pendentes = await contar(db.from("funil_leads").select("dc_id", { count: "exact", head: true }).eq("historico_pendente", true));
@@ -265,15 +267,24 @@ async function gravarLeads(db: Db, leads: DcLead[], janela: string) {
 // 3. Conversas: vendedor (atendente da conversa mais recente) e número (da primeira conversa)
 // ---------------------------------------------------------------------------
 
-async function sincronizarConversas(db: Db, dc: DataCrazy, leads: DcLead[], janela: string, config: Config) {
+async function sincronizarConversas(
+  db: Db,
+  dc: DataCrazy,
+  leads: DcLead[],
+  janela: string,
+  config: Config,
+): Promise<{ todas: DcConversa[]; leadDoContato: Map<string, DcLead> }> {
   const leadDoContato = new Map<string, DcLead>();
   for (const l of leads) for (const c of l.contacts ?? []) if (c.contactId) leadDoContato.set(c.contactId, l);
 
   type Achado = { atendente: string | null; numero: string | null; numeroDesde: string; ultima: string | null };
   const achados = new Map<string, Achado>();
+  // todas as conversas com mensagem na janela (inclusive de lead antigo): base dos "esperando"
+  const todas: DcConversa[] = [];
 
   for (let skip = 0; skip < 10_000; skip += 100) {
     const pagina = await dc.conversas(skip, 100);
+    todas.push(...pagina.filter((c) => (c.lastMessageDate ?? "") >= janela));
     for (const c of pagina) {
       const lead = c.contact?.contactId ? leadDoContato.get(c.contact.contactId) : undefined;
       if (!lead) continue;
@@ -291,7 +302,7 @@ async function sincronizarConversas(db: Db, dc: DataCrazy, leads: DcLead[], jane
     const ultima = pagina[pagina.length - 1]?.lastMessageDate;
     if (pagina.length < 100 || !ultima || ultima < janela) break;
   }
-  if (!achados.size) return;
+  if (!achados.size) return { todas, leadDoContato };
 
   const atuais = await lerTudo<{ dc_id: string; atendente_dc_id: string | null; numero_dc_id: string | null; ultima_mensagem_em: string | null }>(
     (de, ate) =>
@@ -323,6 +334,159 @@ async function sincronizarConversas(db: Db, dc: DataCrazy, leads: DcLead[], jane
   for (const lote of fatiar(mudancas, LOTE)) {
     await ok(db.from("funil_leads").upsert(lote, { onConflict: "dc_id" }));
   }
+  return { todas, leadDoContato };
+}
+
+// ---------------------------------------------------------------------------
+// 3b. Conversas: quem está esperando resposta de um atendente de verdade
+//   - última mensagem do lead depois da última enviada → esperando desde a do lead;
+//   - última enviada foi automação → lê as mensagens recentes (1 chamada, só quando a conversa
+//     mudou) e confere se um atendente de verdade respondeu depois da última do lead;
+//   - senão (alguém da operação respondeu por último) → respondida.
+// Automação = mensagem enviada sem atendente; suporte Data Crazy não é atendente de verdade.
+// ---------------------------------------------------------------------------
+
+/** Máximo de conversas conferidas pelas mensagens por rodada (limite de 60 chamadas/min). */
+const CONFERE_POR_RODADA = 40;
+
+async function gravarConversas(db: Db, dc: DataCrazy, todas: DcConversa[], leadDoContato: Map<string, DcLead>, config: Config): Promise<number> {
+  const atuais = await lerTudo<{ dc_id: string; ultima_mensagem_em: string | null; esperando_desde: string | null; numero_dc_id: string | null; atendente_dc_id: string | null; etiquetas_atuais: string[]; finalizada: boolean }>(
+    (de, ate) => db.from("funil_conversas").select("dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, finalizada").order("dc_id").range(de, ate),
+  );
+  const noBanco = new Map(atuais.map((c) => [c.dc_id, c]));
+  const ehAtendente = (id: string | undefined) => !!id && config.equipeDoAtendente.has(id);
+
+  let conferidas = 0;
+  const linhas = [];
+  for (const c of todas) {
+    const antes = noBanco.get(c.id);
+    const mudou = !antes || !mesmoInstante(antes.ultima_mensagem_em, c.lastMessageDate);
+    const recebida = c.lastReceivedMessageDate;
+    const enviada = c.lastSendedMessageDate;
+
+    let esperando: string | null = antes?.esperando_desde ?? null;
+    let ultimaGravada = c.lastMessageDate;
+    if (!recebida) esperando = null;
+    else if (!enviada || recebida > enviada) esperando = recebida;
+    else if (!c.lastMessageIsAutomation) esperando = null; // alguém da operação respondeu por último
+    else if (mudou) {
+      // automação respondeu por último: confere se houve atendente de verdade depois do lead
+      if (conferidas >= CONFERE_POR_RODADA) {
+        ultimaGravada = antes?.ultima_mensagem_em ?? null; // fica para a próxima rodada
+      } else {
+        try {
+          const msgs = await dc.mensagens(c.id, 0, 30);
+          conferidas++;
+          const doLead = msgs.find((m) => m.received);
+          const respondeu = !!doLead && msgs.some((m) => !m.received && !m.isInternal && m.createdAt > doLead.createdAt && ehAtendente(m.attendant?.id));
+          esperando = doLead && !respondeu ? doLead.createdAt : null;
+        } catch (e) {
+          if (!(e instanceof PrazoEsgotado)) throw e;
+          ultimaGravada = antes?.ultima_mensagem_em ?? null;
+        }
+      }
+    }
+
+    const lead = c.contact?.contactId ? leadDoContato.get(c.contact.contactId) : undefined;
+    const atendente = c.attendants?.find((x) => ehAtendente(x.id))?.id ?? null;
+    const numero = c.instance && config.numeros.has(c.instance.id) ? c.instance.id : null;
+    const etiquetas = c.contact?.externalInfo?.tagIds ?? [];
+    const finalizada = !!c.finished;
+    if (
+      antes &&
+      !mudou &&
+      mesmoInstante(antes.esperando_desde, esperando) &&
+      antes.atendente_dc_id === atendente &&
+      antes.numero_dc_id === numero &&
+      antes.finalizada === finalizada &&
+      mesmasEtiquetas(antes.etiquetas_atuais, etiquetas)
+    ) continue;
+
+    linhas.push({
+      dc_id: c.id,
+      lead_dc_id: lead?.id ?? null,
+      contato_rotulo: rotuloDoContato(c.contact?.name, c.contact?.phoneNumber),
+      numero_dc_id: numero,
+      atendente_dc_id: atendente,
+      vendedor_id: atendente ? (config.equipeDoAtendente.get(atendente) ?? null) : null,
+      etiquetas_atuais: etiquetas,
+      ultima_recebida_em: recebida,
+      ultima_enviada_em: enviada,
+      ultima_e_automacao: !!c.lastMessageIsAutomation,
+      ultima_mensagem_em: ultimaGravada,
+      esperando_desde: esperando,
+      finalizada,
+      sincronizado_em: new Date().toISOString(),
+    });
+  }
+  for (const lote of fatiar(linhas, LOTE)) await ok(db.from("funil_conversas").upsert(lote, { onConflict: "dc_id" }));
+  return conferidas;
+}
+
+/** "Maria -1234": primeiro nome + 4 últimos dígitos (nunca o nome completo nem o telefone). */
+function rotuloDoContato(nome: string | null | undefined, telefone: string | null | undefined): string | null {
+  const primeiro = (nome ?? "").trim().split(/\s+/)[0] || null;
+  const final = (telefone ?? "").replace(/\D/g, "").slice(-4) || null;
+  return primeiro || final ? [primeiro, final && `-${final}`].filter(Boolean).join(" ") : null;
+}
+
+// ---------------------------------------------------------------------------
+// 3c. Tempo de primeira resposta, por lead novo (lido uma vez):
+//   1ª mensagem do lead → 1ª mensagem depois dela de um atendente de verdade (na 1ª conversa).
+//   Sem resposta ainda: tenta de novo nas próximas rodadas por até 7 dias.
+// ---------------------------------------------------------------------------
+
+const PRIMEIRA_RESPOSTA_POR_RODADA = 40;
+
+async function lerPrimeirasRespostas(db: Db, dc: DataCrazy, todas: DcConversa[], leadDoContato: Map<string, DcLead>, config: Config): Promise<number> {
+  const pendentes = await lerTudo<{ dc_id: string; criado_em: string }>((de, ate) =>
+    db.from("funil_leads").select("dc_id, criado_em").eq("primeira_resposta_lida", false).order("criado_em", { ascending: false }).range(de, ate),
+  );
+  if (!pendentes.length) return 0;
+  // primeira conversa de cada lead (a mais antiga vista)
+  const primeiraDoLead = new Map<string, DcConversa>();
+  for (const c of todas) {
+    const lead = c.contact?.contactId ? leadDoContato.get(c.contact.contactId) : undefined;
+    if (!lead) continue;
+    const atual = primeiraDoLead.get(lead.id);
+    if (!atual || c.createdAt < atual.createdAt) primeiraDoLead.set(lead.id, c);
+  }
+  const ehAtendente = (id: string | undefined) => !!id && config.equipeDoAtendente.has(id);
+
+  let lidos = 0;
+  for (const l of pendentes) {
+    if (lidos >= PRIMEIRA_RESPOSTA_POR_RODADA) break;
+    const conversa = primeiraDoLead.get(l.dc_id);
+    if (!conversa || !conversa.lastSendedMessageDate) continue; // ainda sem conversa ou sem resposta nenhuma
+    let msgs: DcMensagem[] = [];
+    try {
+      for (let skip = 0; skip < 500; skip += 100) {
+        const pagina = await dc.mensagens(conversa.id, skip, 100);
+        msgs.push(...pagina);
+        if (pagina.length < 100) break;
+      }
+    } catch (e) {
+      if (e instanceof PrazoEsgotado) break;
+      throw e;
+    }
+    lidos++;
+    msgs = msgs.filter((m) => !m.isInternal).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const doLead = msgs.find((m) => m.received);
+    const resposta = doLead ? msgs.find((m) => !m.received && m.createdAt > doLead.createdAt && ehAtendente(m.attendant?.id)) : undefined;
+    const velho = Date.now() - Date.parse(l.criado_em) > 7 * 86_400_000;
+    await ok(
+      db
+        .from("funil_leads")
+        .update({
+          primeira_msg_lead_em: doLead?.createdAt ?? null,
+          primeira_resposta_em: resposta?.createdAt ?? null,
+          primeira_resposta_por: resposta?.attendant?.id ?? null,
+          primeira_resposta_lida: !!resposta || velho,
+        })
+        .eq("dc_id", l.dc_id),
+    );
+  }
+  return lidos;
 }
 
 // ---------------------------------------------------------------------------

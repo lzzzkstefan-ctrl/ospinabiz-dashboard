@@ -24,7 +24,28 @@ function ListaPorNumero({ porNumero, nomes }: { porNumero: PorNumero; nomes: Map
 }
 
 /** Leads por dia: barras verticais finas; no hover, o total do dia e a divisão por número. */
-export function BarrasPorDia({ dias, nomes }: { dias: { dia: string; qtd: number; porNumero: PorNumero }[]; nomes: Map<string, string> }) {
+/** Linha vertical de "mudança no funil" no dia (descrições no hover). */
+function Marca({ textos }: { textos: string[] | undefined }) {
+  if (!textos?.length) return null;
+  return (
+    <span
+      className="pointer-events-auto absolute inset-y-0 left-1/2 z-10 w-0 border-l-2 border-dashed border-[rgb(var(--tag-laranja))]"
+      title={["Mudança no funil:", ...textos].join("\n")}
+      aria-label={`Mudança no funil: ${textos.join("; ")}`}
+    />
+  );
+}
+
+export function BarrasPorDia({
+  dias,
+  nomes,
+  marcas,
+}: {
+  dias: { dia: string; qtd: number; porNumero: PorNumero }[];
+  nomes: Map<string, string>;
+  /** dia → descrições das mudanças registradas no funil */
+  marcas?: Map<string, string[]>;
+}) {
   const max = Math.max(1, ...dias.map((d) => d.qtd));
   const total = dias.reduce((s, d) => s + d.qtd, 0);
   // rótulo do eixo: no máximo ~8 datas, sempre a primeira e a última
@@ -41,6 +62,7 @@ export function BarrasPorDia({ dias, nomes }: { dias: { dia: string; qtd: number
           const lado = i < dias.length / 3 ? "left-0" : i > (dias.length * 2) / 3 ? "right-0" : "left-1/2 -translate-x-1/2";
           return (
             <div key={d.dia} className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end" tabIndex={d.qtd > 0 ? 0 : -1}>
+              <Marca textos={marcas?.get(d.dia)} />
               {poucas && d.qtd > 0 && <span className="mb-1 text-[11px] tabular-nums text-ink-dim">{d.qtd}</span>}
               <div
                 className={cn(
@@ -158,5 +180,43 @@ export function FunilEtapas({ linhas, total, gapPara }: { linhas: LinhaFunil[]; 
         })}
       </tbody>
     </table>
+  );
+}
+
+/** Conversão por dia (%, uma série): dos leads do funil que entraram no dia, quantos chegaram no alvo. */
+export function BarrasConversao({ dias, marcas }: { dias: { dia: string; base: number; chegaram: number }[]; marcas?: Map<string, string[]> }) {
+  const comBase = dias.filter((d) => d.base > 0);
+  if (!comBase.length) return <p className="m-0 py-8 text-center text-[13px] italic text-ink-faint">Nenhum lead no funil neste período.</p>;
+  const passo = Math.max(1, Math.ceil(dias.length / 8));
+  const poucas = dias.length <= 14;
+  return (
+    <figure className="m-0">
+      <div className="flex h-36 items-end gap-[2px]" role="img" aria-label="Conversão por dia">
+        {dias.map((d) => {
+          const p = d.base ? d.chegaram / d.base : null;
+          return (
+            <div
+              key={d.dia}
+              className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end"
+              title={p === null ? `${diaCurto(d.dia)}: sem leads no funil` : `${diaCurto(d.dia)}: ${pct(p)} (${d.chegaram} de ${d.base})`}
+            >
+              <Marca textos={marcas?.get(d.dia)} />
+              {poucas && p !== null && <span className="mb-1 text-[11px] tabular-nums text-ink-dim">{pct(p)}</span>}
+              <div
+                className={cn("w-full max-w-[28px] rounded-t-[4px]", p ? "bg-accent/70 group-hover:bg-accent" : "bg-line-soft")}
+                style={{ height: p ? `${Math.max(3, p * 100)}%` : "2px" }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1.5 flex gap-[2px] border-t border-line-soft pt-1.5">
+        {dias.map((d, i) => (
+          <span key={d.dia} className="min-w-0 flex-1 text-center text-[10.5px] tabular-nums text-ink-faint">
+            {i % passo === 0 || i === dias.length - 1 ? diaCurto(d.dia) : ""}
+          </span>
+        ))}
+      </div>
+    </figure>
   );
 }

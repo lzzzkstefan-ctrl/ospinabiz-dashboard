@@ -5,7 +5,7 @@ import { resumirTeste, statusDosNumeros } from "@/modulos/monitor/avaliar-result
 import { carregarMonitor } from "@/modulos/monitor/dados";
 import { listarTarefas } from "@/modulos/tarefas/dados";
 import { hojeSP, lerPeriodo } from "@/modulos/funil/calculo";
-import { carregarFunil } from "@/modulos/funil/dados";
+import { carregarFunil, configDoFunil, leadsEsperando } from "@/modulos/funil/dados";
 import { contarPorFiltro, hojeEmSaoPaulo } from "@/modulos/tarefas/regras";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -35,13 +35,14 @@ async function ConteudoInicio() {
   // Monitor é só de admin: para atendente nem carrega.
   // Funil: o RLS mostra ao vendedor só os leads dele
   const semana = lerPeriodo("7d", undefined, undefined, hojeSP());
-  const [capa, nome, monitor, tarefas, funilHoje, funilSemana] = await Promise.all([
+  const [capa, nome, monitor, tarefas, funilHoje, funilSemana, esperando] = await Promise.all([
     urlDaCapa(),
     usuario ? nomeNaEquipe(usuario.id) : Promise.resolve(null),
     admin ? carregarMonitor() : Promise.resolve(null),
     listarTarefas(),
     carregarFunil({ desde: hojeSP(), ate: hojeSP(), vendedorId: null, numeroId: null }),
     carregarFunil({ desde: semana.desde, ate: semana.ate, vendedorId: null, numeroId: null }),
+    configDoFunil().then((cfg) => leadsEsperando(cfg)),
   ]);
 
   const agora = new Date();
@@ -104,6 +105,13 @@ async function ConteudoInicio() {
         <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Funil</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <CardStatus href="/funil?p=hoje" rotulo="Leads hoje" valor={String(funilHoje.totalLeads)} />
+          <CardStatus
+            href="/funil"
+            rotulo="Leads esperando resposta"
+            valor={String(esperando.length)}
+            detalhe={esperando[0] ? `o mais antigo: ${Math.floor(esperando[0].esperaMs / 3_600_000)}h de atendimento` : undefined}
+            alerta={esperando.length > 0}
+          />
           <CardStatus
             href="/funil?p=7d"
             rotulo="Maior gap da semana"
