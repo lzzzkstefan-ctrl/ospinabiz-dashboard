@@ -36,10 +36,16 @@ const NOME_ACAO: Record<string, string> = {
   utm: "trocou o código UTM de",
   desativar: "desativou",
   reativar: "reativou",
+  teste: "mudou a visibilidade de teste de",
 };
 const quando = (iso: string | null) =>
   iso ? new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)) : "nunca";
-const resumo = (v: unknown) => (v && typeof v === "object" ? Object.values(v as Record<string, unknown>).map((x) => (x === null ? "nada" : NOME_PAPEL[String(x)] ?? String(x))).join(", ") : "");
+const resumo = (v: unknown) =>
+  v && typeof v === "object"
+    ? Object.values(v as Record<string, unknown>)
+        .map((x) => (x === null ? "nada" : x === true ? "visível" : x === false ? "escondido" : (NOME_PAPEL[String(x)] ?? String(x))))
+        .join(", ")
+    : "";
 
 async function Conteudo() {
   const eu = await usuarioLogado();
@@ -85,7 +91,7 @@ async function Conteudo() {
                     {ehEu && <span className="ml-1.5 text-[11px] text-ink-faint">(você)</span>}
                     {u.teste && (
                       <Etiqueta cor="roxo" className="ml-1.5">
-                        teste
+                        {u.testeVisivel ? "teste · visível" : "teste"}
                       </Etiqueta>
                     )}
                   </td>
@@ -110,6 +116,8 @@ async function Conteudo() {
                             atendente={u.atendente?.dcId ?? null}
                             utm={u.utm}
                             podeChefe={souChefe}
+                            teste={u.teste}
+                            testeVisivel={u.testeVisivel}
                             atendentes={atendentes
                               .filter((a) => !a.suporte)
                               .map((a) => ({ dcId: a.dcId, nome: a.nome, livre: a.equipeId === null || a.equipeId === u.equipeId }))}

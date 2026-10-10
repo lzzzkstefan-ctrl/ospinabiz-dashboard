@@ -21,6 +21,8 @@ export type Usuario = {
   utm: string | null;
   /** pessoa de teste (equipe.teste): fora de Vendas, Funil por vendedor, horários fixos e avisos */
   teste: boolean;
+  /** pessoa de teste visível: aparece no Online agora do admin e gera aviso de pausa/volta */
+  testeVisivel: boolean;
 };
 export type Atendente = { dcId: string; nome: string; equipeId: number | null; suporte: boolean };
 export type Registro = { quando: string; alvo: string; acao: string; antes: unknown; depois: unknown; por: string | null };
@@ -35,7 +37,7 @@ export async function carregarUsuarios(): Promise<{ usuarios: Usuario[]; atenden
   const db = createAdminClient();
   const [logins, equipe, vendedores, atendentes, registro] = await Promise.all([
     todosOsLogins(db),
-    db.from("equipe").select("id, nome, usuario_id, ativo, teste"),
+    db.from("equipe").select("id, nome, usuario_id, ativo, teste, teste_visivel"),
     db.from("vendedores").select("equipe_id, utm_term, ativo"),
     db.from("funil_atendentes").select("dc_id, nome, equipe_id, suporte_dc").order("nome"),
     db.from("usuarios_registro").select("alvo_nome, acao, antes, depois, feito_por, feito_em").order("feito_em", { ascending: false }).limit(30),
@@ -58,6 +60,7 @@ export async function carregarUsuarios(): Promise<{ usuarios: Usuario[]; atenden
         atendente: at ? { dcId: String(at.dc_id), nome: String(at.nome) } : null,
         utm: vd?.ativo ? String(vd.utm_term) : null,
         teste: !!p?.teste,
+        testeVisivel: !!p?.teste_visivel,
       };
     })
     .sort((a, b) => (a.status === "desativado" ? 1 : 0) - (b.status === "desativado" ? 1 : 0) || (a.nome ?? a.email).localeCompare(b.nome ?? b.email, "pt-BR"));
@@ -234,3 +237,23 @@ export async function reativar(quemId: string, alvoId: string): Promise<Resultad
   await registrar(db, quemId, { id: alvoId, nome: p?.nome ?? c.alvo.email ?? "?" }, "reativar", null, null);
   return { ok: "Reativado." };
 }
+
+/**
+ * Pessoa de teste: liga/desliga "visível" (aparece no Online agora do admin e gera aviso de
+ * pausa/volta; nada mais). Só para quem é de teste.
+ */
+export async function mudarTesteVisivel(quemId: string, alvoId: string, visivel: boolean): Promise<Resultado> {
+  const db = createAdminClient();
+  const c = await contexto(db, quemId, alvoId);
+  if (!c.alvo) return { erro: "Usuário não encontrado." };
+  const proibido = podeMudar({ quem: c.quemPapel, quemId, alvoId, alvoPapel: c.alvoPapel, acao: "ligacoes", chefesAtivos: c.chefesAtivos });
+  if (proibido) return { erro: proibido };
+  const { data: p } = await db.from("equipe").select("id, nome, teste, teste_visivel").eq("usuario_id", alvoId).maybeSingle();
+  if (!p?.teste) return { erro: "Essa opção é só para conta de teste." };
+  if (!!p.teste_visivel === visivel) return { ok: "Sem mudança." };
+  const { error } = await db.from("equipe").update({ teste_visivel: visivel }).eq("id", p.id);
+  if (error) return { erro: `Não deu para salvar: ${error.message}` };
+  await registrar(db, quemId, { id: alvoId, nome: p.nome }, "teste", { visivel: !!p.teste_visivel }, { visivel });
+  return { ok: visivel ? "Teste visível: aparece no Online agora do admin e avisa pausa/volta." : "Teste escondido de novo." };
+}
+

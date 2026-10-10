@@ -45,7 +45,7 @@ async function ConteudoInicio() {
     carregarFunil({ desde: hojeSP(), ate: hojeSP(), vendedorId: null, numeroId: null }),
     carregarFunil({ desde: semana.desde, ate: semana.ate, vendedorId: null, numeroId: null }),
     configDoFunil().then((cfg) => leadsEsperando(cfg)),
-    usuario ? operacaoAgora(usuario.id) : Promise.resolve(null),
+    usuario ? operacaoAgora(usuario.id, admin) : Promise.resolve(null),
   ]);
 
   const agora = new Date();

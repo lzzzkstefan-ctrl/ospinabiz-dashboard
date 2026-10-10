@@ -80,8 +80,9 @@ export async function avisarPausa(pausaId: number, quando: "inicio" | "fim", que
   const db = createAdminClient();
   const { data: p } = await db.from("escala_pausas").select("id, equipe_id, motivo, detalhe, inicio, fim").eq("id", pausaId).maybeSingle();
   if (!p) return;
-  const { data: pessoa } = await db.from("equipe").select("nome, teste").eq("id", p.equipe_id).maybeSingle();
-  if (pessoa?.teste) return; // pessoa de teste não gera aviso
+  const { data: pessoa } = await db.from("equipe").select("nome, teste, teste_visivel").eq("id", p.equipe_id).maybeSingle();
+  // pessoa de teste só gera aviso de pausa/volta se estiver "visível" (para testar notificações)
+  if (pessoa?.teste && !pessoa.teste_visivel) return;
   const nome = pessoa?.nome ?? "Alguém";
   const motivo = motivoTexto(p.motivo as MotivoPausa, p.detalhe);
   if (quando === "inicio") {

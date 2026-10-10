@@ -84,6 +84,8 @@ export function FormEditar({
   utm,
   atendentes,
   podeChefe,
+  teste = false,
+  testeVisivel = false,
 }: {
   id: string;
   papel: PapelUsuario | null;
@@ -91,6 +93,8 @@ export function FormEditar({
   utm: string | null;
   atendentes: { dcId: string; nome: string; livre: boolean }[];
   podeChefe: boolean;
+  teste?: boolean;
+  testeVisivel?: boolean;
 }) {
   const [r, acao, pendente] = useActionState<Resultado, FormData>(acaoEditar, {});
   return (
@@ -117,6 +121,19 @@ export function FormEditar({
           <Input name="utm" defaultValue={utm ?? ""} maxLength={40} placeholder="ex.: davi" className="font-mono" />
         </Campo>
       </div>
+      {teste && (
+        <label className="flex items-start gap-2.5 rounded-xl border border-[rgb(var(--tag-roxo)/0.4)] bg-[rgb(var(--tag-roxo)/0.06)] p-3 text-[13px] text-ink">
+          <input type="hidden" name="teste_visivel_campo" value="1" />
+          <input type="checkbox" name="teste_visivel" defaultChecked={testeVisivel} className="mt-0.5 h-4 w-4 accent-[var(--accent)]" />
+          <span>
+            <strong className="text-white">Visível para testar notificações</strong>
+            <span className="block text-[12px] text-ink-dim">
+              Aparece no &quot;Online agora&quot; do admin e a pausa/volta dela gera aviso. Continua fora de &quot;operação descoberta/coberta&quot;, pausa longa, horários fixos e
+              relatórios.
+            </span>
+          </span>
+        </label>
+      )}
       <p className="m-0 text-[11.5px] text-ink-faint">
         O atendente faz o Funil mostrar os leads da pessoa. O código UTM liga a venda da Hubla a ela (utm_term). Vazio = desliga (o histórico fica).
       </p>

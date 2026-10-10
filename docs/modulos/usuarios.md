@@ -47,3 +47,9 @@ atendente). Aparece com a etiqueta "teste" em Usuários e em Pessoas.
 
 Testado em 10/10 com cliques de verdade e usuários temporários (gerente, chefe, vendedor,
 convidado, clone da conta de teste), apagados no fim.
+
+**Teste visível** (`equipe.teste_visivel`, migration `equipe_teste_visivel`, 10/10/2026): opção na aba
+Usuários, só para conta de teste. Ligada: a pessoa aparece no "Online agora" **do admin** e a pausa /
+volta dela gera aviso (para testar as notificações). Continua fora de operação descoberta/coberta,
+pausa longa, sem check-in, horários fixos e cards. Fica no registro ("visível → escondido").
+

@@ -30,17 +30,17 @@ export type Semana = {
 };
 
 /**
- * Online agora + pausas abertas (usado aqui e no Início). Pessoa de teste (equipe.teste) só aparece
- * para ela mesma.
+ * Online agora + pausas abertas (usado aqui e no Início). `ocultos` = pessoas de teste que quem vê
+ * não deve ver (ela mesma sempre se vê).
  */
-async function onlineAgora(nomeDe: Map<number, string>, testes: Set<number>, eu: number | null): Promise<Online[]> {
+async function onlineAgora(nomeDe: Map<number, string>, ocultos: Set<number>, eu: number | null): Promise<Online[]> {
   const supabase = await createClient();
   const [abertos, pausas] = await Promise.all([
     supabase.from("escala_checkins").select("id, equipe_id, inicio").is("fim", null).order("inicio"),
     supabase.from("escala_pausas").select("checkin_id, motivo, detalhe, inicio").is("fim", null),
   ]);
   const agora = Date.now();
-  return (abertos.data ?? []).filter((c) => !testes.has(Number(c.equipe_id)) || Number(c.equipe_id) === eu).map((c) => {
+  return (abertos.data ?? []).filter((c) => !ocultos.has(Number(c.equipe_id)) || Number(c.equipe_id) === eu).map((c) => {
     const p = (pausas.data ?? []).find((x) => Number(x.checkin_id) === Number(c.id));
     return {
       checkinId: Number(c.id),
@@ -58,13 +58,21 @@ async function pausaLonga(): Promise<number> {
   return Number(data?.pausa_longa_min ?? 30);
 }
 
-export async function carregarSemana(domingo: string, usuarioId: string): Promise<Semana> {
+/**
+ * Quem fica fora do "Online agora" de quem está vendo: pessoas de teste, menos as "visíveis"
+ * (equipe.teste_visivel, para testar notificações) quando quem vê é admin.
+ */
+function ocultosPara(equipe: { id: unknown; teste?: boolean | null; teste_visivel?: boolean | null }[], admin: boolean): Set<number> {
+  return new Set(equipe.filter((p) => p.teste && !(admin && p.teste_visivel)).map((p) => Number(p.id)));
+}
+
+export async function carregarSemana(domingo: string, usuarioId: string, admin = false): Promise<Semana> {
   const supabase = await createClient();
   const sabado = somarDias(domingo, 6);
   const comeco = instante(domingo, "00:00");
   const fimDaSemana = instante(somarDias(sabado, 1), "00:00");
   const [equipe, config, padroes, checkins, pausas, primeiro, limite] = await Promise.all([
-    supabase.from("equipe").select("id, nome, usuario_id, ativo, teste").order("nome"),
+    supabase.from("equipe").select("id, nome, usuario_id, ativo, teste, teste_visivel").order("nome"),
     supabase.from("funil_config").select("atendimento_inicio, atendimento_fim").maybeSingle(),
     supabase.from("escala_padrao").select("id, dia_semana, equipe_id, inicio, fim, tipo, desde, ate").lte("desde", sabado).or(`ate.is.null,ate.gte.${domingo}`),
     // entradas que tocam a semana (começaram antes do fim dela e não terminaram antes do começo)
@@ -94,19 +102,18 @@ export async function carregarSemana(domingo: string, usuarioId: string): Promis
     pessoas: (equipe.data ?? []).filter((p) => p.ativo && !p.teste).map((p) => ({ id: Number(p.id), nome: String(p.nome), temLogin: !!p.usuario_id })),
     dias,
     presencas: presencas(dias, (checkins.data ?? []) as Checkin[], (pausas.data ?? []) as Pausa[], nomeDe, new Date().toISOString(), primeiroDia).filter((p) => visivel(p.equipeId)),
-    agora: await onlineAgora(nomeDe, testes, eu),
+    agora: await onlineAgora(nomeDe, ocultosPara(equipe.data ?? [], admin), eu),
     eu,
     pausaLongaMin: limite,
   };
 }
 
 /** Só o necessário para o botão "Entrei na operação" e a lista de quem está online (Início). */
-export async function operacaoAgora(usuarioId: string): Promise<{ eu: number | null; agora: Online[]; pausaLongaMin: number }> {
+export async function operacaoAgora(usuarioId: string, admin = false): Promise<{ eu: number | null; agora: Online[]; pausaLongaMin: number }> {
   const supabase = await createClient();
-  const { data: equipe } = await supabase.from("equipe").select("id, nome, usuario_id, teste");
+  const { data: equipe } = await supabase.from("equipe").select("id, nome, usuario_id, teste, teste_visivel");
   const nomeDe = new Map((equipe ?? []).map((p) => [Number(p.id), String(p.nome)]));
-  const testes = new Set((equipe ?? []).filter((p) => p.teste).map((p) => Number(p.id)));
   const eu = (equipe ?? []).find((p) => p.usuario_id === usuarioId)?.id ?? null;
-  const [agora, limite] = await Promise.all([onlineAgora(nomeDe, testes, eu), pausaLonga()]);
+  const [agora, limite] = await Promise.all([onlineAgora(nomeDe, ocultosPara(equipe ?? [], admin), eu), pausaLonga()]);
   return { eu, agora, pausaLongaMin: limite };
 }

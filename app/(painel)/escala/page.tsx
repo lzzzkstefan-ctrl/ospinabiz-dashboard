@@ -40,7 +40,7 @@ async function Conteudo({ searchParams }: Props) {
   const editar = admin && (await searchParams).editar === "1";
   const supabase = await createClient();
   const [s, prefs] = await Promise.all([
-    carregarSemana(inicioDaSemana(hoje), usuario.id),
+    carregarSemana(inicioDaSemana(hoje), usuario.id, admin),
     supabase.from("notificacoes_preferencias").select("*").eq("usuario_id", usuario.id).maybeSingle(),
   ]);
   const marcados = Object.fromEntries(TIPOS_AVISO.map((t) => [t.id, querReceber(prefs.data, usuario.papel, t.id)]));

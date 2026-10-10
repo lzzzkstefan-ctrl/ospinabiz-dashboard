@@ -5,7 +5,7 @@
 // modulos/usuarios/gestao.ts com o estado atual do banco).
 
 import { usuarioLogado } from "@/lib/auth/papeis";
-import { convidar, desativar, mudarLigacoes, mudarPapel, novoLink, reativar, type Resultado } from "@/modulos/usuarios/gestao";
+import { convidar, desativar, mudarLigacoes, mudarPapel, mudarTesteVisivel, novoLink, reativar, type Resultado } from "@/modulos/usuarios/gestao";
 import type { PapelUsuario } from "@/modulos/usuarios/regras";
 import { refresh } from "next/cache";
 import { headers } from "next/headers";
@@ -54,8 +54,18 @@ export async function acaoEditar(_anterior: Resultado, form: FormData): Promise<
   const r1 = await mudarPapel(eu, id, papel);
   if (r1.erro) return r1;
   const r2 = await mudarLigacoes(eu, id, { atendente: String(form.get("atendente") ?? "") || null, utm: String(form.get("utm") ?? "") || null });
+  if (r2.erro) {
+    refresh();
+    return r2;
+  }
+  // só aparece no formulário de conta de teste
+  if (form.has("teste_visivel_campo")) {
+    const r3 = await mudarTesteVisivel(eu, id, form.get("teste_visivel") === "on");
+    refresh();
+    if (r3.erro) return r3;
+    if (r3.ok && r3.ok !== "Sem mudança.") return r3;
+  }
   refresh();
-  if (r2.erro) return r2;
   return { ok: r1.ok && r1.ok !== "Sem mudança." ? r1.ok : "Salvo." };
 }
 
