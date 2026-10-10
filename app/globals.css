@@ -33,6 +33,7 @@
     --tag-roxo: 163 113 247;
     --tag-azul: 88 166 255;
     --tag-laranja: 232 145 45;
+    --tag-amarelo: 236 196 64;
     --tag-vermelho: 242 86 110;
     --tag-cinza: 139 148 158;
     --line: rgba(255, 255, 255, 0.16);
@@ -52,7 +53,8 @@
   /* link para um trecho da página (#esperando, #conversao...) para abaixo do menu fixo do topo */
   @media (min-width: 768px) {
     html {
-      scroll-padding-top: 7.5rem;
+      /* em px (não rem): não encolhe se o navegador estiver com fonte pequena */
+      scroll-padding-top: 120px;
     }
   }
   body {

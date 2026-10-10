@@ -1,10 +1,11 @@
 // Os 7 cards da semana atual (domingo a sábado) do Check-in: em cada dia, o horário fixo de cada
-// pessoa e, embaixo, o que aconteceu de verdade (entrou às, saiu às, atraso, saída automática).
+// pessoa e, embaixo, o que aconteceu de verdade (entrou às, saiu às, pausas, atraso, saída
+// automática). Tempo online = entradas menos pausas. Pausa acima do limite: vermelho.
 // Admin: "corrigir" em cada entrada; no modo editar, "tirar" em cada horário fixo.
 
 import { Gaveta } from "@/components/formulario";
 import { cn } from "@/lib/utils";
-import { horaCurta, horas, NOME_DIA, TOLERANCIA_ATRASO_MIN, type DiaEscala, type Presenca } from "@/modulos/escala/regras";
+import { horaCurta, horas, NOME_DIA, NOME_MOTIVO, TOLERANCIA_ATRASO_MIN, type DiaEscala, type Presenca } from "@/modulos/escala/regras";
 import { encerrarPadrao } from "../acoes";
 import { FormCorrigir } from "./formularios";
 
@@ -13,7 +14,21 @@ const CORES = ["--tag-azul", "--tag-verde", "--tag-roxo", "--tag-laranja", "--ta
 const corDaPessoa = (equipeId: number) => CORES[(Math.max(1, equipeId) - 1) % CORES.length];
 const dataCurta = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
-export function DiasDaSemana({ dias, presencas, hoje, admin, editar }: { dias: DiaEscala[]; presencas: Presenca[]; hoje: string; admin: boolean; editar: boolean }) {
+export function DiasDaSemana({
+  dias,
+  presencas,
+  hoje,
+  admin,
+  editar,
+  pausaLongaMin,
+}: {
+  dias: DiaEscala[];
+  presencas: Presenca[];
+  hoje: string;
+  admin: boolean;
+  editar: boolean;
+  pausaLongaMin: number;
+}) {
   return (
     <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7">
       {dias.map((d) => {
@@ -46,7 +61,7 @@ export function DiasDaSemana({ dias, presencas, hoje, admin, editar }: { dias: D
             </div>
             {descoberto && <p className="m-0 text-[12px] font-semibold text-[rgb(var(--tag-vermelho))]">ninguém fixo · descoberto</p>}
             {pessoas.map((p) => (
-              <Pessoa key={p.id} pessoa={p} dia={d.dia} hoje={hoje} admin={admin} editar={editar} />
+              <Pessoa key={p.id} pessoa={p} dia={d.dia} hoje={hoje} admin={admin} editar={editar} pausaLongaMin={pausaLongaMin} />
             ))}
           </div>
         );
@@ -61,12 +76,14 @@ function Pessoa({
   hoje,
   admin,
   editar,
+  pausaLongaMin,
 }: {
   pessoa: { id: number; nome: string; fixos: DiaEscala["entradas"]; presenca: Presenca | null };
   dia: string;
   hoje: string;
   admin: boolean;
   editar: boolean;
+  pausaLongaMin: number;
 }) {
   const cor = corDaPessoa(id);
   const atraso = presenca?.atrasoMin != null && presenca.atrasoMin > TOLERANCIA_ATRASO_MIN ? presenca.atrasoMin : null;
@@ -100,7 +117,11 @@ function Pessoa({
           <span className="tabular-nums text-ink">
             entrou {horaCurta(f.inicio)}
             {f.aberto ? (
-              <span className="text-[rgb(var(--tag-verde))]"> · online agora</span>
+              f.pausas.some((pa) => pa.aberta) ? (
+                <span className="text-[rgb(var(--tag-amarelo))]"> · em pausa</span>
+              ) : (
+                <span className="text-[rgb(var(--tag-verde))]"> · online agora</span>
+              )
             ) : (
               <>
                 {" "}
@@ -109,6 +130,21 @@ function Pessoa({
             )}
           </span>
           {f.auto && <span className="text-[11.5px] font-medium text-[rgb(var(--tag-laranja))]">saída automática</span>}
+          {f.pausas.map((pa) => {
+            const longa = pa.minutos > pausaLongaMin;
+            return (
+              <span
+                key={pa.id}
+                className={cn("text-[11.5px] tabular-nums", longa ? "font-semibold text-[rgb(var(--tag-vermelho))]" : "text-[rgb(var(--tag-amarelo))]")}
+                title={pa.detalhe ?? undefined}
+              >
+                {pa.aberta ? `em pausa desde ${horaCurta(pa.inicio)}` : `pausa ${horaCurta(pa.inicio)}–${horaCurta(pa.fim)}`} · {NOME_MOTIVO[pa.motivo]}
+                {pa.detalhe ? ` (${pa.detalhe})` : ""} · {horas(pa.minutos)}
+                {longa ? " · longa" : ""}
+                {pa.comSaida ? " · terminou com a saída" : ""}
+              </span>
+            );
+          })}
           {admin && !f.aberto && (
             <Gaveta rotulo="corrigir">
               <FormCorrigir id={f.checkinId} dia={dia} inicio={f.inicio} fim={f.fim} />
@@ -116,8 +152,16 @@ function Pessoa({
           )}
         </div>
       ))}
+      {presenca && presenca.feito.length > 0 && (
+        <span className="text-[11.5px] tabular-nums text-ink-dim">
+          online {horas(presenca.minutosFeitos)}
+          {presenca.minutosPausa > 0 && <span className="text-[rgb(var(--tag-amarelo))]"> · pausas {horas(presenca.minutosPausa)}</span>}
+        </span>
+      )}
       {atraso !== null && <span className="text-[11.5px] font-semibold text-[rgb(var(--tag-laranja))]">atraso {horas(atraso)}</span>}
       {naoEntrou && <span className="text-[11.5px] font-semibold text-[rgb(var(--tag-vermelho))]">{dia === hoje ? "ainda não entrou" : "não entrou"}</span>}
+      {/* dia anterior ao primeiro check-in registrado: o check-in ainda não existia */}
+      {presenca?.situacao === "antes" && <span className="text-[11.5px] text-ink-faint">—</span>}
     </div>
   );
 }

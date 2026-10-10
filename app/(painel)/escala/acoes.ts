@@ -8,7 +8,7 @@ import type { EstadoForm } from "@/components/formulario";
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { createClient } from "@/lib/supabase/server";
 import { hojeSP } from "@/modulos/funil/calculo";
-import { instante, somarDias } from "@/modulos/escala/regras";
+import { inicioDaSemana, instante, somarDias } from "@/modulos/escala/regras";
 import { refresh } from "next/cache";
 
 const SO_ADMIN: EstadoForm = { erro: "Só o admin pode fazer isso." };
@@ -22,6 +22,10 @@ function mensagem(e: { message: string; code?: string }): string {
   if (/não tem turno aberto/i.test(e.message)) return "Você não está na operação.";
   if (/não está ligado/i.test(e.message)) return "Seu login não está ligado a ninguém da equipe. Fale com o admin.";
   if (/exige motivo/i.test(e.message)) return "Corrigir exige motivo.";
+  if (/já está em pausa/i.test(e.message)) return "Você já está em pausa.";
+  if (/não está em pausa/i.test(e.message)) return "Você não está em pausa.";
+  if (/não está na operação/i.test(e.message)) return "Entre na operação antes de pausar.";
+  if (/Motivo de pausa inválido/i.test(e.message)) return "Escolha o motivo da pausa.";
   if (e.code === "42501" || /row-level security/i.test(e.message)) return "Você não tem permissão para isso.";
   return "Não deu para salvar.";
 }
@@ -46,6 +50,42 @@ export async function sairDaOperacao(): Promise<EstadoForm> {
   if (error) return { erro: mensagem(error) };
   refresh();
   return { ok: "Você saiu da operação." };
+}
+
+const MOTIVOS = ["almoco", "banho", "imprevisto", "outro"] as const;
+
+/** "Pausa": escolhe o motivo (e um texto opcional). Só quem está online; hora do servidor. */
+export async function pausar(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const motivo = String(form.get("motivo") ?? "");
+  if (!(MOTIVOS as readonly string[]).includes(motivo)) return { erro: "Escolha o motivo da pausa." };
+  const detalhe = String(form.get("detalhe") ?? "").trim().slice(0, 120) || null;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("escala_pausar", { p_motivo: motivo, p_detalhe: detalhe });
+  if (error) return { erro: mensagem(error) };
+  refresh();
+  return { ok: "Pausa começada." };
+}
+
+/** "Voltar da pausa" (hora do servidor). */
+export async function voltarDaPausa(): Promise<EstadoForm> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("escala_voltar_da_pausa");
+  if (error) return { erro: mensagem(error) };
+  refresh();
+  return { ok: "Você voltou da pausa." };
+}
+
+/** Admin: a partir de quantos minutos a pausa é longa (destaque em vermelho). */
+export async function salvarPausaLonga(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return SO_ADMIN;
+  const min = Number(form.get("minutos"));
+  if (!Number.isInteger(min) || min < 1 || min > 600) return { erro: "Minutos: inteiro entre 1 e 600." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("escala_config").update({ pausa_longa_min: min, atualizado_por: usuario.id, atualizado_em: new Date().toISOString() }).eq("id", true);
+  if (error) return { erro: mensagem(error) };
+  refresh();
+  return { ok: "Salvo." };
 }
 
 /** Admin corrige o horário de entrada/saída (exige motivo; fica registrado). */
@@ -82,7 +122,8 @@ export async function criarPadrao(_anterior: EstadoForm, form: FormData): Promis
   const equipeId = Number(form.get("equipe_id"));
   const inicio = String(form.get("inicio") ?? "");
   const fim = String(form.get("fim") ?? "");
-  const desde = String(form.get("desde") ?? "") || hojeSP();
+  // sem data: domingo da semana atual (a semana toda passa a valer)
+  const desde = String(form.get("desde") ?? "") || inicioDaSemana(hojeSP());
   if (!dias.length) return { erro: "Marque pelo menos um dia da semana." };
   if (!Number.isInteger(equipeId) || equipeId <= 0) return { erro: "Escolha a pessoa." };
   if (!horaOk(inicio) || !horaOk(fim)) return { erro: "Horário no formato 09:00." };

@@ -53,6 +53,8 @@ export function PainelNav({ usuario, papel }: { usuario?: React.ReactNode; papel
   return (
     <nav
       className="glass no-scrollbar fixed left-1/2 top-5 z-40 hidden max-w-[94vw] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-full p-1.5 md:flex"
+      // a classe "glass-fora-da-tela" é posta de propósito fora do React (components/pausar-brilho.tsx)
+      suppressHydrationWarning
       aria-label="Navegação principal"
     >
       <span className="shrink-0 px-3 text-[12.5px] font-semibold text-white">Ospinabiz</span>
@@ -91,6 +93,8 @@ export function PainelNavMobile({ papel }: { papel: PapelMenu }) {
   return (
     <nav
       className="glass no-scrollbar fixed bottom-4 left-1/2 z-40 flex w-[min(460px,calc(100vw-24px))] -translate-x-1/2 items-center justify-between gap-0.5 overflow-x-auto rounded-full p-1.5 md:hidden"
+      // a classe "glass-fora-da-tela" é posta de propósito fora do React (components/pausar-brilho.tsx)
+      suppressHydrationWarning
       aria-label="Navegação principal"
     >
       {itens(papel).map(({ href, label, icon: Icon }) => {

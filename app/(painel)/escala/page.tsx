@@ -6,7 +6,7 @@ import { hojeSP } from "@/modulos/funil/calculo";
 import Link from "next/link";
 import { Suspense } from "react";
 import { DiasDaSemana } from "./_componentes/dias";
-import { FormPadrao } from "./_componentes/formularios";
+import { FormPadrao, FormPausaLonga } from "./_componentes/formularios";
 
 // Check-in (endereço /escala). Contexto em docs/modulos/escala.md.
 // De cima para baixo: "Entrei na operação" + quem está online; os 7 dias da semana atual com o
@@ -41,7 +41,7 @@ async function Conteudo({ searchParams }: Props) {
 
   return (
     <>
-      <PainelOperacao eu={s.eu} agora={s.agora} />
+      <PainelOperacao eu={s.eu} agora={s.agora} pausaLongaMin={s.pausaLongaMin} />
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-3 border-b border-line-soft pb-2.5">
@@ -66,14 +66,18 @@ async function Conteudo({ searchParams }: Props) {
             <p className="m-0 mb-3 text-[12.5px] text-ink-dim">
               Adicione um horário fixo (marque os dias) ou use &quot;tirar&quot; no card do dia. Tirar não apaga o passado: o que já valeu continua no histórico.
             </p>
-            <FormPadrao pessoas={s.pessoas.map((p) => ({ id: p.id, nome: p.nome }))} operacao={s.operacao} hoje={hoje} />
+            {/* "vale a partir de" começa no domingo da semana atual, para a semana toda já aparecer coberta */}
+            <FormPadrao pessoas={s.pessoas.map((p) => ({ id: p.id, nome: p.nome }))} operacao={s.operacao} desde={inicioDaSemana(hoje)} />
+            <div className="mt-4 border-t border-line-soft pt-4">
+              <FormPausaLonga minutos={s.pausaLongaMin} />
+            </div>
           </div>
         )}
 
-        <DiasDaSemana dias={s.dias} presencas={presencas} hoje={hoje} admin={admin} editar={editar} />
+        <DiasDaSemana dias={s.dias} presencas={presencas} hoje={hoje} admin={admin} editar={editar} pausaLongaMin={s.pausaLongaMin} />
         <p className="m-0 text-[11.5px] text-ink-faint">
           Operação das {horaCurta(s.operacao.inicio)} às {horaCurta(s.operacao.fim)}. Atraso = entrou mais de {TOLERANCIA_ATRASO_MIN} min depois do horário fixo. Quem
-          esquece de sair sai sozinho no fim do horário fixo (saída automática).
+          esquece de sair sai sozinho no fim do horário fixo (saída automática). Pausa não conta como tempo online; acima de {s.pausaLongaMin} min fica em vermelho.
         </p>
       </section>
     </>

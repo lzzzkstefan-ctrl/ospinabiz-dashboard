@@ -2,10 +2,17 @@
 // Plantões extras saíram da tela em 10/10/2026 (pedido do Davi); a tabela continua no banco, sem uso.
 
 import { createClient } from "@/lib/supabase/server";
-import { diasDaSemana, instante, montarDia, presencas, somarDias, type Checkin, type DiaEscala, type Padrao, type Presenca } from "./regras";
+import { diasDaSemana, emBrasilia, instante, montarDia, presencas, somarDias, type Checkin, type DiaEscala, type MotivoPausa, type Padrao, type Pausa, type Presenca } from "./regras";
 
 export type Pessoa = { id: number; nome: string; temLogin: boolean };
-export type Online = { checkinId: number; equipeId: number; nome: string; desde: string };
+/** Quem está na operação agora; `pausa` preenchida = em pausa (desde, motivo, minutos até agora). */
+export type Online = {
+  checkinId: number;
+  equipeId: number;
+  nome: string;
+  desde: string;
+  pausa: { motivo: MotivoPausa; detalhe: string | null; desde: string; minutos: number } | null;
+};
 
 export type Semana = {
   domingo: string;
@@ -18,25 +25,53 @@ export type Semana = {
   agora: Online[];
   /** pessoa da equipe ligada ao login (null = login sem ninguém da equipe) */
   eu: number | null;
+  /** a partir de quantos minutos a pausa é longa (destaque em vermelho) */
+  pausaLongaMin: number;
 };
+
+/** Online agora + pausas abertas (usado aqui e no Início). */
+async function onlineAgora(nomeDe: Map<number, string>): Promise<Online[]> {
+  const supabase = await createClient();
+  const [abertos, pausas] = await Promise.all([
+    supabase.from("escala_checkins").select("id, equipe_id, inicio").is("fim", null).order("inicio"),
+    supabase.from("escala_pausas").select("checkin_id, motivo, detalhe, inicio").is("fim", null),
+  ]);
+  const agora = Date.now();
+  return (abertos.data ?? []).map((c) => {
+    const p = (pausas.data ?? []).find((x) => Number(x.checkin_id) === Number(c.id));
+    return {
+      checkinId: Number(c.id),
+      equipeId: Number(c.equipe_id),
+      nome: nomeDe.get(Number(c.equipe_id)) ?? "?",
+      desde: String(c.inicio),
+      pausa: p ? { motivo: p.motivo as MotivoPausa, detalhe: p.detalhe, desde: String(p.inicio), minutos: Math.max(0, Math.floor((agora - Date.parse(String(p.inicio))) / 60_000)) } : null,
+    };
+  });
+}
+
+async function pausaLonga(): Promise<number> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("escala_config").select("pausa_longa_min").maybeSingle();
+  return Number(data?.pausa_longa_min ?? 30);
+}
 
 export async function carregarSemana(domingo: string, usuarioId: string): Promise<Semana> {
   const supabase = await createClient();
   const sabado = somarDias(domingo, 6);
-  const [equipe, config, padroes, checkins, abertos] = await Promise.all([
+  const comeco = instante(domingo, "00:00");
+  const fimDaSemana = instante(somarDias(sabado, 1), "00:00");
+  const [equipe, config, padroes, checkins, pausas, primeiro, limite] = await Promise.all([
     supabase.from("equipe").select("id, nome, usuario_id, ativo").order("nome"),
     supabase.from("funil_config").select("atendimento_inicio, atendimento_fim").maybeSingle(),
     supabase.from("escala_padrao").select("id, dia_semana, equipe_id, inicio, fim, tipo, desde, ate").lte("desde", sabado).or(`ate.is.null,ate.gte.${domingo}`),
     // entradas que tocam a semana (começaram antes do fim dela e não terminaram antes do começo)
-    supabase
-      .from("escala_checkins")
-      .select("id, equipe_id, tipo, inicio, fim, encerrado_auto")
-      .lt("inicio", instante(somarDias(sabado, 1), "00:00"))
-      .or(`fim.is.null,fim.gte.${instante(domingo, "00:00")}`)
-      .order("inicio"),
-    supabase.from("escala_checkins").select("id, equipe_id, inicio").is("fim", null).order("inicio"),
+    supabase.from("escala_checkins").select("id, equipe_id, tipo, inicio, fim, encerrado_auto").lt("inicio", fimDaSemana).or(`fim.is.null,fim.gte.${comeco}`).order("inicio"),
+    supabase.from("escala_pausas").select("id, checkin_id, equipe_id, motivo, detalhe, inicio, fim, encerrada_com_saida").lt("inicio", fimDaSemana).or(`fim.is.null,fim.gte.${comeco}`),
+    // primeiro check-in registrado: antes dele o check-in não existia ("—" em vez de "não entrou")
+    supabase.from("escala_checkins").select("inicio").order("inicio").limit(1).maybeSingle(),
+    pausaLonga(),
   ]);
-  for (const r of [equipe, padroes, checkins, abertos]) {
+  for (const r of [equipe, padroes, checkins, pausas]) {
     if (r.error) throw new Error(`Erro ao carregar o check-in: ${r.error.message}`);
   }
   const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
@@ -45,39 +80,24 @@ export async function carregarSemana(domingo: string, usuarioId: string): Promis
     fim: String(config.data?.atendimento_fim ?? "22:00").slice(0, 5),
   };
   const dias = diasDaSemana(domingo).map((d) => montarDia(d, (padroes.data ?? []) as Padrao[], [], nomeDe, operacao));
+  const primeiroDia = primeiro.data?.inicio ? emBrasilia(String(primeiro.data.inicio)).dia : null;
   return {
     domingo,
     operacao,
     pessoas: (equipe.data ?? []).filter((p) => p.ativo).map((p) => ({ id: Number(p.id), nome: String(p.nome), temLogin: !!p.usuario_id })),
     dias,
-    presencas: presencas(dias, (checkins.data ?? []) as Checkin[], nomeDe, new Date().toISOString()),
-    agora: (abertos.data ?? []).map((c) => ({ checkinId: Number(c.id), equipeId: Number(c.equipe_id), nome: nomeDe.get(Number(c.equipe_id)) ?? "?", desde: String(c.inicio) })),
+    presencas: presencas(dias, (checkins.data ?? []) as Checkin[], (pausas.data ?? []) as Pausa[], nomeDe, new Date().toISOString(), primeiroDia),
+    agora: await onlineAgora(nomeDe),
     eu: (equipe.data ?? []).find((p) => p.usuario_id === usuarioId)?.id ?? null,
+    pausaLongaMin: limite,
   };
 }
 
 /** Só o necessário para o botão "Entrei na operação" e a lista de quem está online (Início). */
-export async function operacaoAgora(usuarioId: string): Promise<{ eu: number | null; agora: Online[] }> {
+export async function operacaoAgora(usuarioId: string): Promise<{ eu: number | null; agora: Online[]; pausaLongaMin: number }> {
   const supabase = await createClient();
-  const [equipe, abertos] = await Promise.all([
-    supabase.from("equipe").select("id, nome, usuario_id"),
-    supabase.from("escala_checkins").select("id, equipe_id, inicio").is("fim", null).order("inicio"),
-  ]);
-  const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
-  return {
-    eu: (equipe.data ?? []).find((p) => p.usuario_id === usuarioId)?.id ?? null,
-    agora: (abertos.data ?? []).map((c) => ({ checkinId: Number(c.id), equipeId: Number(c.equipe_id), nome: nomeDe.get(Number(c.equipe_id)) ?? "?", desde: String(c.inicio) })),
-  };
-}
-
-/** Escala padrão (horários fixos) em vigor de hoje em diante, para a configuração. */
-export async function escalaPadraoVigente(hoje: string): Promise<(Padrao & { nome: string })[]> {
-  const supabase = await createClient();
-  const [padroes, equipe] = await Promise.all([
-    supabase.from("escala_padrao").select("id, dia_semana, equipe_id, inicio, fim, tipo, desde, ate").or(`ate.is.null,ate.gte.${hoje}`).order("dia_semana").order("inicio"),
-    supabase.from("equipe").select("id, nome"),
-  ]);
-  if (padroes.error) throw new Error(`Erro ao carregar os horários fixos: ${padroes.error.message}`);
-  const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
-  return ((padroes.data ?? []) as Padrao[]).map((p) => ({ ...p, nome: nomeDe.get(p.equipe_id) ?? "?" }));
+  const { data: equipe } = await supabase.from("equipe").select("id, nome, usuario_id");
+  const nomeDe = new Map((equipe ?? []).map((p) => [Number(p.id), String(p.nome)]));
+  const [agora, limite] = await Promise.all([onlineAgora(nomeDe), pausaLonga()]);
+  return { eu: (equipe ?? []).find((p) => p.usuario_id === usuarioId)?.id ?? null, agora, pausaLongaMin: limite };
 }

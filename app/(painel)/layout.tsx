@@ -53,7 +53,7 @@ export default function PainelLayout({
       {/* faixa no topo (computador): o conteúdo que rola some por baixo do menu fixo em vez de ficar
           atrás dele, legível e "por baixo" */}
       <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-30 hidden h-[92px] bg-gradient-to-b from-background via-background/85 to-transparent md:block print:hidden" />
-      <main className="mx-auto max-w-[1180px] px-6 pb-28 pt-8 md:pb-16 md:pt-28 print:max-w-none print:p-0">{children}</main>
+      <main className="mx-auto max-w-[1180px] px-6 pb-28 pt-8 md:pb-16 md:pt-[112px] print:max-w-none print:p-0">{children}</main>
     </>
   );
 }

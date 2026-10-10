@@ -145,38 +145,68 @@ export function montarDia(
 /** Tolerância de atraso na entrada (minutos). */
 export const TOLERANCIA_ATRASO_MIN = 10;
 
+export type MotivoPausa = "almoco" | "banho" | "imprevisto" | "outro";
+export const NOME_MOTIVO: Record<MotivoPausa, string> = { almoco: "Almoço", banho: "Banho", imprevisto: "Imprevisto", outro: "Outro" };
+export type Pausa = { id: number; checkin_id: number; equipe_id: number; motivo: MotivoPausa; detalhe: string | null; inicio: string; fim: string | null; encerrada_com_saida: boolean };
+
+/** Pausa já cortada no dia, com a duração (minutos reais; a aberta conta até agora). */
+export type PausaDoDia = Faixa & { id: number; motivo: MotivoPausa; detalhe: string | null; aberta: boolean; comSaida: boolean; minutos: number };
+
 export type Presenca = {
   dia: string;
   equipeId: number;
   nome: string;
   escalado: Faixa[];
-  /** turnos (check-ins) do dia, já cortados no dia */
-  feito: (Faixa & { checkinId: number; aberto: boolean; auto: boolean; tipo: Tipo })[];
+  /** entradas (check-ins) do dia, já cortadas no dia, cada uma com as pausas dela */
+  feito: (Faixa & { checkinId: number; aberto: boolean; auto: boolean; tipo: Tipo; pausas: PausaDoDia[] })[];
   minutosEscalados: number;
+  /** tempo online = entradas menos as pausas */
   minutosFeitos: number;
+  minutosPausa: number;
   /** minutos entre o início escalado e o primeiro check-in (só quando positivo) */
   atrasoMin: number | null;
-  situacao: "ok" | "atrasou" | "faltou" | "extra" | "em_andamento" | "a_fazer";
+  /** "antes" = dia anterior ao primeiro check-in registrado (o check-in ainda não existia): mostra "—" */
+  situacao: "ok" | "atrasou" | "faltou" | "extra" | "em_andamento" | "a_fazer" | "antes";
 };
+
+/** Corta [inicio, fim] (fim vazio = agora) no dia `dia` de Brasília: minutos do dia, ou null se não toca. */
+function cortarNoDia(inicioIso: string, fimIso: string | null, dia: string, agora: { dia: string; minuto: number }): [number, number] | null {
+  const a = emBrasilia(inicioIso);
+  const b = fimIso ? emBrasilia(fimIso) : agora;
+  if (a.dia > dia || b.dia < dia) return null;
+  return [a.dia < dia ? 0 : a.minuto, b.dia > dia ? 24 * 60 : b.minuto];
+}
 
 /**
  * Para cada dia da lista e cada pessoa com escala OU check-in no dia. `agoraIso` decide o que já
- * passou: falta só conta depois que o horário escalado começou.
+ * passou: falta só conta depois que o horário escalado começou. `primeiroDia` = dia do primeiro
+ * check-in registrado: antes dele o check-in não existia, então não há "não entrou".
  */
-export function presencas(dias: DiaEscala[], checkins: Checkin[], nomeDe: Map<number, string>, agoraIso: string): Presenca[] {
+export function presencas(
+  dias: DiaEscala[],
+  checkins: Checkin[],
+  pausas: Pausa[],
+  nomeDe: Map<number, string>,
+  agoraIso: string,
+  primeiroDia: string | null,
+): Presenca[] {
   const agora = emBrasilia(agoraIso);
   const r: Presenca[] = [];
   for (const d of dias) {
-    // turnos do dia (Brasília), cortados no dia
+    // entradas do dia (Brasília), cortadas no dia, com as pausas de cada uma
     const doDia = new Map<number, Presenca["feito"]>();
     for (const c of checkins) {
-      const a = emBrasilia(c.inicio);
-      const b = c.fim ? emBrasilia(c.fim) : agora;
-      if (a.dia > d.dia || b.dia < d.dia) continue;
-      const ini = a.dia < d.dia ? 0 : a.minuto;
-      const fim = b.dia > d.dia ? 24 * 60 : b.minuto;
+      const faixa = cortarNoDia(c.inicio, c.fim, d.dia, agora);
+      if (!faixa) continue;
+      const suas: PausaDoDia[] = pausas
+        .filter((p) => p.checkin_id === c.id)
+        .flatMap((p) => {
+          const f = cortarNoDia(p.inicio, p.fim, d.dia, agora);
+          return f ? [{ id: p.id, motivo: p.motivo, detalhe: p.detalhe, aberta: !p.fim, comSaida: p.encerrada_com_saida, inicio: hhmm(f[0]), fim: hhmm(Math.min(f[1], 24 * 60 - 1)), minutos: Math.max(0, f[1] - f[0]) }] : [];
+        })
+        .sort((a, b) => a.inicio.localeCompare(b.inicio));
       const lista = doDia.get(c.equipe_id) ?? [];
-      lista.push({ checkinId: c.id, inicio: hhmm(ini), fim: hhmm(Math.min(fim, 24 * 60 - 1)), aberto: !c.fim, auto: c.encerrado_auto, tipo: c.tipo });
+      lista.push({ checkinId: c.id, inicio: hhmm(faixa[0]), fim: hhmm(Math.min(faixa[1], 24 * 60 - 1)), aberto: !c.fim, auto: c.encerrado_auto, tipo: c.tipo, pausas: suas });
       doDia.set(c.equipe_id, lista);
     }
     const pessoas = new Set<number>([...d.entradas.map((e) => e.equipeId), ...doDia.keys()]);
@@ -184,13 +214,15 @@ export function presencas(dias: DiaEscala[], checkins: Checkin[], nomeDe: Map<nu
       const escaladoFaixas = unir(d.entradas.filter((e) => e.equipeId === id).map((e) => [minutos(e.inicio), minutos(e.fim)] as [number, number]));
       const feito = (doDia.get(id) ?? []).sort((a, b) => a.inicio.localeCompare(b.inicio));
       const minutosEscalados = escaladoFaixas.reduce((s, [a, b]) => s + (b - a), 0);
-      const minutosFeitos = feito.reduce((s, f) => s + Math.max(0, minutos(f.fim) - minutos(f.inicio)), 0);
+      const minutosPausa = feito.reduce((s, f) => s + f.pausas.reduce((t, p) => t + p.minutos, 0), 0);
+      const minutosBrutos = feito.reduce((s, f) => s + Math.max(0, minutos(f.fim) - minutos(f.inicio)), 0);
       const primeiroEscalado = escaladoFaixas[0]?.[0] ?? null;
       const atraso = primeiroEscalado !== null && feito.length ? minutos(feito[0].inicio) - primeiroEscalado : null;
       const jaComecou = d.dia < agora.dia || (d.dia === agora.dia && primeiroEscalado !== null && agora.minuto >= primeiroEscalado);
+      const antesDoCheckin = !primeiroDia || d.dia < primeiroDia;
       let situacao: Presenca["situacao"];
       if (!escaladoFaixas.length) situacao = "extra";
-      else if (!feito.length) situacao = jaComecou ? "faltou" : "a_fazer";
+      else if (!feito.length) situacao = !jaComecou ? "a_fazer" : antesDoCheckin ? "antes" : "faltou";
       else if (feito.some((f) => f.aberto)) situacao = "em_andamento";
       else situacao = atraso !== null && atraso > TOLERANCIA_ATRASO_MIN ? "atrasou" : "ok";
       r.push({
@@ -200,7 +232,8 @@ export function presencas(dias: DiaEscala[], checkins: Checkin[], nomeDe: Map<nu
         escalado: escaladoFaixas.map(([a, b]) => ({ inicio: hhmm(a), fim: hhmm(b) })),
         feito,
         minutosEscalados,
-        minutosFeitos,
+        minutosFeitos: Math.max(0, minutosBrutos - minutosPausa),
+        minutosPausa,
         atrasoMin: atraso !== null && atraso > 0 ? atraso : null,
         situacao,
       });

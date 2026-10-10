@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NOME_DIA_CURTO } from "@/modulos/escala/regras";
 import { useActionState } from "react";
-import { corrigirTurno, criarPadrao, criarPessoa } from "../acoes";
+import { corrigirTurno, criarPadrao, criarPessoa, salvarPausaLonga } from "../acoes";
 
 type PessoaOpcao = { id: number; nome: string };
 
@@ -59,7 +59,7 @@ export function FormCorrigir({ id, dia, inicio, fim }: { id: number; dia: string
 }
 
 /** Admin: quem cobre quais dias da semana (escala padrão). */
-export function FormPadrao({ pessoas, operacao, hoje }: { pessoas: PessoaOpcao[]; operacao: { inicio: string; fim: string }; hoje: string }) {
+export function FormPadrao({ pessoas, operacao, desde }: { pessoas: PessoaOpcao[]; operacao: { inicio: string; fim: string }; desde: string }) {
   const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(criarPadrao, {});
   return (
     <form action={acao} className="flex flex-col gap-3">
@@ -94,7 +94,7 @@ export function FormPadrao({ pessoas, operacao, hoje }: { pessoas: PessoaOpcao[]
           <SelectTipo />
         </Campo>
         <Campo rotulo="Vale a partir de">
-          <Input name="desde" type="date" defaultValue={hoje} className="[color-scheme:dark]" />
+          <Input name="desde" type="date" defaultValue={desde} className="[color-scheme:dark]" />
         </Campo>
       </div>
       <div className="flex items-center gap-3">
@@ -113,6 +113,20 @@ export function FormPessoa() {
         <Input name="nome" maxLength={60} placeholder="Ex.: Lucas (irmão)" className="w-64" />
       </Campo>
       <Enviar pendente={pendente} texto="Adicionar pessoa" />
+      <Aviso estado={estado} />
+    </form>
+  );
+}
+
+/** Admin: a partir de quantos minutos a pausa é longa (vermelho no card e em "Online agora"). */
+export function FormPausaLonga({ minutos }: { minutos: number }) {
+  const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(salvarPausaLonga, {});
+  return (
+    <form action={acao} className="flex flex-wrap items-end gap-3">
+      <Campo rotulo="Pausa longa a partir de (min)">
+        <Input name="minutos" inputMode="numeric" defaultValue={String(minutos)} className="w-28 tabular-nums" />
+      </Campo>
+      <Enviar pendente={pendente} texto="Salvar" />
       <Aviso estado={estado} />
     </form>
   );

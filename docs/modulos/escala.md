@@ -79,10 +79,11 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
   (antes: 22h05, fim da operação). Sem horário fixo no dia (ou entrou depois do fim dele): meia-noite.
   pg_cron a cada 15 min. Se a pessoa continuar atendendo depois do fim do horário fixo, precisa apertar
   "Entrei na operação" de novo (vira outro bloco).
-- **Horários fixos cadastrados em 10/10** (valem a partir de 10/10; editáveis em `/escala/config`):
-  Davi 9h–22h domingo a sexta; Vyenna 9h–22h segunda a sexta. Sábado fica descoberto.
-  Os dias de 04 a 09/10 aparecem descobertos porque os horários fixos só começam em 10/10 (o
-  check-in não existia antes; marcar como escalado viraria "não entrou" sem ser verdade).
+- **Horários fixos cadastrados em 10/10:** Davi 9h–22h domingo a sexta; Vyenna 9h–22h segunda a
+  sexta; sábado descoberto. A pedido do Davi, valem desde **01/10/2026** (mudado direto no banco em
+  10/10), para a semana de 04 a 09/10 aparecer coberta. Esses dias mostram "não entrou" porque o
+  check-in só existe desde 10/10.
+- **"Vale a partir de" de um horário novo:** padrão = domingo da semana atual (tela e ação).
 
 ## Mudanças de 10/10/2026 (fim da tarde, pedido do Davi)
 
@@ -101,4 +102,27 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
 - **Aviso "Date.now() while prerendering" (Cache Components):** `await connection()` no
   `createClient()` de `lib/supabase/server.ts` (o login confere a validade com o relógio). Conferido
   em 11 telas: nenhum aviso.
+- **Aviso de hidratação** do `.glass`: `components/pausar-brilho.tsx` põe a classe
+  `glass-fora-da-tela` fora do React; os `.glass` que chegam depois (menu e botão, dentro de
+  Suspense) têm `suppressHydrationWarning` (o jeito do React para atributo mudado de propósito).
+
+## Pausa (10/10/2026, migration `escala_pausas`)
+
+- Online: ao lado de "Sair da operação", botão **"Pausa"** (vidro líquido amarelo, token
+  `--tag-amarelo`). Escolhe o motivo (Almoço, Banho, Imprevisto, Outro) + detalhe opcional (até 120).
+- Em pausa: bolinha amarela "Em pausa desde 14:10 (Banho) · 12 min"; o botão vira **"Voltar da
+  pausa"** ("Sair da operação" continua). Em "Online agora": "em pausa desde ... (motivo)".
+- **Pausa longa:** acima de `escala_config.pausa_longa_min` (padrão 30; admin muda em "Editar
+  horários"): vermelho no card e em "Online agora".
+- Cards: cada pausa (início, fim, motivo, duração; aberta = "em pausa desde") e o total do dia;
+  **tempo online = entradas menos pausas**.
+- Saiu da operação (botão, saída automática ou correção) durante a pausa: a pausa termina na mesma
+  hora (gatilho `escala_saida_encerra_pausa`) e aparece "terminou com a saída".
+- Pausar/voltar só pelas funções `escala_pausar` / `escala_voltar_da_pausa` (hora do servidor);
+  uma pausa aberta por pessoa, sempre dentro de uma entrada aberta.
+- **"—" antes do check-in existir:** dia anterior ao primeiro check-in registrado (de qualquer
+  pessoa) mostra "—" em vez de "não entrou".
+- **Espaço do topo em px** (`md:pt-[112px]`, `scroll-padding-top: 120px`): em rem ele encolhia com
+  fonte pequena no navegador e o título entrava por baixo do menu.
+- Testado em 10/10 com cliques de verdade (Edge sem janela) e uma pessoa de teste apagada no fim.
 
