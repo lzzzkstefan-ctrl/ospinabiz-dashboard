@@ -362,6 +362,8 @@ export type LinhaGeral = {
   comissao: Record<Faixa, number>;
   receita: number;
   semReceita: number;
+  /** só informação: parte do ticket no valor recebido de verdade (com juros); a comissão usa a tabela */
+  recebidoReal: number;
 };
 
 /** Geral completa (chefe e gerente), por vendedor, em centavos. */
@@ -381,6 +383,7 @@ export async function geralCompleta(mes: string): Promise<LinhaGeral[]> {
     comissao: { 6: centavos(r.comissao_6 as number), 7: centavos(r.comissao_7 as number), 8: centavos(r.comissao_8 as number), 9: centavos(r.comissao_9 as number), 10: centavos(r.comissao_10 as number) },
     receita: centavos(r.receita as number),
     semReceita: Number(r.sem_receita),
+    recebidoReal: centavos(r.recebido_real as number),
   }));
 }
 

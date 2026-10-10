@@ -33,12 +33,13 @@ Venda aprovada na Hubla
 >   o valor real da fatura (principal + bumps) depois da taxa da Hubla. Webhook: recebedor da fatura com
 >   o mesmo id do vendedor (`event.invoice.receivers`). Histórico: `scripts/vendas-receita-hubla.mjs`
 >   com o export de faturas da Hubla (prévia antes de gravar; mês fechado com `--admin`).
-> - **Líquido de ticket pela fatura real, a partir de outubro/2026** (`vendas_config.liquido_real_desde`,
->   migration `vendas_liquido_real`): líquido de ticket = `receita_liquida` × (preço do ticket ÷
->   subtotal da fatura); comissão = % × esse líquido. Bruto de ticket continua o preço da tabela (juros do
->   parcelamento não entram). Corrige o cartão com juros (a tabela supunha a taxa do Pix). Meses
->   anteriores (já pagos) ficam pela tabela; mês fechado não é recalculado. Script:
->   `scripts/vendas-liquido-real.mjs --desde=AAAA-MM` (prévia; `--aplicar` grava).
+> - **Comissão SEMPRE pela tabela de tickets** (decisão do Davi, 10/10/2026; migration
+>   `vendas_comissao_pela_tabela`). A regra de 09/10 ("líquido de ticket pela fatura real a partir de
+>   outubro") foi revogada: outubro do Davi a 10% = R$ 54,66 (tabela), não R$ 55,58.
+>   O valor com juros virou só informação: **"Recebido real"** = `vendas.liquido_real` (parte do ticket
+>   no que entrou de verdade da fatura: `receita_liquida` × preço do ticket ÷ subtotal), guardado a
+>   partir de `vendas_config.liquido_real_desde` (2026-10-01) e mostrado só na Geral (chefe/gerente),
+>   nunca na comissão nem no fechamento. `scripts/vendas-liquido-real.mjs` foi desligado.
 
 - **Regra A:** "Protocolo Game Changer" (ou "Game Changer Society") na venda, como principal
   OU como order bump → venda de **ticket**. Nexus PGC, Combo, Acesso Vitalício e templates

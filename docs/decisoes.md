@@ -220,7 +220,7 @@ fechamento não reabre o mês: vira estorno no próximo fechamento (decisão do 
 fechado continua mostrando o valor congelado, para não descontar duas vezes. Correção sem
 reabrir: ajuste manual com motivo.
 
-## 2026-10-09: Líquido de ticket pela fatura real (a partir de outubro/2026)
+## 2026-10-09: Líquido de ticket pela fatura real (a partir de outubro/2026) — REVOGADA em 10/10 (ver abaixo)
 
 Até setembro, o líquido de ticket (base da comissão) vinha da tabela de tickets, que supõe a taxa
 do Pix. No cartão parcelado com juros a operação recebe mais (ex.: ticket R$ 238 em 12x: tabela
@@ -291,4 +291,14 @@ não reescreva o escalado dos dias passados.
 **Exceção ao "Supabase é o relógio, a Vercel faz o trabalho":** o fechamento do turno esquecido
 (22h05) roda direto no banco (`privado.escala_encerrar_esquecidos`), sem chamar rota: é uma
 atualização simples de dados, sem serviço externo nem regra que precise do código.
+
+## 2026-10-10: Comissão sempre pela tabela; valor com juros só como "recebido real"
+
+Revoga a decisão de 09/10. Líquido de ticket e comissão voltam a sair da tabela de tickets em todos
+os meses (outubro do Davi a 10%: R$ 54,66, não R$ 55,58). O valor que entra de verdade na fatura,
+com os juros do parcelamento, fica guardado à parte (`vendas.liquido_real`) e aparece só como
+"Recebido real" na visão Geral.
+
+**Por quê:** decisão do Davi: a comissão tem que ser previsível pela tabela; os juros do cartão
+parcelado são receita da operação, não base de comissão.
 

@@ -1,3 +1,10 @@
+// ⚠️ REVOGADO em 10/10/2026 (decisão do Davi): a comissão volta a ser SEMPRE pela tabela de tickets
+// (migration vendas_comissao_pela_tabela). O valor com juros fica só como "recebido real"
+// (vendas.liquido_real), calculado sozinho pelo banco. Este script não roda mais; ficou só como
+// histórico do que foi feito em 09/10.
+console.error("Este script foi revogado em 10/10/2026: a comissão é sempre pela tabela. Ver docs/modulos/vendas.md.");
+process.exit(1);
+
 // Vendas: liga a regra "líquido de ticket pela fatura real" a partir de um mês e recalcula as
 // vendas desse mês em diante (migration vendas_liquido_real). Decisão do Davi, 09/10/2026.
 //   líquido de ticket = receita_liquida × (preço do ticket ÷ subtotal da fatura)

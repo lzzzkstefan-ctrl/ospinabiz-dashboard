@@ -323,6 +323,9 @@ function ResumoPorVendedor({ linhas: brutas, nomes, faixa }: { linhas: LinhaGera
             <th className="py-1.5 pr-3 text-right font-medium">Receita na Hubla (com bumps)</th>
             <th className="py-1.5 pr-3 text-right font-medium">Bruto de ticket</th>
             <th className="py-1.5 pr-3 text-right font-medium">Líquido de ticket</th>
+            <th className="py-1.5 pr-3 text-right font-medium" title="Parte do ticket no valor que entrou de verdade (com juros do parcelamento). Só informação: a comissão usa o líquido de ticket da tabela.">
+              Recebido real
+            </th>
             {FAIXAS.map((f) => (
               <th key={f} className={cn("py-1.5 pr-3 text-right font-medium", faixa === f && "text-white")}>
                 {f}%
@@ -342,6 +345,7 @@ function ResumoPorVendedor({ linhas: brutas, nomes, faixa }: { linhas: LinhaGera
               </td>
               <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRLServidor(l.bruto)}</td>
               <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRLServidor(l.liquido)}</td>
+              <td className="whitespace-nowrap py-1.5 pr-3 text-right text-ink-dim">{l.recebidoReal ? formatBRLServidor(l.recebidoReal) : "—"}</td>
               {FAIXAS.map((f) => (
                 <td key={f} className={cn("whitespace-nowrap py-1.5 pr-3 text-right", faixa === f ? "text-white" : "text-ink-dim")}>
                   {formatBRLServidor(l.comissao[f])}
@@ -355,7 +359,8 @@ function ResumoPorVendedor({ linhas: brutas, nomes, faixa }: { linhas: LinhaGera
       <p className="m-0 mt-2 text-[11.5px] text-ink-faint">
         {faixa ? `Faixa sugerida pela margem do mês: ${faixa}%.` : "Margem do mês ainda sem sugestão (falta valor em Configuração)."} O % de cada um é escolhido
         no fechamento, na tela dele. Receita na Hubla = valor real das faturas pagas, com order bumps e já sem a taxa da Hubla (vendas de teste e
-        pendentes ficam fora){semValor > 0 ? ` (${semValor} venda(s) do mês ainda sem esse valor)` : ""}; bruto e líquido de ticket = base da comissão (sem bumps).
+        pendentes ficam fora){semValor > 0 ? ` (${semValor} venda(s) do mês ainda sem esse valor)` : ""}; bruto e líquido de ticket = base da comissão (sem bumps), sempre pela
+        tabela de tickets. Recebido real = parte do ticket no valor que entrou de verdade (com juros do parcelamento), só informação, desde outubro/2026.
       </p>
     </section>
   );
