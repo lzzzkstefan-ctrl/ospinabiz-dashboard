@@ -134,6 +134,14 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
   com mensagem nos últimos 90 dias). Conversa finalizada não conta: se o lead escrever de novo, ela
   reabre. A sincronização grava `esperando_desde`; quando a última mensagem é automação, confere as
   mensagens recentes (no máximo 40 conversas por rodada). Vendedor vê só as dele. Cartão no Início.
+  - **Aberta x fechada (10/10/2026):** o "Finalizar" do CRM ARQUIVA a conversa: na API, `finished`
+    continua `false`, mas vem `archivedAt` e `statuses: ["archived"]`. Fechada = `finished` OU
+    `archivedAt` OU `statuses` com `finished`/`archived` (gravado em `funil_conversas.finalizada`).
+    Aberta = `statuses` com `opened`, `unstarted` ou `automation`.
+  - **Uma linha por lead:** o mesmo lead em mais de um número vira uma linha, com os números juntos e
+    o maior tempo de espera.
+  - **Duas listas:** "Leads esperando resposta" (sem etiqueta de Aluno) e "Alunos esperando (suporte)"
+    (com etiqueta de uma etapa de compra, ex.: 👽 ALUNO). O cartão do Início conta só os leads.
 - **Tempo de primeira resposta:** 1ª mensagem do lead → 1ª mensagem depois dela de um atendente de
   verdade, na 1ª conversa do lead, em horário de atendimento. Lido uma vez por lead (até 40 por rodada;
   sem resposta, tenta por 7 dias). Média e mediana por quem respondeu.

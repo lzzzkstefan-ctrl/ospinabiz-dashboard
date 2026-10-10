@@ -125,6 +125,32 @@ async function Conteudo({ searchParams }: Props) {
 
   return (
     <>
+      {/* números principais */}
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Numero
+          rotulo="Leads no período"
+          valor={String(r.totalLeads)}
+          detalhe={[contadoAte && `contado até ${contadoAte} (última sincronização)`, r.foraDoFunil && `${r.foraDoFunil} fora do funil`].filter(Boolean).join(" · ") || undefined}
+        />
+        <Numero
+          rotulo="Maior gap"
+          valor={r.maiorGap ? `−${pct(r.maiorGap.perda)}` : "—"}
+          detalhe={r.maiorGap ? `${r.maiorGap.de} → ${r.maiorGap.para}` : "sem perda entre etapas"}
+          alerta={!!r.maiorGap}
+        />
+        <Numero
+          rotulo="Compradores (Aluno)"
+          valor={String(compradores)}
+          detalhe={`${r.compradores.hubla} Hubla · ${r.compradores.foraHubla} Pix/CNPJ${r.noFunil ? ` · ${pct(compradores / r.noFunil)} do funil` : ""}`}
+        />
+        <Numero
+          rotulo="Aluno a conferir"
+          valor={String(r.compradores.aConferir)}
+          detalhe="etiqueta Aluno sem venda achada na Hubla"
+          alerta={r.compradores.aConferir > 0}
+        />
+      </section>
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <AvisoSincronizacao sync={sync} />
@@ -201,33 +227,25 @@ async function Conteudo({ searchParams }: Props) {
         </form>
       </section>
 
-      <ListaEsperando itens={esperando} horas={cfg.horasEspera} inicio={cfg.inicio} fim={cfg.fim} admin={admin} />
-
-      {/* números principais */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Numero
-          rotulo="Leads no período"
-          valor={String(r.totalLeads)}
-          detalhe={[contadoAte && `contado até ${contadoAte} (última sincronização)`, r.foraDoFunil && `${r.foraDoFunil} fora do funil`].filter(Boolean).join(" · ") || undefined}
-        />
-        <Numero
-          rotulo="Maior gap"
-          valor={r.maiorGap ? `−${pct(r.maiorGap.perda)}` : "—"}
-          detalhe={r.maiorGap ? `${r.maiorGap.de} → ${r.maiorGap.para}` : "sem perda entre etapas"}
-          alerta={!!r.maiorGap}
-        />
-        <Numero
-          rotulo="Compradores (Aluno)"
-          valor={String(compradores)}
-          detalhe={`${r.compradores.hubla} Hubla · ${r.compradores.foraHubla} Pix/CNPJ${r.noFunil ? ` · ${pct(compradores / r.noFunil)} do funil` : ""}`}
-        />
-        <Numero
-          rotulo="Aluno a conferir"
-          valor={String(r.compradores.aConferir)}
-          detalhe="etiqueta Aluno sem venda achada na Hubla"
-          alerta={r.compradores.aConferir > 0}
-        />
-      </section>
+      <ListaEsperando
+        id="esperando"
+        titulo="Leads esperando resposta"
+        itens={esperando.leads}
+        horas={cfg.horasEspera}
+        inicio={cfg.inicio}
+        fim={cfg.fim}
+        admin={admin}
+      />
+      <ListaEsperando
+        id="alunos-esperando"
+        titulo="Alunos esperando (suporte)"
+        itens={esperando.alunos}
+        horas={cfg.horasEspera}
+        inicio={cfg.inicio}
+        fim={cfg.fim}
+        admin={false}
+        aluno
+      />
 
       <section className="glass-lite glass-static p-4">
         <h2 className="mb-3 text-[15px] font-semibold text-white">Leads por dia</h2>
@@ -251,7 +269,7 @@ async function Conteudo({ searchParams }: Props) {
         <FunilEtapas linhas={r.funil} total={r.noFunil} gapPara={r.maiorGap?.para ?? null} />
       </section>
 
-      <section id="conversao" className="glass-lite glass-static p-4">
+      <section id="conversao" className="glass-lite glass-static scroll-mt-28 p-4">
         <h2 className="mb-1 text-[15px] font-semibold text-white">Conversão por dia</h2>
         <p className="m-0 mb-3 text-[12px] text-ink-faint">Dos leads do funil que entraram em cada dia, a % que chegou no alvo. Linhas tracejadas = mudanças registradas no funil.</p>
         <nav className="mb-3 flex flex-wrap gap-1.5" aria-label="Alvo da conversão">
@@ -411,12 +429,33 @@ function AvisoSincronizacao({ sync }: { sync: StatusSincronizacao }) {
   );
 }
 
-/** Leads esperando resposta de um atendente há mais de X horas de atendimento. */
-function ListaEsperando({ itens, horas, inicio, fim, admin }: { itens: Esperando[]; horas: number; inicio: string; fim: string; admin: boolean }) {
+/** Leads (ou alunos) esperando resposta de um atendente há mais de X horas de atendimento. */
+function ListaEsperando({
+  id,
+  titulo,
+  itens,
+  horas,
+  inicio,
+  fim,
+  admin,
+  aluno = false,
+}: {
+  id: string;
+  titulo: string;
+  itens: Esperando[];
+  horas: number;
+  inicio: string;
+  fim: string;
+  admin: boolean;
+  aluno?: boolean;
+}) {
   return (
-    <section className={cn("glass-lite glass-static p-4", itens.length > 0 && "border-[rgb(var(--tag-laranja)/0.5)]")}>
+    // scroll-mt: ao abrir pelo link (#esperando), o título não fica escondido atrás do menu fixo do topo
+    <section id={id} className={cn("glass-lite glass-static scroll-mt-28 p-4", itens.length > 0 && "border-[rgb(var(--tag-laranja)/0.5)]")}>
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-[15px] font-semibold text-white">Esperando resposta · {itens.length}</h2>
+        <h2 className="text-[15px] font-semibold text-white">
+          {titulo} · {itens.length}
+        </h2>
         {admin && (
           <Link href="/funil/config" className="text-[12px] text-ink-dim underline-offset-4 hover:underline">
             Configurar horário, espera e mudanças
@@ -424,8 +463,11 @@ function ListaEsperando({ itens, horas, inicio, fim, admin }: { itens: Esperando
         )}
       </div>
       <p className="m-0 mb-3 text-[12px] text-ink-faint">
-        A última mensagem é do lead e nenhum atendente respondeu (automação não conta) há mais de {String(horas).replace(".", ",")}h de atendimento ({inicio}–{fim}). Inclui lead
-        antigo que voltou a falar. Atualiza a cada 15 minutos.
+        {aluno
+          ? "Contatos com etiqueta de Aluno (suporte), na mesma regra dos leads: "
+          : "Sem etiqueta de Aluno. "}
+        Conversa em aberto na Data Crazy (finalizada não entra), a última mensagem é do lead e nenhum atendente respondeu (automação não conta) há mais de{" "}
+        {String(horas).replace(".", ",")}h de atendimento ({inicio}–{fim}). Lead em mais de um número aparece uma vez, com o maior tempo. Atualiza a cada 15 minutos.
       </p>
       {itens.length === 0 ? (
         <p className="m-0 py-2 text-center text-[13px] italic text-ink-faint">Ninguém esperando. 👌</p>
@@ -434,7 +476,7 @@ function ListaEsperando({ itens, horas, inicio, fim, admin }: { itens: Esperando
           <table className="w-full border-collapse text-left text-[13px] tabular-nums">
             <thead className="text-[11.5px] text-ink-dim">
               <tr>
-                <th className="py-1.5 pr-3 font-medium">Lead</th>
+                <th className="py-1.5 pr-3 font-medium">{aluno ? "Aluno" : "Lead"}</th>
                 <th className="py-1.5 pr-3 font-medium">Vendedor</th>
                 <th className="py-1.5 pr-3 font-medium">Número</th>
                 <th className="py-1.5 pr-3 font-medium">Etapa atual</th>
@@ -446,7 +488,7 @@ function ListaEsperando({ itens, horas, inicio, fim, admin }: { itens: Esperando
                 <tr key={e.conversaId} className="border-t border-line-soft text-ink">
                   <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
                   <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">sem vendedor</span>}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3">{e.numero ?? "—"}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3">{e.numeros.length ? e.numeros.join(" · ") : "—"}</td>
                   <td className="py-1.5 pr-3 text-ink-dim">{e.etapa ?? "—"}</td>
                   <td className="whitespace-nowrap py-1.5 text-right font-semibold text-[rgb(var(--tag-laranja))]">{duracao(e.esperaMs)}</td>
                 </tr>

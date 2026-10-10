@@ -391,7 +391,8 @@ async function gravarConversas(db: Db, dc: DataCrazy, todas: DcConversa[], leadD
     const atendente = c.attendants?.find((x) => ehAtendente(x.id))?.id ?? null;
     const numero = c.instance && config.numeros.has(c.instance.id) ? c.instance.id : null;
     const etiquetas = c.contact?.externalInfo?.tagIds ?? [];
-    const finalizada = !!c.finished;
+    // fechada = finalizada OU arquivada (o "Finalizar" do CRM arquiva; finished fica false)
+    const finalizada = !!c.finished || !!c.archivedAt || (c.statuses ?? []).some((s) => s === "finished" || s === "archived");
     if (
       antes &&
       !mudou &&

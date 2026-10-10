@@ -106,11 +106,11 @@ async function ConteudoInicio() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <CardStatus href="/funil?p=hoje" rotulo="Leads hoje" valor={String(funilHoje.totalLeads)} />
           <CardStatus
-            href="/funil"
+            href="/funil#esperando"
             rotulo="Leads esperando resposta"
-            valor={String(esperando.length)}
-            detalhe={esperando[0] ? `o mais antigo: ${Math.floor(esperando[0].esperaMs / 3_600_000)}h de atendimento` : undefined}
-            alerta={esperando.length > 0}
+            valor={String(esperando.leads.length)}
+            detalhe={esperando.leads[0] ? `o mais antigo: ${Math.floor(esperando.leads[0].esperaMs / 3_600_000)}h de atendimento` : undefined}
+            alerta={esperando.leads.length > 0}
           />
           <CardStatus
             href="/funil?p=7d"

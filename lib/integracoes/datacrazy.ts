@@ -36,6 +36,10 @@ export type DcConversa = {
   lastSendedMessageDate: string | null;
   lastMessageIsAutomation: boolean | null;
   finished: boolean | null;
+  /** "Finalizar" no CRM arquiva a conversa: finished continua false, mas archivedAt e statuses mudam */
+  archivedAt?: string | null;
+  /** ex.: ["opened"], ["automation", "opened"], ["unstarted"], ["finished"], ["archived"] */
+  statuses?: string[] | null;
   attendants: { id: string }[];
   instance: { id: string; name: string } | null;
   contact: {

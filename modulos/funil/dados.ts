@@ -109,24 +109,34 @@ export async function configDoFunil(): Promise<ConfigFunil> {
 }
 
 export type Esperando = {
+  /** conversa que espera há mais tempo (a do maior tempo de espera) */
   conversaId: string;
   rotulo: string | null;
   vendedor: string | null;
-  numero: string | null;
+  /** todos os números em que o lead está esperando (uma linha por lead) */
+  numeros: string[];
   etapa: string | null;
   desde: string;
-  /** tempo de espera contando só o horário de atendimento */
+  /** tempo de espera contando só o horário de atendimento (o maior entre os números) */
   esperaMs: number;
 };
 
-/** Conversas ABERTAS cuja última mensagem do lead não teve resposta de atendente há mais de X horas de atendimento. */
-export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: number | null; numeroId: string | null } = { vendedorId: null, numeroId: null }): Promise<Esperando[]> {
+/** Esperando resposta, separado: leads (sem etiqueta de Aluno) e alunos (suporte). */
+export type ListasEsperando = { leads: Esperando[]; alunos: Esperando[] };
+
+/**
+ * Conversas EM ABERTO (nem finalizadas nem arquivadas na Data Crazy) cuja última mensagem do lead
+ * não teve resposta de atendente há mais de X horas de atendimento. Uma linha por lead: o mesmo
+ * lead em mais de um número vira uma linha só, com os números juntos e o maior tempo de espera.
+ * Aluno = tem etiqueta de uma etapa de compra (ex.: 👽 ALUNO, ALUNO PAGOU NO PIX/CNPJ).
+ */
+export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: number | null; numeroId: string | null } = { vendedorId: null, numeroId: null }): Promise<ListasEsperando> {
   const supabase = await createClient();
   let q = supabase
     .from("funil_conversas")
-    .select("dc_id, contato_rotulo, vendedor_id, numero_dc_id, etiquetas_atuais, esperando_desde")
+    .select("dc_id, lead_dc_id, contato_rotulo, vendedor_id, numero_dc_id, etiquetas_atuais, esperando_desde")
     .not("esperando_desde", "is", null)
-    // conversa finalizada na Data Crazy não está esperando (se o lead escrever de novo, ela reabre)
+    // finalizada = finalizada ou arquivada na Data Crazy: não está esperando (se o lead escrever de novo, reabre)
     .eq("finalizada", false)
     .order("esperando_desde")
     .limit(1000);
@@ -141,19 +151,47 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
   ]);
   if (conversas.error) throw new Error(`Erro ao carregar conversas: ${conversas.error.message}`);
   const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
+  const listaEtapas = (etapas.data ?? []) as Etapa[];
+  const listaEtiquetas = (etiquetas.data ?? []) as EtiquetaEtapa[];
+  const etapaDeCompra = new Set(listaEtapas.filter((e) => e.comprou).map((e) => e.id));
+  const etiquetasDeAluno = new Set(listaEtiquetas.filter((t) => t.etapa_id !== null && etapaDeCompra.has(t.etapa_id)).map((t) => t.dc_id));
   const agora = Date.now();
-  return conversas.data
-    .map((c) => ({
+
+  type Linha = Esperando & { aluno: boolean };
+  const porLead = new Map<string, Linha>();
+  for (const c of conversas.data) {
+    const esperaMs = tempoEmAtendimento(String(c.esperando_desde), agora, cfg.inicio, cfg.fim);
+    if (esperaMs <= cfg.horasEspera * 3_600_000) continue;
+    const tags: string[] = c.etiquetas_atuais ?? [];
+    const numero = c.numero_dc_id ? (numeros.get(String(c.numero_dc_id)) ?? null) : null;
+    // mesmo lead = mesmo lead da Data Crazy; sem lead ligado, o rótulo (primeiro nome + 4 dígitos)
+    const chave = c.lead_dc_id ? `l:${c.lead_dc_id}` : c.contato_rotulo ? `r:${c.contato_rotulo}` : `c:${c.dc_id}`;
+    const atual = porLead.get(chave);
+    const linha: Linha = {
       conversaId: String(c.dc_id),
       rotulo: c.contato_rotulo,
       vendedor: c.vendedor_id ? (nomeDe.get(Number(c.vendedor_id)) ?? null) : null,
-      numero: c.numero_dc_id ? (numeros.get(String(c.numero_dc_id)) ?? null) : null,
-      etapa: etapaAtual(c.etiquetas_atuais ?? [], (etiquetas.data ?? []) as EtiquetaEtapa[], (etapas.data ?? []) as Etapa[]),
+      numeros: numero ? [numero] : [],
+      etapa: etapaAtual(tags, listaEtiquetas, listaEtapas),
       desde: String(c.esperando_desde),
-      esperaMs: tempoEmAtendimento(String(c.esperando_desde), agora, cfg.inicio, cfg.fim),
-    }))
-    .filter((e) => e.esperaMs > cfg.horasEspera * 3_600_000)
-    .sort((a, b) => b.esperaMs - a.esperaMs);
+      esperaMs,
+      aluno: tags.some((t) => etiquetasDeAluno.has(t)),
+    };
+    if (!atual) {
+      porLead.set(chave, linha);
+      continue;
+    }
+    // junta: números de todas as conversas; o resto vem da que espera há mais tempo
+    const maior = linha.esperaMs > atual.esperaMs ? linha : atual;
+    porLead.set(chave, {
+      ...maior,
+      vendedor: maior.vendedor ?? atual.vendedor ?? linha.vendedor,
+      numeros: [...new Set([...atual.numeros, ...linha.numeros])].sort(),
+      aluno: atual.aluno || linha.aluno,
+    });
+  }
+  const todos = [...porLead.values()].sort((a, b) => b.esperaMs - a.esperaMs);
+  return { leads: todos.filter((e) => !e.aluno), alunos: todos.filter((e) => e.aluno) };
 }
 
 export type PrimeiraResposta = { vendedor: string; leads: number; mediaMs: number; medianaMs: number };
