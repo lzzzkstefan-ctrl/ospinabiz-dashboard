@@ -441,29 +441,29 @@ function AvisoSincronizacao({ sync }: { sync: StatusSincronizacao }) {
   );
 }
 
-/** Filas da Data Crazy, como no CRM: Em aberto (total), Não iniciados e Aguardando. */
+/** Filas da Data Crazy, como as abas do CRM: Em aberto, Não iniciados, Aguardando e Com automação. */
 function FilasDataCrazy({ filas, admin }: { filas: Filas; admin: boolean }) {
-  const total = filas.emAberto + filas.naoIniciados.length + filas.aguardando.length;
+  const listas = [
+    { nome: "Em aberto", detalhe: "em atendimento", itens: filas.emAberto },
+    { nome: "Não iniciados", detalhe: "ninguém assumiu", itens: filas.naoIniciados },
+    { nome: "Aguardando", detalhe: "o lead espera a empresa", itens: filas.aguardando },
+    { nome: "Com automação", detalhe: "robô atendendo", itens: filas.comAutomacao },
+  ];
   return (
     <section id="filas" className="glass-lite glass-static scroll-mt-28 p-4">
       <div className="mb-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <h2 className="text-[15px] font-semibold text-white">Filas da Data Crazy · {total} em aberto</h2>
-        <span className="text-[12.5px] tabular-nums text-ink-dim">
-          Em aberto {filas.emAberto} · Não iniciados {filas.naoIniciados.length} · Aguardando {filas.aguardando.length}
-        </span>
+        <h2 className="text-[15px] font-semibold text-white">Filas da Data Crazy · {filas.total} conversas abertas</h2>
+        <span className="text-[12.5px] tabular-nums text-ink-dim">{listas.map((l) => `${l.nome} ${l.itens.length}`).join(" · ")}</span>
       </div>
       <p className="m-0 mb-3 text-[12px] text-ink-faint">
-        Conversas em aberto separadas como no CRM. Não iniciados = ninguém assumiu o atendimento. O tempo é desde o início do atendimento atual (tempo real, não só o
-        horário de atendimento). Atualiza a cada 15 minutos.{!admin && " Só as suas conversas (as que ninguém assumiu ainda não têm vendedor)."}
+        Como as abas do CRM: a mesma conversa pode estar em mais de uma (ex.: em atendimento e aguardando). O tempo é real (não só o horário de atendimento): no
+        Aguardando, desde a última mensagem do lead; nas outras, desde o início do atendimento atual. Atualiza a cada 15 minutos.{!admin && " Só as suas conversas (as que ninguém assumiu ainda não têm vendedor)."}
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
-        {[
-          { nome: "Não iniciados", itens: filas.naoIniciados },
-          { nome: "Aguardando", itens: filas.aguardando },
-        ].map((f) => (
+        {listas.map((f) => (
           <div key={f.nome} className="overflow-x-auto">
             <h3 className="mb-1 text-[13px] font-semibold text-ink">
-              {f.nome} · {f.itens.length}
+              {f.nome} · {f.itens.length} <span className="font-normal text-ink-faint">({f.detalhe})</span>
             </h3>
             {f.itens.length === 0 ? (
               <p className="m-0 py-2 text-[13px] italic text-ink-faint">Ninguém nesta fila.</p>

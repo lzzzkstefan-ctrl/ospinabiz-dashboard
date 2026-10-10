@@ -162,15 +162,18 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
 - Identificação do lead nas listas: só "primeiro nome -1234" (nunca nome completo nem telefone).
 
 ## Filas e números internos (10/10/2026, migration funil_filas_internos)
-- **Filas da Data Crazy:** conversa em aberto separada como no CRM, pelo campo `statuses` da API:
-  `unstarted` = **Não iniciados** (ninguém assumiu), `opened` = **Em aberto** (só o total na tela).
-  **Aguardando:** não deu para confirmar o campo (o CRM mostrava 0 e nenhum outro status aberto
-  apareceu na API). Por enquanto, qualquer conversa aberta que não seja `opened` nem `unstarted`.
-  Conferir quando o CRM mostrar alguém em Aguardando. Conferido em 10/10: API 38 opened + 3
-  unstarted = CRM (Em aberto 38, Não iniciados 3, Aguardando 0).
-  Tempo na fila = tempo REAL desde `currentThread.createdAt` (início do atendimento atual; senão a
-  criação da conversa). Uma linha por conversa (para bater com o CRM). Vendedor vê só as dele (as
-  não iniciadas ainda não têm vendedor). Gravado em `funil_conversas.fila` / `fila_desde`.
+- **Filas da Data Crazy (corrigido em 10/10, migration funil_statuses):** os `statuses` da API são
+  marcas que SE SOMAM, como as abas do CRM: `opened` = **Em aberto** (em atendimento), `unstarted` =
+  **Não iniciados** (ninguém assumiu), `waiting` = **Aguardando** (o lead espera a empresa),
+  `automation` = **Com automação** (robô). A mesma conversa pode estar em mais de uma lista (ex.: o
+  atendimento #37096 veio `["waiting", "opened"]`; os do robô vêm `["automation", "unstarted"]`).
+  A primeira versão (uma fila só por conversa, coluna `fila`) punha o #37096 só em Em aberto e o
+  Aguardando ficava 0. Conferido em 10/10: 08h20 API 38 opened + 3 unstarted = CRM (Em aberto 38,
+  Não iniciados 3); robô 2 = aba do robô no CRM.
+  Gravado em `funil_conversas.statuses` (vazio = fechada) e `fila_desde` (`currentThread.createdAt`,
+  senão a criação da conversa). Tempo real: no Aguardando, desde a última mensagem do lead; nas outras,
+  desde o início do atendimento atual. Uma linha por conversa (para bater com o CRM). Vendedor vê só as
+  dele (as não iniciadas ainda não têm vendedor).
 - **Números internos (teste):** cadastro em `/funil/config` (só admin), tabela
   `funil_numeros_internos` (o telefone fica só lá; nunca no código nem no git). Comparação pelos
   8 últimos dígitos (`chave`, única). A sincronização marca `interno` em `funil_leads` (telefone do

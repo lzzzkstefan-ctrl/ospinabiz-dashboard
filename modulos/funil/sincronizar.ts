@@ -387,14 +387,14 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
     etiquetas_atuais: string[];
     contato_rotulo: string | null;
     finalizada: boolean;
-    fila: string | null;
+    statuses: string[];
     fila_desde: string | null;
     interno: boolean;
   };
   const atuais = await lerTudo<Atual>((de, ate) =>
     db
       .from("funil_conversas")
-      .select("dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, contato_rotulo, finalizada, fila, fila_desde, interno")
+      .select("dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, contato_rotulo, finalizada, statuses, fila_desde, interno")
       .order("dc_id")
       .range(de, ate),
   );
@@ -415,11 +415,10 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
     const etiquetas = c.contact?.externalInfo?.tagIds ?? [];
     // fechada = finalizada OU arquivada (o "Finalizar" do CRM arquiva; finished fica false)
     const finalizada = !!c.finished || !!c.archivedAt || (c.statuses ?? []).some((s) => s === "finished" || s === "archived");
-    // fila como no CRM (só conversa aberta): unstarted = Não iniciados; opened = Em aberto;
-    // outro status aberto = Aguardando (a confirmar com o CRM)
-    const statuses = c.statuses ?? [];
-    const fila = finalizada ? null : statuses.includes("unstarted") ? "nao_iniciado" : statuses.includes("opened") ? "aberto" : "aguardando";
-    const filaDesde = fila ? (c.currentThread?.createdAt ?? c.createdAt) : null;
+    // filas como no CRM: os status são marcas que se somam (ex.: ["waiting", "opened"]); cada aba
+    // mostra quem tem a marca. Conversa fechada fica sem status.
+    const statuses = finalizada ? [] : [...new Set(c.statuses ?? [])].sort();
+    const filaDesde = finalizada ? null : (c.currentThread?.createdAt ?? c.createdAt);
     const interno = ehInterno(internos, c.contact?.phoneNumber, c.contact?.contactId);
     const rotulo = rotuloDoContato(c.contact?.name, c.contact?.phoneNumber);
     if (
@@ -429,7 +428,7 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
       antes.atendente_dc_id === atendente &&
       antes.numero_dc_id === numero &&
       antes.finalizada === finalizada &&
-      antes.fila === fila &&
+      mesmasEtiquetas(antes.statuses ?? [], statuses) &&
       mesmoInstante(antes.fila_desde, filaDesde) &&
       antes.interno === interno &&
       antes.contato_rotulo === rotulo &&
@@ -450,7 +449,7 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
       ultima_mensagem_em: c.lastMessageDate,
       esperando_desde: esperando,
       finalizada,
-      fila,
+      statuses,
       fila_desde: filaDesde,
       interno,
       sincronizado_em: new Date().toISOString(),
