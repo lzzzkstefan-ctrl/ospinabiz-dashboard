@@ -15,7 +15,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(aviso.titulo || "Ospinabiz", {
       body: aviso.corpo || "",
-      icon: "/icone-192.png",
+      icon: "/icone-192.png?v=3",
       badge: "/selo-notificacao.png",
       tag: aviso.tag,
       // aviso da mesma coisa (ex.: a mesma pausa) substitui o anterior, mas toca de novo

@@ -14,13 +14,14 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
   // iPhone: instalado pela "Adicionar à Tela de Início" abre como app (sem barra do Safari)
   appleWebApp: { capable: true, title: "GCS Staff", statusBarStyle: "black-translucent" },
-  // ícone GCS Staff (imagem do Davi, 10/10/2026): aba do navegador (app/favicon.ico + 32px) e iPhone
+  // ícone GCS Staff em pixel art (imagem do Davi, 10/10/2026): aba do navegador (app/favicon.ico + 32px) e iPhone.
+  // "?v=3" força o navegador/iPhone a buscar o ícone novo (o nome do arquivo é o mesmo)
   icons: {
     icon: [
-      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icone-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/favicon-32.png?v=3", sizes: "32x32", type: "image/png" },
+      { url: "/icone-192.png?v=3", sizes: "192x192", type: "image/png" },
     ],
-    apple: "/apple-touch-icon.png",
+    apple: "/apple-touch-icon.png?v=3",
   },
 };
 

@@ -15,11 +15,11 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#000607",
     lang: "pt-BR",
     icons: [
-      { src: "/icone-192.png", sizes: "192x192", type: "image/png" },
-      { src: "/icone-512.png", sizes: "512x512", type: "image/png" },
+      { src: "/icone-192.png?v=3", sizes: "192x192", type: "image/png" },
+      { src: "/icone-512.png?v=3", sizes: "512x512", type: "image/png" },
       // Android corta em círculo: versão com o desenho menor e fundo preto
-      { src: "/icone-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-      { src: "/icone-1024.png", sizes: "1024x1024", type: "image/png" },
+      { src: "/icone-maskable-512.png?v=3", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/icone-1024.png?v=3", sizes: "1024x1024", type: "image/png" },
     ],
   };
 }

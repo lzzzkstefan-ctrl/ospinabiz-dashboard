@@ -156,4 +156,8 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
   círculo do Android), `apple-touch-icon.png` (180), `favicon-32.png` e `app/favicon.ico` (16/32/48).
   Nome curto no celular: "GCS Staff". O selo da barra de notificação do Android
   (`selo-notificacao.png`) continua o anel branco: ele precisa ser uma silhueta de uma cor só.
+- **Ícone em pixel art (10/10/2026, mais tarde):** trocado pela versão "staff pixel art" do Davi
+  (1254×1254, quadrada, fundo preto). Todos os tamanhos redimensionados com vizinho mais próximo
+  (`kernel: "nearest"`, sem suavizar) e paleta sem pontilhado. Endereços com `?v=3` para o
+  navegador/iPhone não usarem o ícone antigo em cache.
 
