@@ -60,7 +60,7 @@ async function ConteudoInicio() {
 
   return (
     <>
-      <div className="relative -mt-8 mb-8 pt-[270px] md:-mt-24">
+      <div className="relative -mt-8 mb-8 pt-[270px] md:-mt-28">
         <Capa url={capa} admin={admin} />
         <header className="relative z-10">
           <p className="text-[11px] uppercase tracking-[0.2em] text-ink-dim [text-shadow:0_1px_10px_rgba(0,0,0,0.5)]">

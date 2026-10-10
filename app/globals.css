@@ -49,6 +49,12 @@
   body {
     background: var(--bg);
   }
+  /* link para um trecho da página (#esperando, #conversao...) para abaixo do menu fixo do topo */
+  @media (min-width: 768px) {
+    html {
+      scroll-padding-top: 7.5rem;
+    }
+  }
   body {
     @apply bg-background text-foreground font-sans;
     -webkit-font-smoothing: antialiased;

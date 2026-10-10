@@ -84,3 +84,21 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
   Os dias de 04 a 09/10 aparecem descobertos porque os horários fixos só começam em 10/10 (o
   check-in não existia antes; marcar como escalado viraria "não entrou" sem ser verdade).
 
+## Mudanças de 10/10/2026 (fim da tarde, pedido do Davi)
+
+- **Calendário semanal saiu da página** (o arquivo `_componentes/calendario.tsx` foi apagado em 10/10; está no histórico do git, commit 05a2bca, se quiser de volta).
+- **Página, de cima para baixo:** botão "Entrei na operação" em vidro líquido (`.glass`, borda que
+  gira; online ganha brilho verde) + "Online agora"; depois os **7 cards da semana atual** (domingo a
+  sábado, hoje em destaque) com o horário fixo de cada pessoa e, embaixo, o que aconteceu: entrou às,
+  saiu às (ou "online agora"), atraso, saída automática, "não entrou". Sem navegação de semana.
+- **Quem vê o quê:** o horário fixo de todos aparece para todos; entrada, saída e atraso dos outros
+  só para o admin (os outros veem só os próprios). "Online agora" todos veem.
+- **Admin:** "Editar horários" (`?editar=1`) mostra o formulário de horário fixo e o "tirar" em cada
+  card; "corrigir" em cada entrada (com motivo). `/escala/config` virou só **Pessoas**.
+- **Espaço do topo (todas as páginas):** `main` com `md:pt-28` (antes 24), faixa fixa no topo que
+  esmaece o conteúdo que passa por baixo do menu ao rolar, e `scroll-padding-top` para links com
+  `#trecho`. Medido com fotos reais (Edge sem janela): menu termina em 69px, título começa em 112px.
+- **Aviso "Date.now() while prerendering" (Cache Components):** `await connection()` no
+  `createClient()` de `lib/supabase/server.ts` (o login confere a validade com o relógio). Conferido
+  em 11 telas: nenhum aviso.
+
