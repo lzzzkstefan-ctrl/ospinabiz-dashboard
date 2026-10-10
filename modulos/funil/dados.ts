@@ -133,17 +133,18 @@ export type Esperando = {
 export type ListasEsperando = { leads: Esperando[]; alunos: Esperando[]; aguardandoLead: Esperando[]; filas: Filas };
 
 /**
- * Filas da Data Crazy, como as abas do CRM. Os status são marcas que se somam (ex.: ["waiting",
- * "opened"]), então a mesma conversa pode estar em mais de uma lista, igual ao CRM:
- * Em aberto = opened · Não iniciados = unstarted (ninguém assumiu) · Aguardando = waiting ·
- * Com automação = automation (robô). Uma linha por conversa, para bater com os totais de lá.
- * esperaMs = tempo REAL: no Aguardando, desde a última mensagem do lead; nas outras, desde o início
+ * Filas da Data Crazy (pedido do Davi, 10/10/2026). Os status da API são marcas que se somam
+ * (ex.: ["waiting", "opened"]); a tela mostra duas listas:
+ * - atendimento: Não iniciados (unstarted, ninguém assumiu) + Em atendimento (opened), uma linha por
+ *   conversa, sem repetir (se tiver as duas marcas, vale Não iniciado); Não iniciados primeiro, cada
+ *   grupo pelo maior tempo na fila;
+ * - aguardando (waiting): o lead espera a empresa. Pode repetir uma conversa da outra lista, como no CRM.
+ * Robô (automation) não tem lista: não é usado em outra parte.
+ * esperaMs = tempo REAL: no Aguardando, desde a última mensagem do lead; na outra, desde o início
  * do atendimento atual.
  */
-export type Filas = { total: number; emAberto: Esperando[]; naoIniciados: Esperando[]; aguardando: Esperando[]; comAutomacao: Esperando[] };
-
-/** status da API → lista da tela */
-const FILAS_DC = { opened: "emAberto", unstarted: "naoIniciados", waiting: "aguardando", automation: "comAutomacao" } as const;
+export type ItemFila = Esperando & { situacao: "nao_iniciado" | "em_atendimento" };
+export type Filas = { total: number; atendimento: ItemFila[]; aguardando: Esperando[] };
 
 /**
  * Uma linha por lead: o mesmo lead em mais de um número vira uma linha só, com os números juntos e o
@@ -180,13 +181,14 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
   type Linha = Esperando & { aluno: boolean };
   const esperando = new Map<string, Linha>();
   const aguardando = new Map<string, Linha>();
-  const filas: Filas = { total: 0, emAberto: [], naoIniciados: [], aguardando: [], comAutomacao: [] };
+  const filas: Filas = { total: 0, atendimento: [], aguardando: [] };
   for (const c of conversas.data) {
     // filas: toda conversa aberta, sem limite de horas
     const statuses: string[] = c.statuses ?? [];
-    const listas = statuses.flatMap((st) => (st in FILAS_DC ? [FILAS_DC[st as keyof typeof FILAS_DC]] : []));
     if (statuses.length) filas.total++;
-    if (listas.length && c.fila_desde) {
+    const situacao = statuses.includes("unstarted") ? "nao_iniciado" : statuses.includes("opened") ? "em_atendimento" : null;
+    const naFilaAguardando = statuses.includes("waiting");
+    if ((situacao || naFilaAguardando) && c.fila_desde) {
       const tags: string[] = c.etiquetas_atuais ?? [];
       const numero = c.numero_dc_id ? (numeros.get(String(c.numero_dc_id)) ?? null) : null;
       const base = {
@@ -196,10 +198,9 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
         numeros: numero ? [numero] : [],
         etapa: etapaAtual(tags, listaEtiquetas, listaEtapas),
       };
-      for (const lista of listas) {
-        const desde = lista === "aguardando" && c.ultima_recebida_em ? String(c.ultima_recebida_em) : String(c.fila_desde);
-        filas[lista].push({ ...base, desde, esperaMs: Math.max(0, agora - Date.parse(desde)) });
-      }
+      const tempo = (desde: string) => ({ desde, esperaMs: Math.max(0, agora - Date.parse(desde)) });
+      if (situacao) filas.atendimento.push({ ...base, ...tempo(String(c.fila_desde)), situacao });
+      if (naFilaAguardando) filas.aguardando.push({ ...base, ...tempo(c.ultima_recebida_em ? String(c.ultima_recebida_em) : String(c.fila_desde)) });
     }
 
     const recebida = c.ultima_recebida_em ? String(c.ultima_recebida_em) : null;
@@ -244,7 +245,9 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
   for (const chave of esperando.keys()) aguardando.delete(chave);
   const ordenar = (m: Map<string, Linha>) => [...m.values()].sort((a, b) => b.esperaMs - a.esperaMs);
   const todos = ordenar(esperando);
-  for (const f of [filas.emAberto, filas.naoIniciados, filas.aguardando, filas.comAutomacao]) f.sort((a, b) => b.esperaMs - a.esperaMs);
+  // Não iniciados primeiro; dentro de cada grupo, quem está há mais tempo na fila
+  filas.atendimento.sort((a, b) => (a.situacao === b.situacao ? b.esperaMs - a.esperaMs : a.situacao === "nao_iniciado" ? -1 : 1));
+  filas.aguardando.sort((a, b) => b.esperaMs - a.esperaMs);
   return { leads: todos.filter((e) => !e.aluno), alunos: todos.filter((e) => e.aluno), aguardandoLead: ordenar(aguardando), filas };
 }
 

@@ -13,6 +13,7 @@ import {
   statusDaSincronizacao,
   type Esperando,
   type Filas,
+  type ItemFila,
   type StatusSincronizacao,
 } from "@/modulos/funil/dados";
 import Link from "next/link";
@@ -441,60 +442,83 @@ function AvisoSincronizacao({ sync }: { sync: StatusSincronizacao }) {
   );
 }
 
-/** Filas da Data Crazy, como as abas do CRM: Em aberto, Não iniciados, Aguardando e Com automação. */
+/** Filas da Data Crazy: Não iniciados + Em atendimento numa lista (coluna Situação) e Aguardando. */
 function FilasDataCrazy({ filas, admin }: { filas: Filas; admin: boolean }) {
-  const listas = [
-    { nome: "Em aberto", detalhe: "em atendimento", itens: filas.emAberto },
-    { nome: "Não iniciados", detalhe: "ninguém assumiu", itens: filas.naoIniciados },
-    { nome: "Aguardando", detalhe: "o lead espera a empresa", itens: filas.aguardando },
-    { nome: "Com automação", detalhe: "robô atendendo", itens: filas.comAutomacao },
-  ];
+  const naoIniciados = filas.atendimento.filter((f) => f.situacao === "nao_iniciado").length;
   return (
     <section id="filas" className="glass-lite glass-static scroll-mt-28 p-4">
       <div className="mb-1 flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h2 className="text-[15px] font-semibold text-white">Filas da Data Crazy · {filas.total} conversas abertas</h2>
-        <span className="text-[12.5px] tabular-nums text-ink-dim">{listas.map((l) => `${l.nome} ${l.itens.length}`).join(" · ")}</span>
+        <span className="text-[12.5px] tabular-nums text-ink-dim">
+          Não iniciados {naoIniciados} · Em atendimento {filas.atendimento.length - naoIniciados} · Aguardando {filas.aguardando.length}
+        </span>
       </div>
       <p className="m-0 mb-3 text-[12px] text-ink-faint">
-        Como as abas do CRM: a mesma conversa pode estar em mais de uma (ex.: em atendimento e aguardando). O tempo é real (não só o horário de atendimento): no
-        Aguardando, desde a última mensagem do lead; nas outras, desde o início do atendimento atual. Atualiza a cada 15 minutos.{!admin && " Só as suas conversas (as que ninguém assumiu ainda não têm vendedor)."}
+        Não iniciado = ninguém assumiu o atendimento. O Aguardando (o lead espera a empresa) pode repetir uma conversa da outra lista, como no CRM. O tempo é real (não só
+        o horário de atendimento): no Aguardando, desde a última mensagem do lead; na outra, desde o início do atendimento atual. Atualiza a cada 15 minutos.
+        {!admin && " Só as suas conversas (as que ninguém assumiu ainda não têm vendedor)."}
       </p>
-      <div className="grid gap-4 lg:grid-cols-2">
-        {listas.map((f) => (
-          <div key={f.nome} className="overflow-x-auto">
-            <h3 className="mb-1 text-[13px] font-semibold text-ink">
-              {f.nome} · {f.itens.length} <span className="font-normal text-ink-faint">({f.detalhe})</span>
-            </h3>
-            {f.itens.length === 0 ? (
-              <p className="m-0 py-2 text-[13px] italic text-ink-faint">Ninguém nesta fila.</p>
-            ) : (
-              <table className="w-full border-collapse text-left text-[13px] tabular-nums">
-                <thead className="text-[11.5px] text-ink-dim">
-                  <tr>
-                    <th className="py-1.5 pr-3 font-medium">Lead</th>
-                    <th className="py-1.5 pr-3 font-medium">Vendedor</th>
-                    <th className="py-1.5 pr-3 font-medium">Número</th>
-                    <th className="py-1.5 pr-3 font-medium">Etapa</th>
-                    <th className="py-1.5 text-right font-medium">Na fila há</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {f.itens.slice(0, 100).map((e) => (
-                    <tr key={e.conversaId} className="border-t border-line-soft text-ink">
-                      <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
-                      <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">ninguém</span>}</td>
-                      <td className="whitespace-nowrap py-1.5 pr-3">{e.numeros.join(" · ") || "—"}</td>
-                      <td className="py-1.5 pr-3 text-ink-dim">{e.etapa ?? "—"}</td>
-                      <td className="whitespace-nowrap py-1.5 text-right font-semibold text-white">{duracao(e.esperaMs)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        ))}
+      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+        <TabelaFila titulo="Não iniciados e em atendimento" itens={filas.atendimento} comSituacao />
+        <TabelaFila titulo="Aguardando" detalhe="o lead espera a empresa" itens={filas.aguardando} />
       </div>
     </section>
+  );
+}
+
+function TabelaFila({
+  titulo,
+  detalhe,
+  itens,
+  comSituacao = false,
+}: {
+  titulo: string;
+  detalhe?: string;
+  itens: (Esperando & { situacao?: ItemFila["situacao"] })[];
+  comSituacao?: boolean;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <h3 className="mb-1 text-[13px] font-semibold text-ink">
+        {titulo} · {itens.length} {detalhe && <span className="font-normal text-ink-faint">({detalhe})</span>}
+      </h3>
+      {itens.length === 0 ? (
+        <p className="m-0 py-2 text-[13px] italic text-ink-faint">Ninguém nesta fila.</p>
+      ) : (
+        <table className="w-full border-collapse text-left text-[13px] tabular-nums">
+          <thead className="text-[11.5px] text-ink-dim">
+            <tr>
+              {comSituacao && <th className="py-1.5 pr-3 font-medium">Situação</th>}
+              <th className="py-1.5 pr-3 font-medium">Lead</th>
+              <th className="py-1.5 pr-3 font-medium">Vendedor</th>
+              <th className="py-1.5 pr-3 font-medium">Número</th>
+              <th className="py-1.5 pr-3 font-medium">Etapa</th>
+              <th className="py-1.5 text-right font-medium">Na fila há</th>
+            </tr>
+          </thead>
+          <tbody>
+            {itens.slice(0, 100).map((e) => (
+              <tr key={e.conversaId} className="border-t border-line-soft text-ink">
+                {comSituacao && (
+                  <td className="whitespace-nowrap py-1.5 pr-3">
+                    {e.situacao === "nao_iniciado" ? (
+                      <span className="font-semibold text-[rgb(var(--tag-laranja))]">Não iniciado</span>
+                    ) : (
+                      <span className="text-ink-dim">Em atendimento</span>
+                    )}
+                  </td>
+                )}
+                <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
+                <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">ninguém</span>}</td>
+                <td className="whitespace-nowrap py-1.5 pr-3">{e.numeros.join(" · ") || "—"}</td>
+                <td className="py-1.5 pr-3 text-ink-dim">{e.etapa ?? "—"}</td>
+                <td className="whitespace-nowrap py-1.5 text-right font-semibold text-white">{duracao(e.esperaMs)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 

@@ -170,6 +170,10 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
   A primeira versão (uma fila só por conversa, coluna `fila`) punha o #37096 só em Em aberto e o
   Aguardando ficava 0. Conferido em 10/10: 08h20 API 38 opened + 3 unstarted = CRM (Em aberto 38,
   Não iniciados 3); robô 2 = aba do robô no CRM.
+  **Tela (10/10, pedido do Davi):** duas listas. "Não iniciados e em atendimento" (unstarted +
+  opened, uma linha por conversa, coluna Situação; Não iniciados primeiro, cada grupo pelo maior
+  tempo na fila) e "Aguardando" (waiting), separada. Robô (automation) não aparece (não é usado em
+  outra parte; o status continua gravado).
   Gravado em `funil_conversas.statuses` (vazio = fechada) e `fila_desde` (`currentThread.createdAt`,
   senão a criação da conversa). Tempo real: no Aguardando, desde a última mensagem do lead; nas outras,
   desde o início do atendimento atual. Uma linha por conversa (para bater com o CRM). Vendedor vê só as
