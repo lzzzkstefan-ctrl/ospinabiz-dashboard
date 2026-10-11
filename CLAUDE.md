@@ -27,6 +27,11 @@ escolhas em português simples.
 - Dados reais (telefones dos números monitorados, clientes) ficam no banco, nunca no código nem no git.
 - `docs/contas.md` registra onde está cada conta e quem é o dono. Só nomes, nunca senhas ou tokens.
 - Decisão nova de arquitetura vai para `docs/decisoes.md` (com o porquê).
+- **Backlog e novidades (aba Melhorias):** ao terminar algo, o item vai para "Feito" com uma linha
+  explicando (entra em Novidades): `npm run melhorias:docs -- --feito=<id> --linha="..."` (ou arrastar
+  na aba). Entrega sem item no backlog: criar com `--novo="Título" --aba=...` e marcar feito. Antes de
+  cada push, rodar `npm run melhorias:docs` (gera `docs/backlog.md` e `docs/changelog.md`; o banco é a
+  fonte, não editar esses dois arquivos à mão).
 - Versões das dependências principais ficam fixas (sem `latest`).
 
 ## Estrutura
@@ -54,6 +59,7 @@ supabase/
 docs/
   contas.md                   onde está cada conta
   decisoes.md                 decisões e porquês
+  backlog.md, changelog.md    gerados da aba Melhorias (npm run melhorias:docs)
   modulos/<modulo>.md         contexto de cada módulo (monitor.md já existe)
 proxy.ts                      porteiro do Next: roda a checagem de login em toda página
 ```

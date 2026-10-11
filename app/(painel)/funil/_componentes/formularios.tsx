@@ -6,7 +6,7 @@ import { Aviso, Campo, classeOpcao, classeSelect, type EstadoForm } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useActionState } from "react";
-import { criarMudanca, criarNumeroInterno, salvarConfigFunil } from "../acoes";
+import { criarMudanca, criarNumeroInterno, salvarConfigFunil, salvarEtiquetaChegada } from "../acoes";
 
 export function FormConfigFunil({ horas, inicio, fim, minutos }: { horas: number; inicio: string; fim: string; minutos: number }) {
   const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(salvarConfigFunil, {});
@@ -23,6 +23,34 @@ export function FormConfigFunil({ horas, inicio, fim, minutos }: { horas: number
       </Campo>
       <Campo rotulo="1ª resposta em até (min)">
         <Input name="minutos_resposta" inputMode="numeric" defaultValue={String(minutos)} className="w-28 tabular-nums" />
+      </Campo>
+      <Button type="submit" disabled={pendente}>
+        {pendente ? "Salvando…" : "Salvar"}
+      </Button>
+      <Aviso estado={estado} />
+    </form>
+  );
+}
+
+/** Etiqueta de chegada (CL) e a partir de quando vale (horário de Brasília). */
+export function FormEtiquetaChegada({ etiquetas, atual, desde }: { etiquetas: { id: string; nome: string }[]; atual: string | null; desde: string }) {
+  const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(salvarEtiquetaChegada, {});
+  return (
+    <form action={acao} className="flex flex-wrap items-end gap-3">
+      <Campo rotulo="Etiqueta de chegada">
+        <select name="etiqueta" defaultValue={atual ?? ""} className={classeSelect}>
+          <option value="" className={classeOpcao}>
+            Nenhuma (só a 1ª mensagem)
+          </option>
+          {etiquetas.map((e) => (
+            <option key={e.id} value={e.id} className={classeOpcao}>
+              {e.nome}
+            </option>
+          ))}
+        </select>
+      </Campo>
+      <Campo rotulo="Vale a partir de">
+        <Input name="desde" type="datetime-local" defaultValue={desde} className="w-56 [color-scheme:dark]" />
       </Campo>
       <Button type="submit" disabled={pendente}>
         {pendente ? "Salvando…" : "Salvar"}

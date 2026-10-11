@@ -41,6 +41,31 @@ export async function salvarConfigFunil(_anterior: EstadoForm, form: FormData): 
   return { ok: "Salvo." };
 }
 
+/**
+ * Etiqueta de chegada (CL): marca a chegada do lead, não é etapa. "desde" vem em horário de Brasília
+ * (AAAA-MM-DDTHH:MM); só as colocações a partir daí contam. Depois de salvar, ressincroniza.
+ */
+export async function salvarEtiquetaChegada(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return SO_ADMIN;
+  const etiqueta = String(form.get("etiqueta") ?? "").trim() || null;
+  const desdeTexto = String(form.get("desde") ?? "").trim();
+  let desde: string | null = null;
+  if (desdeTexto) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(desdeTexto)) return { erro: "Data e hora inválidas." };
+    desde = new Date(Date.parse(`${desdeTexto}:00-03:00`)).toISOString();
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("funil_config")
+    .update({ etiqueta_chegada_dc_id: etiqueta, etiqueta_chegada_desde: etiqueta ? desde : null, atualizado_por: usuario.id, atualizado_em: new Date().toISOString() })
+    .eq("id", true);
+  if (error) return { erro: "Não deu para salvar." };
+  sincronizarDepois();
+  refresh();
+  return { ok: "Salvo. As chegadas se acertam quando a sincronização terminar (alguns minutos)." };
+}
+
 export async function criarMudanca(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;

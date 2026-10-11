@@ -134,7 +134,7 @@ export function TabelaPorNumero({ porNumero, total, nomes }: { porNumero: PorNum
 }
 
 /** Funil por etapa: tabela com barra horizontal (largura = % sobre o total que entrou no funil). */
-export function FunilEtapas({ linhas, total, semEtiqueta, gapPara }: { linhas: LinhaFunil[]; total: number; semEtiqueta: number; gapPara: string | null }) {
+export function FunilEtapas({ linhas, total, semInicio, gapPara }: { linhas: LinhaFunil[]; total: number; semInicio: number; gapPara: string | null }) {
   if (total === 0) return <p className="m-0 py-8 text-center text-[13px] italic text-ink-faint">Nenhum lead no funil neste período.</p>;
   return (
     <table className="w-full border-collapse text-left text-[13px] tabular-nums">
@@ -153,7 +153,11 @@ export function FunilEtapas({ linhas, total, semEtiqueta, gapPara }: { linhas: L
         <tr className="border-t border-line-soft text-ink-dim">
           <td className="whitespace-nowrap py-1.5 pr-3">
             Chegou
-            {semEtiqueta > 0 && <span className="ml-1 text-[11.5px] text-ink-faint">({semEtiqueta} sem etiqueta)</span>}
+            {semInicio > 0 && (
+              <span className="ml-1 text-[11.5px] text-ink-faint">
+                ({semInicio} ainda sem {linhas[0]?.nome ?? "etapa"})
+              </span>
+            )}
           </td>
           <td className="py-1.5 pr-3">
             <div className="h-2.5 w-full rounded-r-[4px] bg-accent/30" />

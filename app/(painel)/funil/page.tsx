@@ -1,6 +1,6 @@
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { cn } from "@/lib/utils";
-import { duracao, hojeSP, lerPeriodo, minimoParaGap, type Chegada, type GrupoChegada, type Periodo } from "@/modulos/funil/calculo";
+import { duracao, hojeSP, lerPeriodo, minimoParaGap, type Chegada, type GrupoChegada, type Periodo, type TempoInicio } from "@/modulos/funil/calculo";
 import {
   bmDosNumeros,
   carregarFunil,
@@ -8,6 +8,7 @@ import {
   configDoFunil,
   leadsEsperando,
   mudancasDoFunil,
+  naoComecaram,
   nomesDosNumeros,
   opcoesDoFunil,
   primeiraResposta,
@@ -15,6 +16,7 @@ import {
   type Esperando,
   type Filas,
   type ItemFila,
+  type NaoComecou,
   type StatusSincronizacao,
 } from "@/modulos/funil/dados";
 import Link from "next/link";
@@ -67,8 +69,8 @@ async function Conteudo({ searchParams }: Props) {
 
   // card, tooltip por número e tabela por número saem do MESMO resultado (uma leitura dos leads)
   const cfg = await configDoFunil();
-  const [r, sync, nomes, esperando, respostas, bms, mudancas, chegada] = await Promise.all([
-    carregarFunil({ desde, ate, vendedorId, numeroId }),
+  const [r, sync, nomes, esperando, respostas, bms, mudancas, chegada, parados] = await Promise.all([
+    carregarFunil({ desde, ate, vendedorId, numeroId }, cfg),
     statusDaSincronizacao(),
     nomesDosNumeros(),
     leadsEsperando(cfg, { vendedorId, numeroId }),
@@ -76,6 +78,7 @@ async function Conteudo({ searchParams }: Props) {
     bmDosNumeros(),
     mudancasDoFunil(desde, ate),
     chegadaNoPeriodo({ desde, ate, vendedorId, numeroId }, cfg),
+    naoComecaram({ vendedorId, numeroId }),
   ]);
   // marcas de mudança no funil, por dia
   const marcas = new Map<string, string[]>();
@@ -130,7 +133,7 @@ async function Conteudo({ searchParams }: Props) {
   return (
     <>
       {/* números principais */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Numero
           rotulo="Leads no período"
           valor={String(r.totalLeads)}
@@ -152,6 +155,12 @@ async function Conteudo({ searchParams }: Props) {
           valor={String(r.compradores.aConferir)}
           detalhe="etiqueta Aluno sem venda achada na Hubla"
           alerta={r.compradores.aConferir > 0}
+        />
+        <Numero
+          rotulo="Chegaram e ainda não começaram"
+          valor={String(parados.length)}
+          detalhe={parados.length ? `o mais antigo espera há ${duracao(parados[0].esperaMs)} · últimos 7 dias` : "ninguém parado na chegada · últimos 7 dias"}
+          alerta={parados.length > 0}
         />
       </section>
 
@@ -232,6 +241,7 @@ async function Conteudo({ searchParams }: Props) {
       </section>
 
       <FilasDataCrazy filas={esperando.filas} admin={admin} />
+      <NaoComecaram itens={parados} />
       <ListaEsperando
         id="esperando"
         titulo="Leads esperando resposta"
@@ -242,6 +252,7 @@ async function Conteudo({ searchParams }: Props) {
         admin={admin}
       />
       <ChegadaDosLeads chegada={chegada} inicio={cfg.inicio} fim={cfg.fim} minutos={cfg.minutosResposta} admin={admin} />
+      <TempoAteIniciar t={r.tempoInicio} inicio={cfg.inicio} fim={cfg.fim} etapa={r.funil[0]?.nome ?? "1ª etapa"} />
       <ListaEsperando
         id="aguardando-lead"
         titulo="Aguardando o lead"
@@ -269,11 +280,11 @@ async function Conteudo({ searchParams }: Props) {
       <section className="glass-lite glass-static overflow-x-auto p-4">
         <h2 className="mb-1 text-[15px] font-semibold text-white">Funil por etapa</h2>
         <p className="m-0 mb-3 text-[12px] text-ink-faint">
-          Leads que entraram no período (pelo dia da 1ª mensagem, com ou sem etiqueta) e chegaram em cada etapa (quem chegou numa etapa conta
-          nas anteriores). Sem etiqueta = a automação ainda não etiquetou. Perda = quanto caiu em relação à
+          Leads que chegaram no período (1ª mensagem ou etiqueta CL, o que vier primeiro) e chegaram em cada etapa (quem chegou numa etapa conta
+          nas anteriores). A CL marca a chegada, não é etapa: a passagem de Chegou para a 1ª etapa não conta como perda. Perda = quanto caiu em relação à
           etapa de cima. Maior gap: só entre etapas com pelo menos {minimoParaGap(r.noFunil)} leads na de cima.
         </p>
-        <FunilEtapas linhas={r.funil} total={r.noFunil} semEtiqueta={r.semEtiqueta} gapPara={r.maiorGap?.para ?? null} />
+        <FunilEtapas linhas={r.funil} total={r.noFunil} semInicio={r.semInicio} gapPara={r.maiorGap?.para ?? null} />
       </section>
 
       <section id="conversao" className="glass-lite glass-static scroll-mt-28 p-4">
@@ -539,7 +550,7 @@ function ChegadaDosLeads({ chegada: c, inicio, fim, minutos, admin }: { chegada:
         )}
       </div>
       <p className="m-0 mb-3 text-[12px] text-ink-faint">
-        Chegada = 1ª mensagem do lead (sem ela, a criação do lead). Resposta = 1ª mensagem de atendente de verdade (automação e suporte Data Crazy não contam). Tempos em
+        Chegada = 1ª mensagem do lead ou etiqueta CL, o que vier primeiro. Resposta = 1ª mensagem de atendente de verdade (automação e suporte Data Crazy não contam). Tempos em
         tempo real (a madrugada conta). Aluno = venda na Hubla ou Pix/CNPJ.
         {c.noPrazo > 0 && ` ${c.noPrazo} lead(s) chegaram há menos de ${minutos} min e ainda estão no prazo (fora dos grupos).`}
       </p>
@@ -679,6 +690,85 @@ function ListaEsperando({
           {itens.length > 100 && <p className="m-0 mt-2 text-[12px] text-ink-faint">Mostrando os 100 que esperam há mais tempo.</p>}
         </div>
       )}
+    </section>
+  );
+}
+
+/** Chegaram (1ª mensagem ou CL) e ainda não têm etiqueta de etapa: ninguém começou o atendimento. */
+function NaoComecaram({ itens }: { itens: NaoComecou[] }) {
+  const hora = (iso: string) =>
+    new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+  return (
+    <section id="nao-comecaram" className={cn("glass-lite glass-static scroll-mt-28 p-4", itens.length > 0 && "border-[rgb(var(--tag-laranja)/0.5)]")}>
+      <h2 className="mb-1 text-[15px] font-semibold text-white">Chegaram e ainda não começaram · {itens.length}</h2>
+      <p className="m-0 mb-3 text-[12px] text-ink-faint">
+        Leads dos últimos 7 dias que chegaram (1ª mensagem ou etiqueta CL) e ainda não têm nenhuma etiqueta de etapa. Fora do funil e quem já comprou não entram. Tempo
+        real desde a chegada. Atualiza a cada 15 minutos.
+      </p>
+      {itens.length === 0 ? (
+        <p className="m-0 py-2 text-center text-[13px] italic text-ink-faint">Todo mundo que chegou já começou. 👌</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-[13px] tabular-nums">
+            <thead className="text-[11.5px] text-ink-dim">
+              <tr>
+                <th className="py-1.5 pr-3 font-medium">Lead</th>
+                <th className="py-1.5 pr-3 font-medium">Vendedor</th>
+                <th className="py-1.5 pr-3 font-medium">Número</th>
+                <th className="py-1.5 pr-3 font-medium">Chegou</th>
+                <th className="py-1.5 text-right font-medium">Esperando há</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.slice(0, 100).map((e) => (
+                <tr key={e.leadId} className="border-t border-line-soft text-ink">
+                  <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
+                  <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">ninguém</span>}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3">{e.numero ?? "—"}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-ink-dim">{hora(e.chegada)}</td>
+                  <td className="whitespace-nowrap py-1.5 text-right font-semibold text-[rgb(var(--tag-laranja))]">{duracao(e.esperaMs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {itens.length > 100 && <p className="m-0 mt-2 text-[12px] text-ink-faint">Mostrando os 100 que esperam há mais tempo.</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Tempo até iniciar o atendimento: chegada → 1ª etiqueta de etapa, dentro e fora do horário. */
+function TempoAteIniciar({ t, inicio, fim, etapa }: { t: { dentro: TempoInicio; fora: TempoInicio }; inicio: string; fim: string; etapa: string }) {
+  const grupos = [
+    { nome: "Chegou dentro do horário", detalhe: `${inicio}–${fim}`, g: t.dentro },
+    { nome: "Chegou fora do horário", detalhe: `${fim}–${inicio} (a madrugada conta)`, g: t.fora },
+  ];
+  return (
+    <section id="inicio-atendimento" className="glass-lite glass-static scroll-mt-28 p-4">
+      <h2 className="mb-1 text-[15px] font-semibold text-white">Tempo até iniciar o atendimento</h2>
+      <p className="m-0 mb-3 text-[12px] text-ink-faint">
+        Da chegada (1ª mensagem ou etiqueta CL) até a 1ª etiqueta de etapa ({etapa}), dos leads do funil que chegaram no período. Tempo real. Só entram datas reais do
+        histórico da Data Crazy.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {grupos.map(({ nome, detalhe, g }) => (
+          <div key={nome} className="rounded-xl border border-line-soft p-3">
+            <p className="m-0 text-[12.5px] font-semibold text-ink">{nome}</p>
+            <p className="m-0 text-[11.5px] text-ink-faint">{detalhe}</p>
+            <dl className="m-0 mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12.5px] tabular-nums">
+              <dt className="text-ink-dim">Média</dt>
+              <dd className="m-0 text-right text-[15px] font-semibold text-white">{g.mediaMs === null ? "—" : duracao(g.mediaMs)}</dd>
+              <dt className="text-ink-dim">Mediana</dt>
+              <dd className="m-0 text-right text-[15px] font-semibold text-white">{g.medianaMs === null ? "—" : duracao(g.medianaMs)}</dd>
+              <dt className="text-ink-dim">Já começaram</dt>
+              <dd className="m-0 text-right text-ink">
+                {g.iniciados} de {g.leads}
+              </dd>
+            </dl>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

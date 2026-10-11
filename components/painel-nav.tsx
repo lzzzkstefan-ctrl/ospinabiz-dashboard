@@ -10,6 +10,7 @@ import {
   CalendarClock,
   Filter,
   House,
+  Lightbulb,
   ListChecks,
   Presentation,
   Users,
@@ -20,9 +21,9 @@ import { usePathname } from "next/navigation";
 // Menu no estilo do masterview: pílula de vidro no topo (computador) e barra de
 // ícones flutuante embaixo (celular). Módulo novo = um item aqui.
 // `para`: quem vê o item. "todos" = qualquer logado; "equipe" = admin e atendente (o plantonista,
-// que só cobre turnos, não); "admin" = só admin. O bloqueio de verdade (endereço digitado) fica em
+// que só cobre turnos, não); "admin" = só admin; "gestor" = chefe e gerente em Vendas (a página confere). O bloqueio de verdade (endereço digitado) fica em
 // lib/supabase/proxy.ts (ADMIN_PATHS e BLOQUEADO_PLANTONISTA): manter as listas iguais.
-type Para = "todos" | "equipe" | "admin";
+type Para = "todos" | "equipe" | "admin" | "gestor";
 const TODOS: { href: string; label: string; icon: typeof House; emBreve: boolean; para: Para }[] = [
   { href: "/", label: "Início", icon: House, emBreve: false, para: "todos" },
   { href: "/monitor", label: "Monitor", icon: Activity, emBreve: false, para: "admin" },
@@ -33,14 +34,21 @@ const TODOS: { href: string; label: string; icon: typeof House; emBreve: boolean
   { href: "/webinarios", label: "Webinários", icon: Presentation, emBreve: false, para: "equipe" },
   { href: "/fechamento", label: "Fechamento", icon: CalendarCheck, emBreve: true, para: "admin" },
   { href: "/bms", label: "BMs", icon: Building2, emBreve: false, para: "admin" },
+  { href: "/melhorias", label: "Melhorias", icon: Lightbulb, emBreve: false, para: "gestor" },
   // a página confere de novo: só chefe e gerente em Vendas
   { href: "/admin/usuarios", label: "Usuários", icon: Users, emBreve: false, para: "admin" },
 ];
 
 export type PapelMenu = "admin" | "atendente" | "plantonista";
 
-const itens = (papel: PapelMenu) =>
-  TODOS.filter((i) => i.para === "todos" || (i.para === "equipe" && papel !== "plantonista") || (i.para === "admin" && papel === "admin"));
+const itens = (papel: PapelMenu, gestor: boolean) =>
+  TODOS.filter(
+    (i) =>
+      i.para === "todos" ||
+      (i.para === "equipe" && papel !== "plantonista") ||
+      (i.para === "admin" && papel === "admin") ||
+      (i.para === "gestor" && gestor),
+  );
 
 function estaAtivo(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -48,7 +56,7 @@ function estaAtivo(pathname: string, href: string) {
 }
 
 /** Pílula do topo (computador). `usuario` = e-mail de quem está logado. */
-export function PainelNav({ usuario, papel }: { usuario?: React.ReactNode; papel: PapelMenu }) {
+export function PainelNav({ usuario, papel, gestor = false }: { usuario?: React.ReactNode; papel: PapelMenu; gestor?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -59,7 +67,7 @@ export function PainelNav({ usuario, papel }: { usuario?: React.ReactNode; papel
       aria-label="Navegação principal"
     >
       <span className="shrink-0 px-3 text-[12.5px] font-semibold text-white">Ospinabiz</span>
-      {itens(papel).map(({ href, label, emBreve }) => {
+      {itens(papel, gestor).map(({ href, label, emBreve }) => {
         const ativo = estaAtivo(pathname, href);
         return (
           <Link
@@ -88,7 +96,7 @@ export function PainelNav({ usuario, papel }: { usuario?: React.ReactNode; papel
 }
 
 /** Barra de ícones flutuante embaixo (celular). */
-export function PainelNavMobile({ papel }: { papel: PapelMenu }) {
+export function PainelNavMobile({ papel, gestor = false }: { papel: PapelMenu; gestor?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -98,7 +106,7 @@ export function PainelNavMobile({ papel }: { papel: PapelMenu }) {
       suppressHydrationWarning
       aria-label="Navegação principal"
     >
-      {itens(papel).map(({ href, label, icon: Icon }) => {
+      {itens(papel, gestor).map(({ href, label, icon: Icon }) => {
         const ativo = estaAtivo(pathname, href);
         return (
           <Link

@@ -12,6 +12,7 @@ import { contarPorFiltro, hojeEmSaoPaulo } from "@/modulos/tarefas/regras";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Capa } from "./_componentes/capa";
+import { SugerirMelhoria } from "./_componentes/sugerir-melhoria";
 
 // Página inicial: capa editável e "Status do dia" com o resumo de cada aba.
 export default function InicioPage() {
@@ -140,6 +141,11 @@ async function ConteudoInicio() {
           </div>
         </section>
       )}
+
+      {/* qualquer pessoa sugere; a sugestão cai em "Ideia" na aba Melhorias (chefe e gerente) */}
+      <div className="mt-8">
+        <SugerirMelhoria />
+      </div>
     </>
   );
 }

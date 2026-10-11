@@ -6,17 +6,19 @@ import { Suspense } from "react";
 // O papel vem do login (pedido), então o menu fica dentro do Suspense. Enquanto carrega,
 // mostra o menu mais restrito (o do plantonista): nunca aparece aba que a pessoa não pode abrir.
 async function Menu() {
-  const papel = (await usuarioLogado())?.papel ?? "plantonista";
-  return <Navegacao papel={papel} />;
+  const usuario = await usuarioLogado();
+  const gestor = usuario?.vendas === "chefe" || usuario?.vendas === "gerente";
+  return <Navegacao papel={usuario?.papel ?? "plantonista"} gestor={gestor} />;
 }
 
-function Navegacao({ papel }: { papel: PapelMenu }) {
+function Navegacao({ papel, gestor = false }: { papel: PapelMenu; gestor?: boolean }) {
   return (
     <>
       {/* na impressão (relatório de fechamento em PDF) o menu some */}
       <div className="print:hidden">
         <PainelNav
           papel={papel}
+          gestor={gestor}
           usuario={
             <Suspense>
               <UsuarioAtual />
@@ -25,7 +27,7 @@ function Navegacao({ papel }: { papel: PapelMenu }) {
         />
       </div>
       <div className="print:hidden">
-        <PainelNavMobile papel={papel} />
+        <PainelNavMobile papel={papel} gestor={gestor} />
       </div>
     </>
   );

@@ -184,6 +184,25 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
   alguma conversa for Não iniciado, vale Não iniciado; o tempo é o maior). O total do título continua
   em conversas abertas.
 
+## Etiqueta de chegada CL (11/10/2026, migration funil_etiqueta_chegada)
+- **Contexto:** o Davi criou na Data Crazy a automação "Contador de lead": gatilho "Mensagem recebida"
+  nos 18 números, com trechos da mensagem do anúncio; só põe a etiqueta CL (e cria o lead se não existir),
+  sem mandar mensagem. Serve porque as automações do funil só rodam quando um vendedor assume.
+- **CL é marcador de chegada, não etapa.** Chegada = o que vier primeiro entre a 1ª mensagem e a CL.
+  `funil_config.etiqueta_chegada_dc_id` (pelo id: renomear não muda nada; já se chamou "🤖CONTADOR DE
+  LEAD", só emoji e "👹 CL") e `etiqueta_chegada_desde`: a etiqueta foi reaproveitada da antiga
+  "🧊ads-sab-10-10" (colocada em 09/10 e 10/10, e às 07:09 de 11/10 em lote pelo fluxo "❄️NOMES"), então
+  só valem colocações a partir de 11/10 08:45 (1ª vez com o nome "CONTADOR DE LEAD"). Admin muda em
+  /funil/config.
+- A sincronização lê as datas da CL do histórico já gravado; lead novo acerta o dia na rodada seguinte.
+- **Funil:** começa em "Chegou" com "(N ainda sem Perguntas iniciais)". Maior gap só entre etapas.
+- **Tempo até iniciar o atendimento:** chegada → 1ª etiqueta de etapa (só datas reais do histórico),
+  média e mediana, separando chegada dentro e fora do horário (9h–22h). Tempo real.
+- **Chegaram e ainda não começaram** (card + lista): leads dos últimos 7 dias sem nenhuma etiqueta de
+  etapa, sem etiqueta "fora do funil" e sem compra; espera em tempo real desde a chegada.
+- Conferência em 11/10 (13h): depois do corte das 08:45, 4 chegaram e os 4 têm CL. Os outros 11 do dia
+  chegaram antes do corte.
+
 ## Filas e números internos (10/10/2026, migration funil_filas_internos)
 - **Filas da Data Crazy (corrigido em 10/10, migration funil_statuses):** os `statuses` da API são
   marcas que SE SOMAM, como as abas do CRM: `opened` = **Em aberto** (em atendimento), `unstarted` =

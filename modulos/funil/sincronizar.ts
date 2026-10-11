@@ -55,7 +55,7 @@ export async function sincronizarFunil(): Promise<ResultadoSincronizacao> {
     const lidas = await lerConversas(dc, janela);
     // todas as conversas com mensagem na janela (inclusive de lead antigo): base dos "esperando"
     const todas = lidas.filter((c) => (c.lastMessageDate ?? "") >= janela);
-    const donos = montarDonos(leads, lidas, janela);
+    const donos = montarDonos(leads, lidas, janela, await lerMarcadorDeChegada(db));
     await gravarLeads(db, leads, janela, internos, donos);
     await gravarSemEtiqueta(db, lidas, donos, config, internos);
     await sincronizarConversas(db, lidas, leads, donos, janela, config);
@@ -333,8 +333,9 @@ const SEM_ETIQUETA = "contato:";
  * - contato com lead → o lead;
  * - contato NOVO (criado na janela) que escreveu e ainda não tem lead → linha "sem etiqueta" com
  *   id `contato:<id interno do contato>` (nunca o telefone). Quando o lead aparece, ela sai.
- * chegada = 1ª conversa (a conversa nasce com a 1ª mensagem do lead); a criação do lead só vale
- * se for mais cedo. Conversa antiga de contato que voltou (mais de 7 dias antes do lead) não puxa.
+ * chegada = o que vier primeiro: a 1ª conversa (nasce com a 1ª mensagem do lead), a etiqueta de
+ * chegada (CL, ver lerMarcadorDeChegada) ou a criação do lead. Conversa antiga de contato que voltou
+ * (mais de 7 dias antes do lead) não puxa.
  */
 type Donos = {
   leadDoContato: Map<string, DcLead>;
@@ -343,7 +344,30 @@ type Donos = {
   chegada: Map<string, string>;
 };
 
-function montarDonos(leads: DcLead[], lidas: DcConversa[], janela: string): Donos {
+/**
+ * Etiqueta de chegada (CL, automação "Contador de lead" na Data Crazy; decisão do Davi, 11/10/2026):
+ * marca a chegada, não é etapa. Lead → 1ª vez que recebeu a CL (só a partir de etiqueta_chegada_desde,
+ * porque a etiqueta foi reaproveitada). Datas lidas do histórico já gravado; lead novo entra na rodada
+ * seguinte, depois que o histórico dele for lido.
+ */
+async function lerMarcadorDeChegada(db: Db): Promise<Map<string, string>> {
+  const marcas = new Map<string, string>();
+  const { data: cfg, error } = await db.from("funil_config").select("etiqueta_chegada_dc_id, etiqueta_chegada_desde").maybeSingle();
+  if (error) throw new Error(`erro ao ler a etiqueta de chegada: ${error.message}`);
+  if (!cfg?.etiqueta_chegada_dc_id) return marcas;
+  const eventos = await lerTudo<{ lead_dc_id: string; em: string }>((de, ate) => {
+    let q = db.from("funil_eventos").select("lead_dc_id, em").eq("etiqueta_dc_id", cfg.etiqueta_chegada_dc_id).eq("acao", "colocou");
+    if (cfg.etiqueta_chegada_desde) q = q.gte("em", cfg.etiqueta_chegada_desde);
+    return q.order("id").range(de, ate);
+  });
+  for (const e of eventos) {
+    const atual = marcas.get(e.lead_dc_id);
+    if (!atual || Date.parse(e.em) < Date.parse(atual)) marcas.set(e.lead_dc_id, e.em);
+  }
+  return marcas;
+}
+
+function montarDonos(leads: DcLead[], lidas: DcConversa[], janela: string, marcador: Map<string, string>): Donos {
   const leadDoContato = new Map<string, DcLead>();
   for (const l of leads) for (const c of l.contacts ?? []) if (c.contactId) leadDoContato.set(c.contactId, l);
   const leadDe = (c: DcConversa) => (c.contact?.contactId ? leadDoContato.get(c.contact.contactId) : undefined);
@@ -370,6 +394,11 @@ function montarDonos(leads: DcLead[], lidas: DcConversa[], janela: string): Dono
     if (lead && Date.parse(c.createdAt) < Date.parse(lead.createdAt) - 7 * 86_400_000) continue;
     const atual = chegada.get(id);
     if (!atual || Date.parse(c.createdAt) < Date.parse(atual)) chegada.set(id, c.createdAt);
+  }
+  // etiqueta de chegada antes da 1ª conversa vista (ou sem conversa ainda): vale ela
+  for (const [id, em] of marcador) {
+    const atual = chegada.get(id);
+    if (atual && Date.parse(em) < Date.parse(atual)) chegada.set(id, em);
   }
   return { leadDoContato, idDoLead, chegada };
 }

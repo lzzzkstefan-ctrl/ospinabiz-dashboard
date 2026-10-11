@@ -6,7 +6,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { apagarMudanca, apagarNumeroInterno } from "../acoes";
-import { FormConfigFunil, FormMudanca, FormNumeroInterno } from "../_componentes/formularios";
+import { FormConfigFunil, FormEtiquetaChegada, FormMudanca, FormNumeroInterno } from "../_componentes/formularios";
 
 // Configuração do Funil (só admin): quando um lead conta como "esperando resposta", o histórico
 // de mudanças no funil (as marcas nos gráficos) e os números internos (teste), que ficam fora.
@@ -32,13 +32,19 @@ async function Conteudo() {
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") notFound();
   const supabase = await createClient();
-  const [cfg, mudancas, etapas, internos] = await Promise.all([
+  const [cfg, mudancas, etapas, internos, etiquetas, chegada] = await Promise.all([
     configDoFunil(),
     mudancasDoFunil(),
     supabase.from("funil_etapas").select("id, nome, ordem").eq("tipo", "etapa").eq("ativa", true).order("ordem"),
     // só o final do telefone vai para a tela
     supabase.from("funil_numeros_internos").select("id, nome, chave, criado_em").order("criado_em"),
+    supabase.from("funil_etiquetas").select("dc_id, nome").eq("existe", true).order("nome"),
+    supabase.from("funil_config").select("etiqueta_chegada_dc_id, etiqueta_chegada_desde").maybeSingle(),
   ]);
+  // "desde" na tela em horário de Brasília (AAAA-MM-DDTHH:MM)
+  const desdeSP = chegada.data?.etiqueta_chegada_desde
+    ? new Date(Date.parse(String(chegada.data.etiqueta_chegada_desde)) - 3 * 3_600_000).toISOString().slice(0, 16)
+    : "";
   return (
     <>
       <section className="flex flex-col gap-3">
@@ -49,6 +55,20 @@ async function Conteudo() {
           Em “Leads sem atendimento na chegada”, quem chega dentro do horário e não tem resposta de atendente em até os minutos abaixo conta como sem atendente.
         </p>
         <FormConfigFunil horas={cfg.horasEspera} inicio={cfg.inicio} fim={cfg.fim} minutos={cfg.minutosResposta} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Etiqueta de chegada (CL)</h2>
+        <p className="text-[12.5px] text-ink-dim">
+          Etiqueta que a automação “Contador de lead” põe quando chega a mensagem do anúncio. Ela marca a chegada, não é etapa: a chegada do lead é o que vier primeiro
+          entre a 1ª mensagem e esta etiqueta. A etiqueta é reconhecida pelo id, então renomear na Data Crazy não muda nada. Só contam as colocações a partir do horário
+          abaixo (a etiqueta foi reaproveitada de outra).
+        </p>
+        <FormEtiquetaChegada
+          etiquetas={(etiquetas.data ?? []).map((e) => ({ id: String(e.dc_id), nome: String(e.nome) }))}
+          atual={chegada.data?.etiqueta_chegada_dc_id ? String(chegada.data.etiqueta_chegada_dc_id) : null}
+          desde={desdeSP}
+        />
       </section>
 
       <section className="flex flex-col gap-3">

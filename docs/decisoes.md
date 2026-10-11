@@ -323,3 +323,21 @@ linha "Chegou (N sem etiqueta)". Nas filas, uma linha por lead.
 10/10 contava 30 e eram 37 (2 sem etiqueta e 5 etiquetados só no domingo). O id interno do contato
 evita usar o telefone como chave; quando o lead aparece, a linha provisória sai para não contar duas
 vezes.
+
+## 2026-10-11: Etiqueta CL é marcador de chegada, não etapa
+
+A chegada do lead é o que vier primeiro entre a 1ª mensagem e a etiqueta CL (automação "Contador de
+lead"). A etiqueta é configurada pelo id e com um "vale a partir de".
+
+**Por quê:** as automações do funil só rodam quando alguém assume a conversa; de madrugada o lead ficava
+sem existir. Como etapa, a CL viraria uma "perda" falsa entre Chegou e Perguntas iniciais. O "vale a
+partir de" existe porque a etiqueta foi reaproveitada de uma antiga ("🧊ads-sab-10-10").
+
+## 2026-10-11: Aba Melhorias; o banco é a fonte do backlog
+
+Backlog e Novidades ficam na tabela `melhorias` (chefe e gerente editam; qualquer um sugere).
+`docs/backlog.md` e `docs/changelog.md` são gerados por script antes de cada push.
+
+**Por quê:** a equipe precisa sugerir pela tela, e a Vercel não consegue gravar no git. Gerar os arquivos
+a partir do banco evita duas listas divergentes. Arrastar usa `@dnd-kit/core` porque o arrastar nativo
+do navegador não funciona no toque do iPhone.

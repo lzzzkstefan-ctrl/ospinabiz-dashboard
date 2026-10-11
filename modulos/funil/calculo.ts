@@ -9,8 +9,9 @@
 //   cada lead uma vez só. Etiqueta não conta lead. Número = o da primeira conversa do lead
 //   (funil_leads.numero_dc_id); lead sem conversa ainda fica em "ainda sem conversa" (null),
 //   para a soma por número sempre bater com o total.
-// - Lead conta no dia da 1ª mensagem (Brasília), com ou sem etiqueta: quem ainda não tem etiqueta
-//   entra em "Chegou" e não chega em nenhuma etapa (decisão do Davi, 11/10/2026).
+// - Lead conta no dia da chegada (Brasília), com ou sem etiqueta: chegada = o que vier primeiro entre
+//   a 1ª mensagem e a etiqueta de chegada (CL). Quem ainda não tem etapa fica só em "Chegou"; a CL não
+//   é etapa e "Chegou → 1ª etapa" não entra no maior gap (decisões do Davi, 11/10/2026).
 // - Tempo entre etapas: só com datas reais do histórico (origem 'historico').
 
 export type Etapa = {
@@ -26,6 +27,8 @@ export type EventoLead = { etiqueta_dc_id: string | null; em: string; origem: "h
 export type LeadFunil = {
   dc_id: string;
   dia: string;
+  /** chegada (1ª mensagem ou etiqueta CL, o que vier primeiro) */
+  chegada: string;
   vendedor_id: number | null;
   numero_dc_id: string | null;
   compra: "hubla" | "fora_hubla" | "a_conferir" | null;
@@ -41,8 +44,10 @@ export type Resultado = {
   totalLeads: number;
   foraDoFunil: number;
   noFunil: number;
-  /** dos leads do funil, quantos ainda não têm nenhuma etiqueta (só "Chegou") */
-  semEtiqueta: number;
+  /** dos leads do funil, quantos chegaram e ainda não estão em nenhuma etapa (só "Chegou") */
+  semInicio: number;
+  /** chegada → 1ª etiqueta de etapa (o início do atendimento), separado pelo horário da chegada */
+  tempoInicio: { dentro: TempoInicio; fora: TempoInicio };
   /** por dia: leads, divisão por número e, só dos leads do funil, quantos chegaram em cada etapa
    * (alcance[etapaId]) e quantos compraram (Hubla ou Pix/CNPJ) — base do gráfico de conversão */
   porDia: { dia: string; qtd: number; porNumero: PorNumero; noFunil: number; compraram: number; alcance: Record<number, number> }[];
@@ -59,6 +64,9 @@ export type Resultado = {
   compradores: { hubla: number; foraHubla: number; aConferir: number };
   tempos: { de: string; para: string; mediaMs: number | null; leads: number }[];
 };
+
+/** leads = chegaram no grupo; iniciados = já têm etapa com data real do histórico (base da média). */
+export type TempoInicio = { leads: number; iniciados: number; mediaMs: number | null; medianaMs: number | null };
 
 /** Cada lead uma vez, no número da primeira conversa; sem conversa (null) por último. */
 export function contarPorNumero(leads: Pick<LeadFunil, "numero_dc_id">[]): PorNumero {
@@ -83,7 +91,14 @@ export function diasDoPeriodo(desde: string, ate: string): string[] {
   return dias;
 }
 
-export function calcularFunil(leads: LeadFunil[], etapas: Etapa[], etiquetas: EtiquetaEtapa[], desde: string, ate: string): Resultado {
+export function calcularFunil(
+  leads: LeadFunil[],
+  etapas: Etapa[],
+  etiquetas: EtiquetaEtapa[],
+  desde: string,
+  ate: string,
+  horario: { inicio: string; fim: string } = { inicio: "09:00", fim: "22:00" },
+): Resultado {
   const etapaPorId = new Map(etapas.map((e) => [e.id, e]));
   const etapaDaEtiqueta = new Map(etiquetas.filter((t) => t.etapa_id !== null).map((t) => [t.dc_id, etapaPorId.get(t.etapa_id!)]));
   const passos = etapas.filter((e) => e.tipo === "etapa" && e.ordem !== null).sort((a, b) => a.ordem! - b.ordem!);
@@ -163,6 +178,26 @@ export function calcularFunil(leads: LeadFunil[], etapas: Etapa[], etiquetas: Et
     return { de: anterior.nome, para: p.nome, mediaMs: difs.length ? difs.reduce((s, d) => s + d, 0) / difs.length : null, leads: difs.length };
   });
 
+  // tempo até iniciar o atendimento: chegada → 1ª etiqueta de etapa (só data real do histórico).
+  // Tempo REAL (a madrugada conta); por isso separa quem chegou dentro e fora do horário.
+  const tempoInicio = { dentro: { leads: 0, ms: [] as number[] }, fora: { leads: 0, ms: [] as number[] } };
+  for (const a of doFunil) {
+    const m = minutoDoDiaSP(Date.parse(a.lead.chegada));
+    const g = m >= minutos(horario.inicio) && m < minutos(horario.fim) ? tempoInicio.dentro : tempoInicio.fora;
+    g.leads++;
+    let primeiro: { em: string; historico: boolean } | null = null;
+    for (const [id, p] of a.primeira) {
+      if (etapaPorId.get(id)?.tipo === "etapa" && (!primeiro || p.em < primeiro.em)) primeiro = p;
+    }
+    if (primeiro?.historico) g.ms.push(Math.max(0, Date.parse(primeiro.em) - Date.parse(a.lead.chegada)));
+  }
+  const resumoInicio = (g: { leads: number; ms: number[] }): TempoInicio => ({
+    leads: g.leads,
+    iniciados: g.ms.length,
+    mediaMs: g.ms.length ? g.ms.reduce((s, x) => s + x, 0) / g.ms.length : null,
+    medianaMs: mediana(g.ms),
+  });
+
   const doDia = new Map<string, LeadFunil[]>();
   for (const l of leads) doDia.set(l.dia, [...(doDia.get(l.dia) ?? []), l]);
   const comprou = (l: LeadFunil) => l.compra === "hubla" || l.compra === "fora_hubla";
@@ -182,7 +217,8 @@ export function calcularFunil(leads: LeadFunil[], etapas: Etapa[], etiquetas: Et
     totalLeads: leads.length,
     foraDoFunil: leads.length - total,
     noFunil: total,
-    semEtiqueta: doFunil.filter((a) => a.lead.eventos.length === 0).length,
+    semInicio: maximos.filter((m) => m === 0).length,
+    tempoInicio: { dentro: resumoInicio(tempoInicio.dentro), fora: resumoInicio(tempoInicio.fora) },
     porDia: diasDoPeriodo(desde, ate).map((dia) => {
       const lista = doDia.get(dia) ?? [];
       const doFunilNoDia = lista.filter((l) => maximoDoLead.has(l.dc_id));
@@ -254,6 +290,12 @@ const minutos = (hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + (m || 0);
 };
+
+/** Minuto do dia (0–1439) em Brasília (UTC-3). */
+function minutoDoDiaSP(ms: number): number {
+  const d = new Date(ms - 3 * 3_600_000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
 
 /**
  * Tempo (ms) entre `desde` e `ate` contando só o horário de atendimento, todos os dias, no fuso de

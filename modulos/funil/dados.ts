@@ -18,14 +18,22 @@ import {
 
 export type FiltrosFunil = { desde: string; ate: string; vendedorId: number | null; numeroId: string | null };
 
-export async function carregarFunil(f: FiltrosFunil): Promise<Resultado> {
+/** Chegada do lead: o que vier primeiro entre a 1ª mensagem lida e criado_em (que já é a chegada pela
+ * 1ª conversa ou pela etiqueta CL, ver sincronizar.ts). */
+function chegadaDe(l: { criado_em: unknown; primeira_msg_lead_em: unknown }): string {
+  const criado = String(l.criado_em);
+  const msg = l.primeira_msg_lead_em ? String(l.primeira_msg_lead_em) : null;
+  return msg && Date.parse(msg) < Date.parse(criado) ? msg : criado;
+}
+
+export async function carregarFunil(f: FiltrosFunil, horario?: { inicio: string; fim: string }): Promise<Resultado> {
   const supabase = await createClient();
 
   const leads: LeadFunil[] = [];
   for (let de = 0; ; de += 1000) {
     let q = supabase
       .from("funil_leads")
-      .select("dc_id, dia, vendedor_id, numero_dc_id, compra, funil_eventos(etiqueta_dc_id, em, origem, acao)")
+      .select("dc_id, dia, criado_em, primeira_msg_lead_em, vendedor_id, numero_dc_id, compra, funil_eventos(etiqueta_dc_id, em, origem, acao)")
       .gte("dia", f.desde)
       .lte("dia", f.ate)
       .eq("funil_eventos.acao", "colocou")
@@ -41,6 +49,7 @@ export async function carregarFunil(f: FiltrosFunil): Promise<Resultado> {
       leads.push({
         dc_id: l.dc_id,
         dia: String(l.dia),
+        chegada: chegadaDe(l),
         vendedor_id: l.vendedor_id,
         numero_dc_id: l.numero_dc_id,
         compra: l.compra as LeadFunil["compra"],
@@ -61,7 +70,7 @@ export async function carregarFunil(f: FiltrosFunil): Promise<Resultado> {
   if (etapas.error) throw new Error(`Erro ao carregar etapas: ${etapas.error.message}`);
   if (etiquetas.error) throw new Error(`Erro ao carregar etiquetas: ${etiquetas.error.message}`);
 
-  return calcularFunil(leads, etapas.data as Etapa[], etiquetas.data as EtiquetaEtapa[], f.desde, f.ate);
+  return calcularFunil(leads, etapas.data as Etapa[], etiquetas.data as EtiquetaEtapa[], f.desde, f.ate, horario);
 }
 
 export type OpcoesFunil = { vendedores: { id: number; nome: string }[]; numeros: { id: string; nome: string }[] };
@@ -305,7 +314,7 @@ export async function chegadaNoPeriodo(f: FiltrosFunil, cfg: ConfigFunil): Promi
     if (error) throw new Error(`Erro ao carregar a chegada dos leads: ${error.message}`);
     for (const l of data) {
       leads.push({
-        chegada: String(l.primeira_msg_lead_em ?? l.criado_em),
+        chegada: chegadaDe(l),
         resposta: l.primeira_resposta_em ? String(l.primeira_resposta_em) : null,
         comprou: l.compra === "hubla" || l.compra === "fora_hubla",
       });
@@ -313,6 +322,66 @@ export async function chegadaNoPeriodo(f: FiltrosFunil, cfg: ConfigFunil): Promi
     if (data.length < 1000) break;
   }
   return chegadaDosLeads(leads, cfg.inicio, cfg.fim, cfg.minutosResposta, Date.now());
+}
+
+export type NaoComecou = { leadId: string; rotulo: string | null; vendedor: string | null; numero: string | null; chegada: string; esperaMs: number };
+
+/**
+ * Chegaram e ainda não começaram (pedido do Davi, 11/10/2026): leads dos últimos 7 dias que chegaram
+ * (1ª mensagem ou etiqueta CL) e ainda não têm nenhuma etiqueta de etapa. Fora do funil (suporte,
+ * menor…) e quem já comprou não entram. Espera em tempo real, desde a chegada.
+ */
+export async function naoComecaram(filtro: { vendedorId: number | null; numeroId: string | null } = { vendedorId: null, numeroId: null }): Promise<NaoComecou[]> {
+  const supabase = await createClient();
+  let q = supabase
+    .from("funil_leads")
+    .select("dc_id, criado_em, primeira_msg_lead_em, numero_dc_id, vendedor_id, compra, funil_eventos(etiqueta_dc_id, acao)")
+    .gte("criado_em", new Date(Date.now() - 7 * 86_400_000).toISOString())
+    .eq("interno", false)
+    .eq("funil_eventos.acao", "colocou")
+    .limit(3000);
+  if (filtro.vendedorId) q = q.eq("vendedor_id", filtro.vendedorId);
+  if (filtro.numeroId) q = q.eq("numero_dc_id", filtro.numeroId);
+  const [leads, etapas, etiquetas, equipe, numeros] = await Promise.all([
+    q,
+    supabase.from("funil_etapas").select("id, tipo").eq("ativa", true),
+    supabase.from("funil_etiquetas").select("dc_id, etapa_id"),
+    supabase.from("equipe").select("id, nome"),
+    nomesDosNumeros(),
+  ]);
+  if (leads.error) throw new Error(`Erro ao carregar quem não começou: ${leads.error.message}`);
+  const tipoDaEtapa = new Map((etapas.data ?? []).map((e) => [Number(e.id), String(e.tipo)]));
+  const tipoDaEtiqueta = new Map(
+    (etiquetas.data ?? []).filter((t) => t.etapa_id !== null).map((t) => [String(t.dc_id), tipoDaEtapa.get(Number(t.etapa_id)) ?? null]),
+  );
+  const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
+  const agora = Date.now();
+  const pendentes = leads.data.filter((l) => {
+    if (l.compra === "hubla" || l.compra === "fora_hubla") return false;
+    const tipos = (l.funil_eventos ?? []).map((e) => (e.etiqueta_dc_id ? tipoDaEtiqueta.get(String(e.etiqueta_dc_id)) : null));
+    return !tipos.some((t) => t === "etapa" || t === "fora");
+  });
+
+  // rótulo "Maria -1234" vem das conversas (o lead não guarda nome)
+  const rotuloDe = new Map<string, string>();
+  const ids = pendentes.map((l) => String(l.dc_id));
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data } = await supabase.from("funil_conversas").select("lead_dc_id, contato_rotulo").in("lead_dc_id", ids.slice(i, i + 150));
+    for (const c of data ?? []) if (c.contato_rotulo && !rotuloDe.has(String(c.lead_dc_id))) rotuloDe.set(String(c.lead_dc_id), String(c.contato_rotulo));
+  }
+  return pendentes
+    .map((l) => {
+      const chegada = chegadaDe(l);
+      return {
+        leadId: String(l.dc_id),
+        rotulo: rotuloDe.get(String(l.dc_id)) ?? null,
+        vendedor: l.vendedor_id ? (nomeDe.get(Number(l.vendedor_id)) ?? null) : null,
+        numero: l.numero_dc_id ? (numeros.get(String(l.numero_dc_id)) ?? null) : null,
+        chegada,
+        esperaMs: Math.max(0, agora - Date.parse(chegada)),
+      };
+    })
+    .sort((a, b) => b.esperaMs - a.esperaMs);
 }
 
 export type PrimeiraResposta = { vendedor: string; leads: number; mediaMs: number; medianaMs: number };
