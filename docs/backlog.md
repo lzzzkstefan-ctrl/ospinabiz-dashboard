@@ -3,18 +3,16 @@
 Gerado da aba Melhorias (`npm run melhorias:docs`). Não editar à mão: mude na aba e rode o script.
 O que já foi entregue está em `docs/changelog.md`.
 
-## Em andamento (0)
+## Em andamento (1)
 
-_Nada._
+- **melhorar a aba de tarefas** · alta · Tarefas · sugerido por Davi (#18)
 
-## Para fazer (11)
+## Para fazer (9)
 
 - **Monitor das BMs** · alta · Monitor · sugerido por Davi (#2)
   Falta configurar o número remetente e o template na Meta.
 - **Resumo diário e alertas pelo WhatsApp** · alta · Início · sugerido por Davi (#3)
   Resumo do dia e alertas importantes chegando no WhatsApp.
-- **Recuperação de vendas** · alta · Vendas · sugerido por Davi (#5)
-  Acompanhar Pix e boleto gerados e não pagos.
 - **Mensagem automática fora do horário** · alta · Funil · sugerido por Davi (#11)
   Resposta automática na Data Crazy para quem chega fora do horário de atendimento.
 - **Custo de mensagens por BM** · média · BMs · sugerido por Davi (#4)
@@ -25,13 +23,12 @@ _Nada._
   Lista do que o gerente confere todo dia.
 - **Check-in fase 2** · média · Check-in · sugerido por Davi (#10)
   Comparação por dia da semana com o Funil.
-- **Metas por vendedor** · média · Vendas · sugerido por Davi (#6)
-  Meta individual e acompanhamento por vendedor.
 - **Webinários fase 2** · baixa · Webinários · sugerido por Davi (#1)
   Plataforma de webinário, ofertas na Hubla e teste A/B.
 - **Biblioteca da operação** · baixa · Outra · sugerido por Davi (#9)
   Scripts, objeções e áudios num lugar só.
 
-## Ideia (0)
+## Ideia (1)
 
-_Nada._
+- **Metas por vendedor** · média · Vendas · sugerido por Davi (#6)
+  Meta individual e acompanhamento por vendedor.

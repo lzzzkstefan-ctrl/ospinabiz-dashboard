@@ -8,7 +8,7 @@ import { hojeSP, lerPeriodo } from "@/modulos/funil/calculo";
 import { carregarFunil, configDoFunil, leadsEsperando } from "@/modulos/funil/dados";
 import { operacaoAgora } from "@/modulos/escala/dados";
 import { PainelOperacao } from "@/components/painel-operacao";
-import { contarPorFiltro, hojeEmSaoPaulo } from "@/modulos/tarefas/regras";
+import { agoraEmSaoPaulo, resumir } from "@/modulos/tarefas/regras";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Capa } from "./_componentes/capa";
@@ -50,13 +50,12 @@ async function ConteudoInicio() {
   ]);
 
   const agora = new Date();
-  const hoje = hojeEmSaoPaulo(agora);
   const dataHoje = new Intl.DateTimeFormat("pt-BR", { timeZone: FUSO, weekday: "long", day: "numeric", month: "long" }).format(agora);
 
   const numeros = monitor ? statusDosNumeros(monitor.numeros, monitor.testeAberto, monitor.ultimoFechado, monitor.resultados) : [];
   const resumo = resumirTeste(numeros);
   const bmsComProblema = [...new Set(numeros.filter((n) => n.status === "falhou" || n.status === "sem_resposta").map((n) => n.bm.nome))];
-  const contagem = contarPorFiltro(tarefas, hoje);
+  const contagem = resumir(tarefas, agoraEmSaoPaulo(agora));
   const temTeste = monitor?.ultimoFechado != null;
 
   return (
@@ -104,7 +103,7 @@ async function ConteudoInicio() {
           )}
           <CardStatus href="/tarefas" rotulo="Tarefas pendentes" valor={String(contagem.pendentes)} />
           <CardStatus
-            href="/tarefas?filtro=atrasadas"
+            href="/tarefas"
             rotulo="Tarefas atrasadas"
             valor={String(contagem.atrasadas)}
             alerta={contagem.atrasadas > 0}

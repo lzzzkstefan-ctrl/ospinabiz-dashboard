@@ -1,6 +1,6 @@
 // Leitura dos Webinários, com o login de quem vê (RLS): o admin lê tudo; o vendedor não lê as
 // tabelas de webinário — só a função webinarios_no_ar() (nome e playbook dos "no ar") e as
-// tarefas do checklist (regras da aba Tarefas).
+// tarefas do checklist (regras da aba Tarefas; "feito" = concluída).
 
 import { createClient } from "@/lib/supabase/server";
 import type { Sessao, StatusWebinario, TipoWebinario } from "./regras";
@@ -18,7 +18,7 @@ export type Webinario = {
   status: StatusWebinario;
 };
 
-export type TarefaChecklist = { id: number; titulo: string; status: "pendente" | "concluida"; prazo: string | null; responsavel: string | null; webinarioId: number };
+export type TarefaChecklist = { id: number; titulo: string; status: "a_fazer" | "fazendo" | "travado" | "feito"; prazo: string | null; responsavel: string | null; webinarioId: number };
 export type LinkWebinario = { id: number; tipo: string; titulo: string; url: string };
 
 const COLUNAS = "id, nome, tipo, oferta, preco, frequencia, horario, plataforma, hubla_oferta_id, status";
@@ -37,7 +37,7 @@ async function tarefasDe(ids: number[]): Promise<TarefaChecklist[]> {
     .in("webinario_id", ids)
     .order("id");
   if (error) throw new Error(`Erro ao carregar o checklist: ${error.message}`);
-  type Linha = { id: number; titulo: string; status: "pendente" | "concluida"; prazo: string | null; webinario_id: number; equipe: { nome: string } | null };
+  type Linha = { id: number; titulo: string; status: "a_fazer" | "fazendo" | "travado" | "feito"; prazo: string | null; webinario_id: number; equipe: { nome: string } | null };
   return (data as unknown as Linha[]).map((t) => ({ id: Number(t.id), titulo: t.titulo, status: t.status, prazo: t.prazo, responsavel: t.equipe?.nome ?? null, webinarioId: Number(t.webinario_id) }));
 }
 
@@ -50,7 +50,7 @@ export async function listarWebinarios(): Promise<(Webinario & { feitas: number;
   const tarefas = await tarefasDe(ws.map((w) => w.id));
   return ws.map((w) => {
     const minhas = tarefas.filter((t) => t.webinarioId === w.id);
-    return { ...w, total: minhas.length, feitas: minhas.filter((t) => t.status === "concluida").length };
+    return { ...w, total: minhas.length, feitas: minhas.filter((t) => t.status === "feito").length };
   });
 }
 

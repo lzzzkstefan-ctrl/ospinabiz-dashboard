@@ -341,3 +341,12 @@ Backlog e Novidades ficam na tabela `melhorias` (chefe e gerente editam; qualque
 **Por quê:** a equipe precisa sugerir pela tela, e a Vercel não consegue gravar no git. Gerar os arquivos
 a partir do banco evita duas listas divergentes. Arrastar usa `@dnd-kit/core` porque o arrastar nativo
 do navegador não funciona no toque do iPhone.
+
+## 2026-10-11: Tarefas em kanban adaptando a tabela que já existia
+
+A aba Tarefas virou kanban (A fazer, Fazendo, Travado, Feito) na mesma tabela `tarefas`, com `ordem`
+decimal (meio entre os vizinhos) e `prazo_hora`. Sem apagar tarefa e sem tempo real.
+
+**Por quê:** a tabela já era usada pelo Início, pelo checklist dos Webinários e pela regra do
+plantonista; criar outra duplicaria tudo isso. A ordem decimal grava só o cartão movido. Apagar continua
+proibido (regra da aba desde o início); tempo real ficou de fora porque a tela já recarrega ao salvar.
