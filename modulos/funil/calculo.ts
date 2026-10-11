@@ -9,6 +9,8 @@
 //   cada lead uma vez só. Etiqueta não conta lead. Número = o da primeira conversa do lead
 //   (funil_leads.numero_dc_id); lead sem conversa ainda fica em "ainda sem conversa" (null),
 //   para a soma por número sempre bater com o total.
+// - Lead conta no dia da 1ª mensagem (Brasília), com ou sem etiqueta: quem ainda não tem etiqueta
+//   entra em "Chegou" e não chega em nenhuma etapa (decisão do Davi, 11/10/2026).
 // - Tempo entre etapas: só com datas reais do histórico (origem 'historico').
 
 export type Etapa = {
@@ -39,6 +41,8 @@ export type Resultado = {
   totalLeads: number;
   foraDoFunil: number;
   noFunil: number;
+  /** dos leads do funil, quantos ainda não têm nenhuma etiqueta (só "Chegou") */
+  semEtiqueta: number;
   /** por dia: leads, divisão por número e, só dos leads do funil, quantos chegaram em cada etapa
    * (alcance[etapaId]) e quantos compraram (Hubla ou Pix/CNPJ) — base do gráfico de conversão */
   porDia: { dia: string; qtd: number; porNumero: PorNumero; noFunil: number; compraram: number; alcance: Record<number, number> }[];
@@ -178,6 +182,7 @@ export function calcularFunil(leads: LeadFunil[], etapas: Etapa[], etiquetas: Et
     totalLeads: leads.length,
     foraDoFunil: leads.length - total,
     noFunil: total,
+    semEtiqueta: doFunil.filter((a) => a.lead.eventos.length === 0).length,
     porDia: diasDoPeriodo(desde, ate).map((dia) => {
       const lista = doDia.get(dia) ?? [];
       const doFunilNoDia = lista.filter((l) => maximoDoLead.has(l.dc_id));

@@ -45,6 +45,10 @@ export type DcConversa = {
   currentThread?: { createdAt?: string | null; startedAt?: string | null } | null;
   instance: { id: string; name: string } | null;
   contact: {
+    /** id interno do contato na Data Crazy (não é o telefone) */
+    id?: string | null;
+    /** quando o contato foi criado (1ª vez que falou com a empresa) */
+    createdAt?: string | null;
     contactId: string | null;
     name?: string | null;
     phoneNumber?: string | null;

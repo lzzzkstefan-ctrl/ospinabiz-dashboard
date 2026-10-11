@@ -3,7 +3,8 @@
 //   1. etiquetas, atendentes e números da Data Crazy → tabelas de configuração
 //   2. leads da janela (01/09/2026 ou 90 dias atrás, o mais recente): novo ou com
 //      etiqueta diferente = histórico pendente
-//   3. conversas (da última mensagem para trás, até o início da janela): vendedor e número
+//   3. conversas (da última mensagem para trás, até o início da janela): vendedor, número e chegada
+//      (dia do lead = 1ª conversa dele; contato novo sem etiqueta também conta, ver "Donos")
 //   4. histórico dos pendentes (1 chamada por lead), até o prazo; o resto fica para a próxima
 //   5. compra e downsell, cruzando com as vendas da Hubla (só banco, sem API)
 // Usa a chave secreta (roda só no servidor). Grava uma linha em funil_sincronizacoes.
@@ -51,11 +52,16 @@ export async function sincronizarFunil(): Promise<ResultadoSincronizacao> {
     const internos = await lerNumerosInternos(db);
     const leads = await lerLeadsDaJanela(dc, janela);
     contagem.leads = leads.length;
-    await gravarLeads(db, leads, janela, internos);
-    const { todas, leadDoContato } = await sincronizarConversas(db, dc, leads, janela, config);
-    await gravarConversas(db, todas, leadDoContato, config, internos);
+    const lidas = await lerConversas(dc, janela);
+    // todas as conversas com mensagem na janela (inclusive de lead antigo): base dos "esperando"
+    const todas = lidas.filter((c) => (c.lastMessageDate ?? "") >= janela);
+    const donos = montarDonos(leads, lidas, janela);
+    await gravarLeads(db, leads, janela, internos, donos);
+    await gravarSemEtiqueta(db, lidas, donos, config, internos);
+    await sincronizarConversas(db, lidas, leads, donos, janela, config);
+    await gravarConversas(db, todas, donos, config, internos);
     contagem.historicos = await lerHistoricos(db, dc, config);
-    await lerPrimeirasRespostas(db, dc, todas, leadDoContato, config);
+    await lerPrimeirasRespostas(db, dc, todas, donos, config);
     await atualizarCompras(db, janela);
 
     contagem.pendentes = await contar(db.from("funil_leads").select("dc_id", { count: "exact", head: true }).eq("historico_pendente", true));
@@ -247,12 +253,14 @@ function ehInterno(internos: Set<string>, ...telefones: (string | null | undefin
   });
 }
 
-async function gravarLeads(db: Db, leads: DcLead[], janela: string, internos: Set<string>) {
-  const atuais = await lerTudo<{ dc_id: string; etiquetas_atuais: string[]; interno: boolean }>((de, ate) =>
-    db.from("funil_leads").select("dc_id, etiquetas_atuais, interno").gte("criado_em", janela).order("dc_id").range(de, ate),
+async function gravarLeads(db: Db, leads: DcLead[], janela: string, internos: Set<string>, donos: Donos) {
+  const atuais = await lerTudo<{ dc_id: string; etiquetas_atuais: string[]; interno: boolean; criado_em: string }>((de, ate) =>
+    db.from("funil_leads").select("dc_id, etiquetas_atuais, interno, criado_em").gte("criado_em", janela).order("dc_id").range(de, ate),
   );
   const noBanco = new Map(atuais.map((l) => [l.dc_id, l.etiquetas_atuais]));
   const internoNoBanco = new Map(atuais.map((l) => [l.dc_id, l.interno]));
+  const criadoNoBanco = new Map(atuais.map((l) => [l.dc_id, l.criado_em]));
+  const chegada = (l: DcLead) => donos.chegada.get(l.id) ?? l.createdAt;
 
   // novo ou com etiqueta diferente → grava e marca o histórico como pendente
   const mudaram = leads.filter((l) => {
@@ -265,8 +273,8 @@ async function gravarLeads(db: Db, leads: DcLead[], janela: string, internos: Se
       db.from("funil_leads").upsert(
         lote.map((l) => ({
           dc_id: l.id,
-          criado_em: l.createdAt,
-          dia: diaSP(l.createdAt),
+          criado_em: chegada(l),
+          dia: diaSP(chegada(l)),
           etiquetas_atuais: l.tags.map((t) => t.id),
           dc_atualizado_em: l.updatedAt ?? null,
           historico_pendente: true,
@@ -283,6 +291,12 @@ async function gravarLeads(db: Db, leads: DcLead[], janela: string, internos: Se
     );
   }
 
+  // chegada mudou (a 1ª conversa apareceu depois do lead gravado): só a data, sem reler o histórico
+  const mudouSoChegada = leads.filter((l) => !mudaram.includes(l) && criadoNoBanco.has(l.id) && !mesmoInstante(criadoNoBanco.get(l.id)!, chegada(l)));
+  for (const lote of fatiar(mudouSoChegada, LOTE)) {
+    await ok(db.from("funil_leads").upsert(lote.map((l) => ({ dc_id: l.id, criado_em: chegada(l), dia: diaSP(chegada(l)) })), { onConflict: "dc_id" }));
+  }
+
   // número interno: marca/desmarca (cadastrar um número tira da contagem o que já foi contado)
   const trocar = leads
     .map((l) => ({ id: l.id, interno: ehInterno(internos, l.rawPhone, ...(l.contacts ?? []).map((c) => c.contactId)) }))
@@ -295,45 +309,206 @@ async function gravarLeads(db: Db, leads: DcLead[], janela: string, internos: Se
 }
 
 // ---------------------------------------------------------------------------
-// 3. Conversas: vendedor (atendente da conversa mais recente) e número (da primeira conversa)
+// 3. Conversas (da última mensagem para trás, até o início da janela)
 // ---------------------------------------------------------------------------
 
-async function sincronizarConversas(
-  db: Db,
-  dc: DataCrazy,
-  leads: DcLead[],
-  janela: string,
-  config: Config,
-): Promise<{ todas: DcConversa[]; leadDoContato: Map<string, DcLead> }> {
-  const leadDoContato = new Map<string, DcLead>();
-  for (const l of leads) for (const c of l.contacts ?? []) if (c.contactId) leadDoContato.set(c.contactId, l);
-
-  type Achado = { atendente: string | null; numero: string | null; numeroDesde: string; ultima: string | null };
-  const achados = new Map<string, Achado>();
-  // todas as conversas com mensagem na janela (inclusive de lead antigo): base dos "esperando"
-  const todas: DcConversa[] = [];
-
+async function lerConversas(dc: DataCrazy, janela: string): Promise<DcConversa[]> {
+  const lidas: DcConversa[] = [];
   for (let skip = 0; skip < 10_000; skip += 100) {
     const pagina = await dc.conversas(skip, 100);
-    todas.push(...pagina.filter((c) => (c.lastMessageDate ?? "") >= janela));
-    for (const c of pagina) {
-      const lead = c.contact?.contactId ? leadDoContato.get(c.contact.contactId) : undefined;
-      if (!lead) continue;
-      const a = achados.get(lead.id) ?? { atendente: null, numero: null, numeroDesde: "9999", ultima: null };
-      // vem da mais recente para a mais antiga: o primeiro atendente visto é o atual
-      const atendente = c.attendants?.find((x) => config.equipeDoAtendente.has(x.id))?.id ?? null;
-      if (!a.atendente && atendente) a.atendente = atendente;
-      if (c.instance && config.numeros.has(c.instance.id) && c.createdAt < a.numeroDesde) {
-        a.numero = c.instance.id;
-        a.numeroDesde = c.createdAt;
-      }
-      if (c.lastMessageDate && (!a.ultima || c.lastMessageDate > a.ultima)) a.ultima = c.lastMessageDate;
-      achados.set(lead.id, a);
-    }
+    lidas.push(...pagina);
     const ultima = pagina[pagina.length - 1]?.lastMessageDate;
     if (pagina.length < 100 || !ultima || ultima < janela) break;
   }
-  if (!achados.size) return { todas, leadDoContato };
+  return lidas;
+}
+
+/** Prefixo do lead "sem etiqueta": contato novo que escreveu e ainda não virou lead na Data Crazy. */
+const SEM_ETIQUETA = "contato:";
+
+/**
+ * De quem é cada conversa no funil (decisão do Davi, 11/10/2026: lead conta no dia da 1ª mensagem,
+ * com ou sem etiqueta). Na Data Crazy o lead só existe depois que a automação põe a 1ª etiqueta
+ * (às vezes horas depois). Então:
+ * - contato com lead → o lead;
+ * - contato NOVO (criado na janela) que escreveu e ainda não tem lead → linha "sem etiqueta" com
+ *   id `contato:<id interno do contato>` (nunca o telefone). Quando o lead aparece, ela sai.
+ * chegada = 1ª conversa (a conversa nasce com a 1ª mensagem do lead); a criação do lead só vale
+ * se for mais cedo. Conversa antiga de contato que voltou (mais de 7 dias antes do lead) não puxa.
+ */
+type Donos = {
+  leadDoContato: Map<string, DcLead>;
+  idDoLead: (c: DcConversa) => string | null;
+  /** id do lead (ou `contato:…`) → hora da chegada */
+  chegada: Map<string, string>;
+};
+
+function montarDonos(leads: DcLead[], lidas: DcConversa[], janela: string): Donos {
+  const leadDoContato = new Map<string, DcLead>();
+  for (const l of leads) for (const c of l.contacts ?? []) if (c.contactId) leadDoContato.set(c.contactId, l);
+  const leadDe = (c: DcConversa) => (c.contact?.contactId ? leadDoContato.get(c.contact.contactId) : undefined);
+
+  // contatos novos sem lead que já mandaram mensagem
+  const escreveu = new Set<string>();
+  for (const c of lidas) {
+    if (leadDe(c) || !c.contact?.id || (c.contact.createdAt ?? "") < janela || c.createdAt < janela) continue;
+    if (c.lastReceivedMessageDate) escreveu.add(c.contact.id);
+  }
+  const idDoLead = (c: DcConversa) => {
+    const lead = leadDe(c);
+    if (lead) return lead.id;
+    return c.contact?.id && escreveu.has(c.contact.id) ? SEM_ETIQUETA + c.contact.id : null;
+  };
+
+  const chegada = new Map<string, string>();
+  for (const l of leads) chegada.set(l.id, l.createdAt);
+  const porId = new Map(leads.map((l) => [l.id, l]));
+  for (const c of lidas) {
+    const id = idDoLead(c);
+    if (!id || c.createdAt < janela) continue;
+    const lead = porId.get(id);
+    if (lead && Date.parse(c.createdAt) < Date.parse(lead.createdAt) - 7 * 86_400_000) continue;
+    const atual = chegada.get(id);
+    if (!atual || Date.parse(c.createdAt) < Date.parse(atual)) chegada.set(id, c.createdAt);
+  }
+  return { leadDoContato, idDoLead, chegada };
+}
+
+/**
+ * Leads "sem etiqueta" (contato novo que escreveu, sem lead na Data Crazy ainda): grava/atualiza a
+ * linha `contato:…` em funil_leads (sem histórico: não há lead para ler) e apaga a de quem já virou lead.
+ */
+async function gravarSemEtiqueta(db: Db, lidas: DcConversa[], donos: Donos, config: Config, internos: Set<string>) {
+  type Linha = {
+    dc_id: string;
+    criado_em: string;
+    dia: string;
+    atendente_dc_id: string | null;
+    vendedor_id: number | null;
+    numero_dc_id: string | null;
+    etiquetas_atuais: string[];
+    ultima_mensagem_em: string | null;
+    interno: boolean;
+  };
+  const linhas = new Map<string, Linha & { numeroDesde: string; nome: string | null; telefone: string | null }>();
+  const viraramLead = new Set<string>();
+  // vem da mais recente para a mais antiga: o primeiro atendente visto é o atual
+  for (const c of lidas) {
+    const id = donos.idDoLead(c);
+    if (!id) continue;
+    if (!id.startsWith(SEM_ETIQUETA)) {
+      if (c.contact?.id) viraramLead.add(SEM_ETIQUETA + c.contact.id);
+      continue;
+    }
+    const chegada = donos.chegada.get(id) ?? c.createdAt;
+    const l = linhas.get(id) ?? {
+      dc_id: id,
+      criado_em: chegada,
+      dia: diaSP(chegada),
+      atendente_dc_id: null,
+      vendedor_id: null,
+      numero_dc_id: null,
+      numeroDesde: "9999",
+      etiquetas_atuais: [...(c.contact?.externalInfo?.tagIds ?? [])].sort(),
+      ultima_mensagem_em: null,
+      interno: false,
+      nome: c.contact?.name?.trim() || null,
+      telefone: soDigitos(c.contact?.phoneNumber ?? c.contact?.contactId ?? null),
+    };
+    const atendente = c.attendants?.find((x) => config.equipeDoAtendente.has(x.id))?.id ?? null;
+    if (!l.atendente_dc_id && atendente) {
+      l.atendente_dc_id = atendente;
+      l.vendedor_id = config.equipeDoAtendente.get(atendente) ?? null;
+    }
+    if (c.instance && config.numeros.has(c.instance.id) && c.createdAt < l.numeroDesde) {
+      l.numero_dc_id = c.instance.id;
+      l.numeroDesde = c.createdAt;
+    }
+    if (c.lastMessageDate && (!l.ultima_mensagem_em || c.lastMessageDate > l.ultima_mensagem_em)) l.ultima_mensagem_em = c.lastMessageDate;
+    if (ehInterno(internos, c.contact?.phoneNumber, c.contact?.contactId)) l.interno = true;
+    linhas.set(id, l);
+  }
+
+  const atuais = await lerTudo<Linha>((de, ate) =>
+    db
+      .from("funil_leads")
+      .select("dc_id, criado_em, dia, atendente_dc_id, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_mensagem_em, interno")
+      .like("dc_id", `${SEM_ETIQUETA}%`)
+      .order("dc_id")
+      .range(de, ate),
+  );
+  const noBanco = new Map(atuais.map((l) => [l.dc_id, l]));
+
+  const mudaram = [...linhas.values()].filter((l) => {
+    const a = noBanco.get(l.dc_id);
+    return (
+      !a ||
+      !mesmoInstante(a.criado_em, l.criado_em) ||
+      a.atendente_dc_id !== l.atendente_dc_id ||
+      a.numero_dc_id !== l.numero_dc_id ||
+      a.interno !== l.interno ||
+      !mesmoInstante(a.ultima_mensagem_em, l.ultima_mensagem_em) ||
+      !mesmasEtiquetas(a.etiquetas_atuais, l.etiquetas_atuais)
+    );
+  });
+  for (const lote of fatiar(mudaram, LOTE)) {
+    await ok(
+      db.from("funil_leads").upsert(
+        lote.map((l) => ({
+          dc_id: l.dc_id,
+          criado_em: l.criado_em,
+          dia: l.dia,
+          atendente_dc_id: l.atendente_dc_id,
+          vendedor_id: l.vendedor_id,
+          numero_dc_id: l.numero_dc_id,
+          etiquetas_atuais: l.etiquetas_atuais,
+          ultima_mensagem_em: l.ultima_mensagem_em,
+          interno: l.interno,
+          historico_pendente: false,
+          sincronizado_em: new Date().toISOString(),
+        })),
+        { onConflict: "dc_id" },
+      ),
+    );
+    const novos = lote.filter((l) => !noBanco.has(l.dc_id));
+    if (novos.length) {
+      await ok(
+        db.from("funil_leads_contato").upsert(
+          novos.map((l) => ({ lead_dc_id: l.dc_id, nome: l.nome, telefone: l.telefone })),
+          { onConflict: "lead_dc_id" },
+        ),
+      );
+    }
+  }
+
+  // virou lead na Data Crazy: a linha "sem etiqueta" sai (o lead entra no mesmo dia, pela chegada)
+  const apagar = atuais.filter((a) => viraramLead.has(a.dc_id)).map((a) => a.dc_id);
+  for (const lote of fatiar(apagar, LOTE)) await ok(db.from("funil_leads").delete().in("dc_id", lote));
+}
+
+// ---------------------------------------------------------------------------
+// 3a. Conversas → leads: vendedor (atendente da conversa mais recente) e número (da primeira conversa)
+// ---------------------------------------------------------------------------
+
+async function sincronizarConversas(db: Db, lidas: DcConversa[], leads: DcLead[], donos: Donos, janela: string, config: Config): Promise<void> {
+  type Achado = { atendente: string | null; numero: string | null; numeroDesde: string; ultima: string | null };
+  const achados = new Map<string, Achado>();
+
+  for (const c of lidas) {
+    const lead = c.contact?.contactId ? donos.leadDoContato.get(c.contact.contactId) : undefined;
+    if (!lead) continue;
+    const a = achados.get(lead.id) ?? { atendente: null, numero: null, numeroDesde: "9999", ultima: null };
+    // vem da mais recente para a mais antiga: o primeiro atendente visto é o atual
+    const atendente = c.attendants?.find((x) => config.equipeDoAtendente.has(x.id))?.id ?? null;
+    if (!a.atendente && atendente) a.atendente = atendente;
+    if (c.instance && config.numeros.has(c.instance.id) && c.createdAt < a.numeroDesde) {
+      a.numero = c.instance.id;
+      a.numeroDesde = c.createdAt;
+    }
+    if (c.lastMessageDate && (!a.ultima || c.lastMessageDate > a.ultima)) a.ultima = c.lastMessageDate;
+    achados.set(lead.id, a);
+  }
+  if (!achados.size) return;
 
   const atuais = await lerTudo<{ dc_id: string; atendente_dc_id: string | null; numero_dc_id: string | null; ultima_mensagem_em: string | null }>(
     (de, ate) =>
@@ -351,10 +526,11 @@ async function sincronizarConversas(
     const numero = antes?.numero_dc_id ?? a.numero ?? null;
     const ultima = a.ultima ?? antes?.ultima_mensagem_em ?? null;
     if (antes && antes.atendente_dc_id === atendente && antes.numero_dc_id === numero && mesmoInstante(antes.ultima_mensagem_em, ultima)) return [];
+    const chegada = donos.chegada.get(id) ?? lead.createdAt;
     return [{
       dc_id: id,
-      criado_em: lead.createdAt,
-      dia: diaSP(lead.createdAt),
+      criado_em: chegada,
+      dia: diaSP(chegada),
       atendente_dc_id: atendente,
       vendedor_id: atendente ? (config.equipeDoAtendente.get(atendente) ?? null) : null,
       numero_dc_id: numero,
@@ -365,7 +541,6 @@ async function sincronizarConversas(
   for (const lote of fatiar(mudancas, LOTE)) {
     await ok(db.from("funil_leads").upsert(lote, { onConflict: "dc_id" }));
   }
-  return { todas, leadDoContato };
 }
 
 // ---------------------------------------------------------------------------
@@ -377,9 +552,10 @@ async function sincronizarConversas(
 // lastSendedMessageDate inclui automação, então não precisa ler as mensagens.
 // ---------------------------------------------------------------------------
 
-async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<string, DcLead>, config: Config, internos: Set<string>): Promise<void> {
+async function gravarConversas(db: Db, todas: DcConversa[], donos: Donos, config: Config, internos: Set<string>): Promise<void> {
   type Atual = {
     dc_id: string;
+    lead_dc_id: string | null;
     ultima_mensagem_em: string | null;
     esperando_desde: string | null;
     numero_dc_id: string | null;
@@ -394,7 +570,7 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
   const atuais = await lerTudo<Atual>((de, ate) =>
     db
       .from("funil_conversas")
-      .select("dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, contato_rotulo, finalizada, statuses, fila_desde, interno")
+      .select("dc_id, lead_dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, contato_rotulo, finalizada, statuses, fila_desde, interno")
       .order("dc_id")
       .range(de, ate),
   );
@@ -409,7 +585,8 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
     const enviada = c.lastSendedMessageDate;
     const esperando = recebida && (!enviada || recebida > enviada) ? recebida : null;
 
-    const lead = c.contact?.contactId ? leadDoContato.get(c.contact.contactId) : undefined;
+    // lead da Data Crazy ou "sem etiqueta" (contato:…); vazio = contato antigo fora do funil
+    const leadId = donos.idDoLead(c);
     const atendente = c.attendants?.find((x) => ehAtendente(x.id))?.id ?? null;
     const numero = c.instance && config.numeros.has(c.instance.id) ? c.instance.id : null;
     const etiquetas = c.contact?.externalInfo?.tagIds ?? [];
@@ -424,6 +601,7 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
     if (
       antes &&
       !mudou &&
+      antes.lead_dc_id === leadId &&
       mesmoInstante(antes.esperando_desde, esperando) &&
       antes.atendente_dc_id === atendente &&
       antes.numero_dc_id === numero &&
@@ -437,7 +615,7 @@ async function gravarConversas(db: Db, todas: DcConversa[], leadDoContato: Map<s
 
     linhas.push({
       dc_id: c.id,
-      lead_dc_id: lead?.id ?? null,
+      lead_dc_id: leadId,
       contato_rotulo: rotulo,
       numero_dc_id: numero,
       atendente_dc_id: atendente,
@@ -474,7 +652,7 @@ function rotuloDoContato(nome: string | null | undefined, telefone: string | nul
 
 const PRIMEIRA_RESPOSTA_POR_RODADA = 40;
 
-async function lerPrimeirasRespostas(db: Db, dc: DataCrazy, todas: DcConversa[], leadDoContato: Map<string, DcLead>, config: Config): Promise<number> {
+async function lerPrimeirasRespostas(db: Db, dc: DataCrazy, todas: DcConversa[], donos: Donos, config: Config): Promise<number> {
   const pendentes = await lerTudo<{ dc_id: string; criado_em: string }>((de, ate) =>
     db.from("funil_leads").select("dc_id, criado_em").eq("primeira_resposta_lida", false).order("criado_em", { ascending: false }).range(de, ate),
   );
@@ -482,10 +660,10 @@ async function lerPrimeirasRespostas(db: Db, dc: DataCrazy, todas: DcConversa[],
   // primeira conversa de cada lead (a mais antiga vista)
   const primeiraDoLead = new Map<string, DcConversa>();
   for (const c of todas) {
-    const lead = c.contact?.contactId ? leadDoContato.get(c.contact.contactId) : undefined;
-    if (!lead) continue;
-    const atual = primeiraDoLead.get(lead.id);
-    if (!atual || c.createdAt < atual.createdAt) primeiraDoLead.set(lead.id, c);
+    const id = donos.idDoLead(c);
+    if (!id) continue;
+    const atual = primeiraDoLead.get(id);
+    if (!atual || c.createdAt < atual.createdAt) primeiraDoLead.set(id, c);
   }
   const ehAtendente = (id: string | undefined) => !!id && config.equipeDoAtendente.has(id);
 

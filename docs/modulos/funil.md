@@ -114,6 +114,8 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
 - Fora da v1: downsell, mensagens por etapa.
 
 ## Contagem de leads (09/10/2026, decisão do Davi)
+- **Mudou em 11/10/2026 (ver "Chegada e leads sem etiqueta" abaixo):** o dia do lead agora é o da
+  1ª mensagem, e contato novo sem etiqueta também conta. O texto a seguir é a regra antiga.
 - **Lead do dia** = lead criado na Data Crazy no dia, no fuso America/Sao_Paulo: a sincronização
   busca `GET /api/v1/leads` com `createdAtGreaterOrEqual`/`createdAtLessOrEqual` (00:00–23:59:59.999
   de Brasília convertidos para UTC). A API não devolve total: o "count" é o tamanho da lista.
@@ -161,6 +163,27 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
   linhas tracejadas nos gráficos de leads e de conversão.
 - Identificação do lead nas listas: só "primeiro nome -1234" (nunca nome completo nem telefone).
 
+## Chegada e leads sem etiqueta (11/10/2026, decisão do Davi; sem migration)
+- **Problema:** na Data Crazy o lead só existe depois que a automação põe a 1ª etiqueta (de 0 min a
+  quase 1 dia depois da 1ª mensagem, medido em 11/10). Quem chegava e não era etiquetado não contava,
+  e quem era etiquetado depois da meia-noite caía no dia seguinte.
+- **Regra:** lead conta no **dia da 1ª mensagem** (Brasília, UTC-3), com ou sem etiqueta.
+  - Lead da Data Crazy: chegada = a conversa mais antiga do contato (a conversa nasce com a 1ª
+    mensagem), ou a criação do lead, se for mais cedo. Conversa de mais de 7 dias antes do lead
+    (contato antigo que voltou) não puxa a data.
+  - Contato **novo** (criado na janela) que mandou mensagem e ainda não tem lead: linha em
+    `funil_leads` com `dc_id = contato:<id interno do contato>` (nunca o telefone), sem histórico.
+    Quando o lead aparece na Data Crazy, a linha `contato:` é apagada e o lead entra no mesmo dia.
+- Vale para tudo que lê `funil_leads` por `dia`: Leads no período, por dia, por número, funil por
+  etapa, Leads sem atendimento na chegada, gráfico por hora e o card do Início.
+- **Funil por etapa:** a primeira linha é **Chegou** (todos do funil), com "(N sem etiqueta)"; quem
+  não tem etiqueta não chega em nenhuma etapa. O maior gap continua só entre etapas.
+- Contagem em 11/10 (antes → depois): sexta 09/10 28 → 29 (2 sem etiqueta), sábado 10/10 30 → 37
+  (2 sem etiqueta), domingo 11/10 17 → 11 (6 tinham a 1ª mensagem no sábado).
+- **Filas:** uma linha por lead (o mesmo lead em dois números aparece uma vez, números juntos; se
+  alguma conversa for Não iniciado, vale Não iniciado; o tempo é o maior). O total do título continua
+  em conversas abertas.
+
 ## Filas e números internos (10/10/2026, migration funil_filas_internos)
 - **Filas da Data Crazy (corrigido em 10/10, migration funil_statuses):** os `statuses` da API são
   marcas que SE SOMAM, como as abas do CRM: `opened` = **Em aberto** (em atendimento), `unstarted` =
@@ -171,7 +194,7 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
   Aguardando ficava 0. Conferido em 10/10: 08h20 API 38 opened + 3 unstarted = CRM (Em aberto 38,
   Não iniciados 3); robô 2 = aba do robô no CRM.
   **Tela (10/10, pedido do Davi):** duas listas. "Não iniciados e em atendimento" (unstarted +
-  opened, uma linha por conversa, coluna Situação; Não iniciados primeiro, cada grupo pelo maior
+  opened, uma linha por lead desde 11/10, coluna Situação; Não iniciados primeiro, cada grupo pelo maior
   tempo na fila) e "Aguardando" (waiting), separada. Robô (automation) não aparece (não é usado em
   outra parte; o status continua gravado).
   Gravado em `funil_conversas.statuses` (vazio = fechada) e `fila_desde` (`currentThread.createdAt`,

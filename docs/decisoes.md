@@ -313,3 +313,13 @@ reversível. Só o chefe mexe em chefe e sempre fica um chefe ativo, para ningu�
 A conta de teste é marcada (`equipe.teste`) em vez de ser um vendedor comum, para não aparecer em
 escala, avisos e relatórios.
 
+## 2026-10-11: Funil: lead conta no dia da 1ª mensagem, com ou sem etiqueta
+
+O dia do lead passou a ser o da 1ª conversa (Brasília), não a criação do lead na Data Crazy. Contato
+novo que escreveu e ainda não tem lead entra no funil como `contato:<id do contato>` e aparece na
+linha "Chegou (N sem etiqueta)". Nas filas, uma linha por lead.
+
+**Por quê:** a Data Crazy só cria o lead quando a automação etiqueta, às vezes horas depois. Sábado
+10/10 contava 30 e eram 37 (2 sem etiqueta e 5 etiquetados só no domingo). O id interno do contato
+evita usar o telefone como chave; quando o lead aparece, a linha provisória sai para não contar duas
+vezes.

@@ -269,10 +269,11 @@ async function Conteudo({ searchParams }: Props) {
       <section className="glass-lite glass-static overflow-x-auto p-4">
         <h2 className="mb-1 text-[15px] font-semibold text-white">Funil por etapa</h2>
         <p className="m-0 mb-3 text-[12px] text-ink-faint">
-          Leads que entraram no período e chegaram em cada etapa (quem chegou numa etapa conta nas anteriores). Perda = quanto caiu em relação à
+          Leads que entraram no período (pelo dia da 1ª mensagem, com ou sem etiqueta) e chegaram em cada etapa (quem chegou numa etapa conta
+          nas anteriores). Sem etiqueta = a automação ainda não etiquetou. Perda = quanto caiu em relação à
           etapa de cima. Maior gap: só entre etapas com pelo menos {minimoParaGap(r.noFunil)} leads na de cima.
         </p>
-        <FunilEtapas linhas={r.funil} total={r.noFunil} gapPara={r.maiorGap?.para ?? null} />
+        <FunilEtapas linhas={r.funil} total={r.noFunil} semEtiqueta={r.semEtiqueta} gapPara={r.maiorGap?.para ?? null} />
       </section>
 
       <section id="conversao" className="glass-lite glass-static scroll-mt-28 p-4">
@@ -447,7 +448,7 @@ function FilasDataCrazy({ filas, admin }: { filas: Filas; admin: boolean }) {
         </span>
       </div>
       <p className="m-0 mb-3 text-[12px] text-ink-faint">
-        Não iniciado = ninguém assumiu o atendimento. O Aguardando (o lead espera a empresa) pode repetir uma conversa da outra lista, como no CRM. O tempo é real (não só
+        Não iniciado = ninguém assumiu o atendimento. Uma linha por lead (o mesmo lead em dois números aparece uma vez, com os números juntos). O Aguardando (o lead espera a empresa) pode repetir um lead da outra lista, como no CRM. O tempo é real (não só
         o horário de atendimento): no Aguardando, desde a última mensagem do lead; na outra, desde o início do atendimento atual. Atualiza a cada 15 minutos.
         {!admin && " Só as suas conversas (as que ninguém assumiu ainda não têm vendedor)."}
       </p>

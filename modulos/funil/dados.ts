@@ -149,8 +149,9 @@ export type ListasEsperando = { leads: Esperando[]; alunos: Esperando[]; aguarda
  * Filas da Data Crazy (pedido do Davi, 10/10/2026). Os status da API são marcas que se somam
  * (ex.: ["waiting", "opened"]); a tela mostra duas listas:
  * - atendimento: Não iniciados (unstarted, ninguém assumiu) + Em atendimento (opened), uma linha por
- *   conversa, sem repetir (se tiver as duas marcas, vale Não iniciado); Não iniciados primeiro, cada
- *   grupo pelo maior tempo na fila;
+ *   LEAD: o mesmo lead em dois números vira uma linha com os números juntos (se alguma conversa for
+ *   Não iniciado, vale Não iniciado; o tempo é o maior); Não iniciados primeiro, cada grupo pelo maior
+ *   tempo na fila;
  * - aguardando (waiting): o lead espera a empresa. Pode repetir uma conversa da outra lista, como no CRM.
  * Robô (automation) não tem lista: não é usado em outra parte.
  * esperaMs = tempo REAL: no Aguardando, desde a última mensagem do lead; na outra, desde o início
@@ -195,7 +196,17 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
   const esperando = new Map<string, Linha>();
   const aguardando = new Map<string, Linha>();
   const filas: Filas = { total: 0, atendimento: [], aguardando: [] };
+  const filaAtendimento = new Map<string, ItemFila>();
+  const filaAguardando = new Map<string, Esperando>();
+  /** junta duas linhas do mesmo lead: os números somam, o resto vem da que espera há mais tempo */
+  const juntar = <T extends Esperando>(atual: T | undefined, nova: T): T => {
+    if (!atual) return nova;
+    const maior = nova.esperaMs > atual.esperaMs ? nova : atual;
+    return { ...maior, vendedor: maior.vendedor ?? atual.vendedor ?? nova.vendedor, numeros: [...new Set([...atual.numeros, ...nova.numeros])].sort() };
+  };
   for (const c of conversas.data) {
+    // mesmo lead = mesmo lead da Data Crazy; sem lead ligado, o rótulo (primeiro nome + 4 dígitos)
+    const chave = c.lead_dc_id ? `l:${c.lead_dc_id}` : c.contato_rotulo ? `r:${c.contato_rotulo}` : `c:${c.dc_id}`;
     // filas: toda conversa aberta, sem limite de horas
     const statuses: string[] = c.statuses ?? [];
     if (statuses.length) filas.total++;
@@ -212,8 +223,16 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
         etapa: etapaAtual(tags, listaEtiquetas, listaEtapas),
       };
       const tempo = (desde: string) => ({ desde, esperaMs: Math.max(0, agora - Date.parse(desde)) });
-      if (situacao) filas.atendimento.push({ ...base, ...tempo(String(c.fila_desde)), situacao });
-      if (naFilaAguardando) filas.aguardando.push({ ...base, ...tempo(c.ultima_recebida_em ? String(c.ultima_recebida_em) : String(c.fila_desde)) });
+      if (situacao) {
+        const atual = filaAtendimento.get(chave);
+        const junto = juntar<ItemFila>(atual, { ...base, ...tempo(String(c.fila_desde)), situacao });
+        // alguma conversa do lead sem ninguém assumir: a linha é Não iniciado
+        if (atual?.situacao === "nao_iniciado" || situacao === "nao_iniciado") junto.situacao = "nao_iniciado";
+        filaAtendimento.set(chave, junto);
+      }
+      if (naFilaAguardando) {
+        filaAguardando.set(chave, juntar(filaAguardando.get(chave), { ...base, ...tempo(c.ultima_recebida_em ? String(c.ultima_recebida_em) : String(c.fila_desde)) }));
+      }
     }
 
     const recebida = c.ultima_recebida_em ? String(c.ultima_recebida_em) : null;
@@ -238,8 +257,6 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
       esperaMs,
       aluno,
     };
-    // mesmo lead = mesmo lead da Data Crazy; sem lead ligado, o rótulo (primeiro nome + 4 dígitos)
-    const chave = c.lead_dc_id ? `l:${c.lead_dc_id}` : c.contato_rotulo ? `r:${c.contato_rotulo}` : `c:${c.dc_id}`;
     const grupo = doLead ? esperando : aguardando;
     const atual = grupo.get(chave);
     if (!atual) {
@@ -258,6 +275,8 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
   for (const chave of esperando.keys()) aguardando.delete(chave);
   const ordenar = (m: Map<string, Linha>) => [...m.values()].sort((a, b) => b.esperaMs - a.esperaMs);
   const todos = ordenar(esperando);
+  filas.atendimento = [...filaAtendimento.values()];
+  filas.aguardando = [...filaAguardando.values()];
   // Não iniciados primeiro; dentro de cada grupo, quem está há mais tempo na fila
   filas.atendimento.sort((a, b) => (a.situacao === b.situacao ? b.esperaMs - a.esperaMs : a.situacao === "nao_iniciado" ? -1 : 1));
   filas.aguardando.sort((a, b) => b.esperaMs - a.esperaMs);
