@@ -3,9 +3,9 @@
 Gerado da aba Melhorias (`npm run melhorias:docs`). Não editar à mão: mude na aba e rode o script.
 O que já foi entregue está em `docs/changelog.md`.
 
-## Em andamento (1)
+## Em andamento (0)
 
-- **melhorar a aba de tarefas** · alta · Tarefas · sugerido por Davi (#18)
+_Nada._
 
 ## Para fazer (9)
 

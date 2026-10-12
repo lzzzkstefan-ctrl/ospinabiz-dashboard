@@ -45,3 +45,6 @@ next-env.d.ts
 
 # arquivos de importação (exportações da Hubla com dados de clientes): nunca no git
 /importar/
+
+# debriefing para o Julio: dados da operação, fica fora do git
+/debriefing-julio/
