@@ -350,3 +350,18 @@ decimal (meio entre os vizinhos) e `prazo_hora`. Sem apagar tarefa e sem tempo r
 **Por quê:** a tabela já era usada pelo Início, pelo checklist dos Webinários e pela regra do
 plantonista; criar outra duplicaria tudo isso. A ordem decimal grava só o cartão movido. Apagar continua
 proibido (regra da aba desde o início); tempo real ficou de fora porque a tela já recarrega ao salvar.
+
+## 2026-10-12: Backup do Supabase pelo GitHub Actions, num repositório privado separado
+
+Todo dia às 3h (Brasília) um workflow do repositório `ospinabiz-dashboard-backups` faz o dump do banco
+(`supabase db dump`: papéis, estrutura e dados, incluindo os logins), a lista do Storage e a contagem
+de linhas de cada tabela. Aos domingos copia também os arquivos do Storage e testa a restauração num
+Supabase local, comparando a contagem com a produção. Passo a passo: `docs/restaurar-backup.md`.
+
+**Por quê:** o plano gratuito do Supabase não tem backup que dê para baixar. O GitHub Actions é
+grátis para esse volume (poucos minutos por dia). Os backups ficam nas **Releases**, e não no git:
+apagar os de mais de 30 dias apaga de verdade (no git o histórico guardaria tudo para sempre).
+Vão criptografados (AES-256, `BACKUP_PASSPHRASE`) porque o banco tem nome, telefone e e-mail de
+clientes. A credencial é a senha do banco (só este projeto), e não o token da conta Supabase, que
+daria acesso a todos os projetos da conta, inclusive o do masterview.
+

@@ -7,7 +7,7 @@ O que já foi entregue está em `docs/changelog.md`.
 
 _Nada._
 
-## Para fazer (9)
+## Para fazer (10)
 
 - **Monitor das BMs** · alta · Monitor · sugerido por Davi (#2)
   Falta configurar o número remetente e o template na Meta.
@@ -27,6 +27,8 @@ _Nada._
   Plataforma de webinário, ofertas na Hubla e teste A/B.
 - **Biblioteca da operação** · baixa · Outra · sugerido por Davi (#9)
   Scripts, objeções e áudios num lugar só.
+- **Verificar feriados** · baixa · Check-in · sugerido por Davi (#20)
+  verificar feriados e decidir se  vai rodar a operção
 
 ## Ideia (1)
 

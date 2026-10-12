@@ -5,8 +5,9 @@ Onde está cada conta e quem é o dono. **Só nomes e URLs. Nunca senhas, tokens
 | Serviço | O quê | Nome / URL | Dono | Plano | Criado em |
 |---|---|---|---|---|---|
 | GitHub | Repositório privado | [lzzzkstefan-ctrl/ospinabiz-dashboard](https://github.com/lzzzkstefan-ctrl/ospinabiz-dashboard) | Conta pessoal do Davi (`lzzzkstefan-ctrl`) | Free | 2026-10-08 |
+| GitHub | Repositório privado de backups (dumps diários do banco e cópia semanal do Storage, criptografados, nas Releases) | [lzzzkstefan-ctrl/ospinabiz-dashboard-backups](https://github.com/lzzzkstefan-ctrl/ospinabiz-dashboard-backups). Secrets: `SUPABASE_DB_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `BACKUP_PASSPHRASE` | Conta pessoal do Davi | Free | 2026-10-12 |
 | Supabase | Organização | Ospinabiz | Davi | Free | 2026-10-08 |
-| Supabase | Projeto (sa-east-1) | ID `ihxevdaaxzamqzawzgmd` ([painel](https://supabase.com/dashboard/project/ihxevdaaxzamqzawzgmd)) | Organização Ospinabiz | Free | 2026-10-08 |
+| Supabase | Projeto (us-east-1) | ID `ihxevdaaxzamqzawzgmd` ([painel](https://supabase.com/dashboard/project/ihxevdaaxzamqzawzgmd)) | Organização Ospinabiz | Free | 2026-10-08 |
 | Supabase | Auth: admin inicial | Criado pelo painel do Supabase, com `app_metadata.papel = "admin"` | Davi | | 2026-10-08 |
 | Vercel | Projeto | [ospinabiz-dashboard.vercel.app](https://ospinabiz-dashboard.vercel.app), ligado ao GitHub (deploy automático da `main`) | Conta pessoal do Davi | Hobby | |
 | SMTP (e-mails de convite) | _a definir_ | | | | |
@@ -25,3 +26,8 @@ Onde está cada conta e quem é o dono. **Só nomes e URLs. Nunca senhas, tokens
   não comercial, então o projeto deve ir para um time da empresa quando o dashboard for
   usado de verdade. A transferência é feita em Project Settings > Transfer.
 - **Supabase gratuito:** pausa após 7 dias sem atividade. Limite de 2 projetos gratuitos ativos.
+- **Banco (senha do Postgres):** trocada em 12/10/2026 para o backup. Só o repositório de backups
+  (secret `SUPABASE_DB_URL`) e o `.env.local` usam. A conexão que funciona é pelo pooler
+  `aws-0-us-east-1.pooler.supabase.com` (session, porta 5432).
+- **`BACKUP_PASSPHRASE`:** abre todos os backups. Fica no `.env.local`, nos Secrets do repositório de
+  backups e no gerenciador de senhas do Davi. Perdeu = backups inúteis.

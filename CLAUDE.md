@@ -60,6 +60,7 @@ docs/
   contas.md                   onde está cada conta
   decisoes.md                 decisões e porquês
   backlog.md, changelog.md    gerados da aba Melhorias (npm run melhorias:docs)
+  restaurar-backup.md         como abrir e restaurar os backups (repositório ospinabiz-dashboard-backups)
   modulos/<modulo>.md         contexto de cada módulo (monitor.md já existe)
 proxy.ts                      porteiro do Next: roda a checagem de login em toda página
 ```
@@ -92,7 +93,7 @@ Regras de convivência:
 - Next.js 16 (App Router, `proxy.ts` no lugar de middleware, `cacheComponents` ligado). Leia
   `node_modules/next/dist/docs/` antes de usar APIs que você não tem certeza que existem nessa versão.
 - Supabase: Auth (convite só por e-mail, cadastro público desligado), Postgres com RLS,
-  pg_cron + pg_net. Região sa-east-1.
+  pg_cron + pg_net. Região us-east-1.
 - Supabase CLI via `npx supabase` (devDependency).
 - Skills oficiais do Supabase em `.claude/skills/` (`supabase`, `supabase-postgres-best-practices`),
   instaladas com `npx skills add supabase/agent-skills`. Versões travadas em `skills-lock.json`.
