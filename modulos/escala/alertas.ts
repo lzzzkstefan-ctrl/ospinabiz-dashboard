@@ -36,7 +36,7 @@ export function querReceber(pref: Partial<Record<TipoAviso, boolean>> | null, pa
  * Registra o aviso (chave única) e manda para quem quer receber. Se a chave já existe, não manda
  * de novo. `exceto` = quem causou (ex.: quem pausou não recebe o aviso da própria pausa).
  */
-async function avisar(db: Db, tipo: TipoAviso | "teste", chave: string, aviso: Aviso, opcoes: { exceto?: string; so?: string } = {}): Promise<number> {
+export async function avisar(db: Db, tipo: TipoAviso | "teste" | "feriado", chave: string, aviso: Aviso, opcoes: { exceto?: string; so?: string } = {}): Promise<number> {
   const { data: registro } = await db
     .from("notificacoes_enviadas")
     .upsert({ tipo, chave, titulo: aviso.titulo, corpo: aviso.corpo }, { onConflict: "tipo,chave", ignoreDuplicates: true })
@@ -57,6 +57,7 @@ async function avisar(db: Db, tipo: TipoAviso | "teste", chave: string, aviso: A
       const u = String(i.usuario_id);
       if (opcoes.so) return u === opcoes.so;
       if (opcoes.exceto && u === opcoes.exceto) return false;
+      if (tipo === "feriado") return papelDe.get(u) === "admin"; // só o admin decide se a operação roda
       return tipo === "teste" ? false : querReceber(prefDe.get(u) ?? null, papelDe.get(u) ?? null, tipo);
     });
 
@@ -135,7 +136,7 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
   const db = createAdminClient();
   const agora = emBrasilia(agoraIso);
   const hoje = agora.dia;
-  const [cfgFunil, cfgEscala, abertos, pausas, equipe, padroes, entradasHoje, estado] = await Promise.all([
+  const [cfgFunil, cfgEscala, abertos, pausas, equipe, padroes, entradasHoje, estado, feriado] = await Promise.all([
     db.from("funil_config").select("atendimento_inicio, atendimento_fim").maybeSingle(),
     db.from("escala_config").select("pausa_longa_min").maybeSingle(),
     db.from("escala_checkins").select("id, equipe_id, inicio").is("fim", null),
@@ -145,7 +146,10 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
     // entradas que começaram hoje (Brasília) ou ainda estão abertas
     db.from("escala_checkins").select("equipe_id, inicio").gte("inicio", new Date(Date.parse(`${hoje}T03:00:00Z`)).toISOString()),
     db.from("escala_alerta_estado").select("descoberta_desde").maybeSingle(),
+    db.from("feriados").select("roda").eq("data", hoje).maybeSingle(),
   ]);
+  // feriado em que a operação não roda: folga, nada de descoberta nem "não entrou"
+  const folga = feriado.data?.roda === false;
   const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
   // pessoa de teste (equipe.teste): o check-in e as pausas dela não contam para nenhum aviso
   const testes = new Set((equipe.data ?? []).filter((p) => p.teste).map((p) => Number(p.id)));
@@ -178,7 +182,7 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
   const emPausa = new Set((pausas.data ?? []).map((p) => Number(p.checkin_id)));
   const online = (abertos.data ?? []).filter((c) => !emPausa.has(Number(c.id)));
   const descobertaDesde = estado.data?.descoberta_desde ? String(estado.data.descoberta_desde) : null;
-  const diaComFixo = ((padroes.data ?? []) as Padrao[]).some((p) => padraoVale(p, hoje));
+  const diaComFixo = !folga && ((padroes.data ?? []) as Padrao[]).some((p) => padraoVale(p, hoje));
   const decisao = decidirDescoberta({ agoraMin: agora.minuto, inicio: hhmm(ini), fim: hhmm(fim), diaComFixo, online: online.length, jaDescobertaDesde: descobertaDesde });
   const descoberta = decisao;
   if (decisao === "descobriu") {
@@ -218,7 +222,7 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
     if (!atual || p.inicio < atual.inicio) primeiroFixo.set(p.equipe_id, p);
   }
   for (const [id, p] of primeiroFixo) {
-    if (!ativos.has(id) || entrouHoje.has(id)) continue;
+    if (folga || !ativos.has(id) || entrouHoje.has(id)) continue;
     const limiteMin = minutos(p.inicio) + TOLERANCIA_SEM_CHECKIN_MIN;
     if (agora.minuto < limiteMin || agora.minuto >= minutos(p.fim)) continue;
     const nome = nomeDe.get(id) ?? "Alguém";

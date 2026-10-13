@@ -2,6 +2,10 @@
 
 Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à mão.
 
+## 13/10/2026
+
+- Check-in: feriados no calendário (nacionais da BrasilAPI + manuais), pop-up e push na véspera para o admin decidir se a operação roda, folga sem descoberto/atraso e mensagem no WhatsApp para a equipe (aguardando o template da Meta)
+
 ## 11/10/2026
 
 - melhorar a aba de tarefas

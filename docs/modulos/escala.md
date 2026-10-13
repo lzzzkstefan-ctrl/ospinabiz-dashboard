@@ -147,7 +147,8 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
 - **Quem recebe:** `notificacoes_preferencias` (cada um escolhe no Check-in); sem escolha salva,
   admin recebe tudo e os outros nada. Salvar: update (com data) e, na primeira vez, insert sem
   `atualizado_em` (o grant de insert não inclui a data).
-- **Depois:** mesmos avisos pelo WhatsApp quando o número remetente do Monitor estiver configurado.
+- **Depois:** mesmos avisos pelo WhatsApp quando o número remetente do Monitor estiver configurado
+  (o envio já existe: `enviarAvisoWhatsApp` em `lib/integracoes/meta.ts`, usado pelos feriados).
 - Testado em 10/10: ativação no Edge (serviço de push do Windows aceitou), "Testar", ainda não
   entrou, pausa, volta e pausa longa com pessoa de teste (apagada); decisão da operação descoberta
   com 10 cenários (`decidirDescoberta` em regras.ts), incluindo sábado sem horário fixo.
@@ -160,4 +161,27 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
   (1254×1254, quadrada, fundo preto). Todos os tamanhos redimensionados com vizinho mais próximo
   (`kernel: "nearest"`, sem suavizar) e paleta sem pontilhado. Endereços com `?v=3` para o
   navegador/iPhone não usarem o ícone antigo em cache.
+
+## Feriados (13/10/2026)
+
+- **Tabela `feriados`** (migration `escala_feriados`): um por dia. Nacionais da BrasilAPI
+  (`lib/integracoes/brasilapi.ts`), carregados quando o ano atual ou o próximo ainda não têm nenhum
+  (o ano que vira entra sozinho). Estaduais de SP, municipais e pontos facultativos: botão
+  "Adicionar feriado" (só admin); apagar só os manuais, pelo "Editar horários".
+- **Decisão** (`roda`: true / false / vazio): pop-up no layout do painel, só admin, na véspera a
+  partir das 9h (ou no próprio dia, se ninguém decidiu). "Decidir depois" fecha até abrir a dashboard
+  de novo. Só pergunta se alguém tem horário fixo no dia (sábado sem escala não pergunta). Quem
+  decidiu e quando: gatilho `feriado_decisao`.
+- **Push** da pergunta para os admins (tipo `feriado` em `notificacoes_enviadas`, uma vez por
+  feriado) e **lembrete por WhatsApp às 20h** da véspera para os admins com WhatsApp cadastrado, se
+  ninguém decidiu. Relógio: pg_cron `escala-feriados` de hora em hora → `/api/escala/feriados`.
+- **Mensagem para a equipe:** ao decidir, WhatsApp para cada pessoa com horário fixo no dia
+  (`enviarMensagensDaDecisao`), resultado em `feriados.envios` (telefone mascarado) e no pop-up.
+  Envio pelo template de aviso da Meta (`META_TEMPLATE_AVISO_NAME`, um parâmetro {{1}} com o texto).
+  Enquanto o remetente/template não estiver configurado, registra "não enviada".
+- **Folga** (`roda = false`): o card mostra "Folga · feriado" no lugar das pessoas; sem descoberto,
+  não entrou nem atraso, e os avisos de descoberta e sem check-in não saem nesse dia.
+- **WhatsApp da equipe:** `equipe_whatsapp` (só admin), editado em Check-in > Pessoas.
+- **Feriado de teste** (`teste = true`, só pelo banco): pop-up e push só para quem criou; mensagem
+  só para quem decidiu. Testado em 13/10 com um feriado de teste para 14/10 (apagado depois).
 

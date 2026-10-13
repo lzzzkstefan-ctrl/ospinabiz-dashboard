@@ -365,3 +365,15 @@ Vão criptografados (AES-256, `BACKUP_PASSPHRASE`) porque o banco tem nome, tele
 clientes. A credencial é a senha do banco (só este projeto), e não o token da conta Supabase, que
 daria acesso a todos os projetos da conta, inclusive o do masterview.
 
+## 2026-10-13: Feriados no Check-in, com decisão do admin e WhatsApp pelo template de aviso
+
+Feriados nacionais da BrasilAPI e manuais (admin) numa tabela `feriados`; na véspera, a partir das
+9h, o admin decide se a operação roda (pop-up + push) e a equipe escalada recebe a mensagem no
+WhatsApp. Folga = o dia não conta descoberto, não entrou nem atraso.
+
+**Por quê:** a BrasilAPI é pública e sem chave; carregar só quando falta o ano evita chamar todo dia.
+O WhatsApp sai por um **template de aviso genérico** ({{1}} = texto) porque a Meta só aceita mensagem
+livre para quem escreveu nas últimas 24h; um template só serve para todos os avisos da equipe. O
+lembrete das 20h vai para todos os admins com WhatsApp (Rodrigo e Davi), porque os dois podem decidir.
+O telefone da equipe fica numa tabela separada que só o admin lê (`equipe` é lida por todos).
+

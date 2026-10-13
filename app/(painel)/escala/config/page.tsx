@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { FormPessoa } from "../_componentes/formularios";
+import { mascarar } from "@/modulos/escala/feriados";
+import { FormPessoa, FormWhatsapp } from "../_componentes/formularios";
 
 // Pessoas do Check-in (só admin): quem pode ter horário fixo. Os horários fixos são editados na
 // própria aba Check-in ("Editar horários").
@@ -28,13 +29,18 @@ async function Conteudo() {
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") notFound();
   const supabase = await createClient();
-  const { data } = await supabase.from("equipe").select("id, nome, usuario_id, ativo, teste").order("nome");
+  const [{ data }, { data: zaps }] = await Promise.all([
+    supabase.from("equipe").select("id, nome, usuario_id, ativo, teste").order("nome"),
+    // só o admin lê (RLS); a tela mostra só o número mascarado
+    supabase.from("equipe_whatsapp").select("equipe_id, whatsapp"),
+  ]);
+  const zapDe = new Map((zaps ?? []).map((z) => [Number(z.equipe_id), mascarar(String(z.whatsapp))]));
   const pessoas = (data ?? []).filter((p) => p.ativo);
   return (
     <section className="flex flex-col gap-3">
       <p className="text-[12.5px] text-ink-dim">
         Quem pode ter horário fixo (vendedores, seus irmãos, alguém só para sábado). Para entrar na operação e ver os leads no Funil, a pessoa precisa de login: o convite
-        de plantonista é feito pelo admin (link pelo WhatsApp).
+        de plantonista é feito pelo admin (link pelo WhatsApp). O WhatsApp de cada pessoa recebe as mensagens automáticas (ex.: feriado); só o admin vê.
       </p>
       <FormPessoa />
       <ul className="m-0 flex list-none flex-col p-0">
@@ -49,6 +55,9 @@ async function Conteudo() {
               )}
             </span>
             {p.usuario_id ? <Etiqueta cor="verde">tem login</Etiqueta> : <Etiqueta cor="cinza">sem login (não entra na operação)</Etiqueta>}
+            <div className="basis-full">
+              <FormWhatsapp equipeId={Number(p.id)} mascarado={zapDe.get(Number(p.id)) ?? null} />
+            </div>
           </li>
         ))}
       </ul>

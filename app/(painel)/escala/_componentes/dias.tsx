@@ -2,11 +2,14 @@
 // pessoa e, embaixo, o que aconteceu de verdade (entrou às, saiu às, pausas, atraso, saída
 // automática). Tempo online = entradas menos pausas. Pausa acima do limite: vermelho.
 // Admin: "corrigir" em cada entrada; no modo editar, "tirar" em cada horário fixo.
+// Feriado: etiqueta no topo; "não vai rodar" troca as pessoas por "Folga · feriado" (nada de não
+// entrou, atraso nem descoberto); sem decisão: "Aguardando decisão do Rodrigo".
 
 import { Gaveta } from "@/components/formulario";
 import { cn } from "@/lib/utils";
+import type { FeriadoDoDia } from "@/modulos/escala/dados";
 import { horaCurta, horas, NOME_DIA, NOME_MOTIVO, TOLERANCIA_ATRASO_MIN, type DiaEscala, type Presenca } from "@/modulos/escala/regras";
-import { encerrarPadrao } from "../acoes";
+import { apagarFeriado, encerrarPadrao } from "../acoes";
 import { FormCorrigir } from "./formularios";
 
 /** Cor fixa por pessoa (pelo id da equipe), das cores de etiqueta do tema. */
@@ -21,7 +24,9 @@ export function DiasDaSemana({
   admin,
   editar,
   pausaLongaMin,
+  feriados,
 }: {
+  feriados: Record<string, FeriadoDoDia>;
   dias: DiaEscala[];
   presencas: Presenca[];
   hoje: string;
@@ -33,7 +38,9 @@ export function DiasDaSemana({
     <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7">
       {dias.map((d) => {
         const ehHoje = d.dia === hoje;
-        const descoberto = d.situacao === "descoberto";
+        const feriado = feriados[d.dia] ?? null;
+        const folga = feriado?.roda === false;
+        const descoberto = d.situacao === "descoberto" && !folga;
         const doDia = presencas.filter((p) => p.dia === d.dia);
         // pessoas do dia: quem tem horário fixo e quem entrou mesmo sem horário fixo
         const ids = [...new Set([...d.entradas.map((e) => e.equipeId), ...doDia.map((p) => p.equipeId)])];
@@ -59,13 +66,39 @@ export function DiasDaSemana({
               <span className={cn("text-[13.5px] font-semibold", ehHoje ? "text-accent" : "text-white")}>{NOME_DIA[d.diaSemana]}</span>
               <span className="text-[12px] tabular-nums text-ink-dim">{ehHoje ? "hoje · " : ""}{dataCurta(d.dia)}</span>
             </div>
+            {feriado && <EtiquetaFeriado feriado={feriado} passou={d.dia < hoje} admin={admin} editar={editar} />}
             {descoberto && <p className="m-0 text-[12px] font-semibold text-[rgb(var(--tag-vermelho))]">ninguém fixo · descoberto</p>}
-            {pessoas.map((p) => (
-              <Pessoa key={p.id} pessoa={p} dia={d.dia} hoje={hoje} admin={admin} editar={editar} pausaLongaMin={pausaLongaMin} />
-            ))}
+            {folga ? (
+              <p className="m-0 text-[12.5px] font-semibold text-[rgb(var(--tag-rosa))]">Folga · feriado</p>
+            ) : (
+              pessoas.map((p) => <Pessoa key={p.id} pessoa={p} dia={d.dia} hoje={hoje} admin={admin} editar={editar} pausaLongaMin={pausaLongaMin} />)
+            )}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function EtiquetaFeriado({ feriado: f, passou, admin, editar }: { feriado: FeriadoDoDia; passou: boolean; admin: boolean; editar: boolean }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="rounded-full border border-[rgb(var(--tag-rosa)/0.45)] bg-[rgb(var(--tag-rosa)/0.12)] px-2 py-0.5 text-[11.5px] font-semibold text-[rgb(var(--tag-rosa))]">
+          🎉 Feriado · {f.nome}
+          {f.teste ? " (teste)" : ""}
+        </span>
+        {editar && admin && f.manual && (
+          <form action={apagarFeriado} className="inline">
+            <input type="hidden" name="id" value={f.id} />
+            <button type="submit" className="text-[11.5px] text-[rgb(var(--tag-vermelho))] underline-offset-4 hover:underline">
+              apagar
+            </button>
+          </form>
+        )}
+      </span>
+      {f.roda === true && <span className="text-[11.5px] font-medium text-[rgb(var(--tag-verde))]">Feriado · operação normal</span>}
+      {f.roda === null && f.precisaDecidir && !passou && <span className="text-[11.5px] font-semibold text-[rgb(var(--tag-amarelo))]">Aguardando decisão do Rodrigo</span>}
     </div>
   );
 }

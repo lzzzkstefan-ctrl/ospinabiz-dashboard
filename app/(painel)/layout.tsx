@@ -1,6 +1,8 @@
 import { PainelNav, PainelNavMobile, type PapelMenu } from "@/components/painel-nav";
 import { UsuarioAtual } from "@/components/usuario-atual";
 import { usuarioLogado } from "@/lib/auth/papeis";
+import { perguntaFeriado } from "@/modulos/escala/dados";
+import { FeriadoPopup } from "./escala/_componentes/feriado-popup";
 import { Suspense } from "react";
 
 // O papel vem do login (pedido), então o menu fica dentro do Suspense. Enquanto carrega,
@@ -9,6 +11,13 @@ async function Menu() {
   const usuario = await usuarioLogado();
   const gestor = usuario?.vendas === "chefe" || usuario?.vendas === "gerente";
   return <Navegacao papel={usuario?.papel ?? "plantonista"} gestor={gestor} />;
+}
+
+// Feriado na véspera (a partir das 9h): o admin decide se a operação roda (modulos/escala/feriados.ts)
+async function Feriado() {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return null;
+  return <FeriadoPopup pergunta={await perguntaFeriado(usuario.id)} />;
 }
 
 function Navegacao({ papel, gestor = false }: { papel: PapelMenu; gestor?: boolean }) {
@@ -55,6 +64,9 @@ export default function PainelLayout({
       {/* faixa no topo (computador): o conteúdo que rola some por baixo do menu fixo em vez de ficar
           atrás dele, legível e "por baixo" */}
       <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-30 hidden h-[92px] bg-gradient-to-b from-background via-background/85 to-transparent md:block print:hidden" />
+      <Suspense fallback={null}>
+        <Feriado />
+      </Suspense>
       <main className="mx-auto max-w-[1180px] px-6 pb-28 pt-8 md:pb-16 md:pt-[112px] print:max-w-none print:p-0">{children}</main>
     </>
   );

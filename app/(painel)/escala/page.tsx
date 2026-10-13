@@ -8,7 +8,7 @@ import { hojeSP } from "@/modulos/funil/calculo";
 import Link from "next/link";
 import { Suspense } from "react";
 import { DiasDaSemana } from "./_componentes/dias";
-import { FormPadrao, FormPausaLonga } from "./_componentes/formularios";
+import { FormFeriado, FormPadrao, FormPausaLonga } from "./_componentes/formularios";
 import { AtivarNotificacoes, FormPreferencias } from "./_componentes/notificacoes";
 
 // Check-in (endereço /escala). Contexto em docs/modulos/escala.md.
@@ -16,7 +16,7 @@ import { AtivarNotificacoes, FormPreferencias } from "./_componentes/notificacoe
 // horário fixo de cada um e o que aconteceu de verdade (entrou, saiu, atraso, saída automática).
 // Admin: "Editar horários" (adicionar e tirar horário fixo) e corrigir entrada/saída com motivo.
 
-type Props = { searchParams: Promise<{ editar?: string }> };
+type Props = { searchParams: Promise<{ editar?: string; adicionar?: string }> };
 
 export default function CheckinPage({ searchParams }: Props) {
   return (
@@ -37,7 +37,9 @@ async function Conteudo({ searchParams }: Props) {
   if (!usuario) return null;
   const admin = usuario.papel === "admin";
   const hoje = hojeSP();
-  const editar = admin && (await searchParams).editar === "1";
+  const params = await searchParams;
+  const editar = admin && params.editar === "1";
+  const novoFeriado = admin && params.adicionar === "feriado";
   const supabase = await createClient();
   const [s, prefs] = await Promise.all([
     carregarSemana(inicioDaSemana(hoje), usuario.id, admin),
@@ -60,6 +62,12 @@ async function Conteudo({ searchParams }: Props) {
                 Pessoas
               </Link>
               <Link
+                href={novoFeriado ? "/escala" : "/escala?adicionar=feriado"}
+                className="rounded-full border border-line px-3.5 py-1.5 text-[12.5px] font-medium text-ink transition-colors hover:bg-bg-raised-2 hover:text-white"
+              >
+                {novoFeriado ? "Fechar" : "Adicionar feriado"}
+              </Link>
+              <Link
                 href={editar ? "/escala" : "/escala?editar=1"}
                 className="rounded-full border border-line px-3.5 py-1.5 text-[12.5px] font-medium text-ink transition-colors hover:bg-bg-raised-2 hover:text-white"
               >
@@ -68,6 +76,16 @@ async function Conteudo({ searchParams }: Props) {
             </span>
           )}
         </div>
+
+        {novoFeriado && (
+          <div className="rounded-2xl border border-line-soft bg-bg-raised p-4">
+            <p className="m-0 mb-3 text-[12.5px] text-ink-dim">
+              Os feriados nacionais entram sozinhos (BrasilAPI). Aqui entram os estaduais de SP, municipais e pontos facultativos. Na véspera, a partir das 9h, o admin
+              decide se a operação roda (pop-up e notificação) e a equipe escalada recebe a mensagem no WhatsApp. Para apagar um feriado cadastrado aqui, use &quot;Editar horários&quot;.
+            </p>
+            <FormFeriado hoje={hoje} />
+          </div>
+        )}
 
         {editar && (
           <div className="rounded-2xl border border-line-soft bg-bg-raised p-4">
@@ -82,7 +100,7 @@ async function Conteudo({ searchParams }: Props) {
           </div>
         )}
 
-        <DiasDaSemana dias={s.dias} presencas={presencas} hoje={hoje} admin={admin} editar={editar} pausaLongaMin={s.pausaLongaMin} />
+        <DiasDaSemana feriados={s.feriados} dias={s.dias} presencas={presencas} hoje={hoje} admin={admin} editar={editar} pausaLongaMin={s.pausaLongaMin} />
         <p className="m-0 text-[11.5px] text-ink-faint">
           Operação das {horaCurta(s.operacao.inicio)} às {horaCurta(s.operacao.fim)}. Atraso = entrou mais de {TOLERANCIA_ATRASO_MIN} min depois do horário fixo. Quem
           esquece de sair sai sozinho no fim do horário fixo (saída automática). Pausa não conta como tempo online; acima de {s.pausaLongaMin} min fica em vermelho.

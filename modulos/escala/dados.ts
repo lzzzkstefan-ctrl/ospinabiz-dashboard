@@ -2,6 +2,7 @@
 // Plantões extras saíram da tela em 10/10/2026 (pedido do Davi); a tabela continua no banco, sem uso.
 
 import { createClient } from "@/lib/supabase/server";
+import { escaladosNoDia, hojePergunta, textoPergunta, type TipoFeriado } from "./feriados";
 import { diasDaSemana, emBrasilia, instante, montarDia, presencas, somarDias, type Checkin, type DiaEscala, type MotivoPausa, type Padrao, type Pausa, type Presenca } from "./regras";
 
 export type Pessoa = { id: number; nome: string; temLogin: boolean };
@@ -13,6 +14,9 @@ export type Online = {
   desde: string;
   pausa: { motivo: MotivoPausa; detalhe: string | null; desde: string; minutos: number } | null;
 };
+
+/** Feriado de um dia da semana. roda: true = vai rodar, false = folga, null = sem decisão. */
+export type FeriadoDoDia = { id: number; nome: string; tipo: TipoFeriado; manual: boolean; roda: boolean | null; precisaDecidir: boolean; teste: boolean };
 
 export type Semana = {
   domingo: string;
@@ -27,6 +31,8 @@ export type Semana = {
   eu: number | null;
   /** a partir de quantos minutos a pausa é longa (destaque em vermelho) */
   pausaLongaMin: number;
+  /** feriados da semana, por dia ("AAAA-MM-DD") */
+  feriados: Record<string, FeriadoDoDia>;
 };
 
 /**
@@ -71,7 +77,7 @@ export async function carregarSemana(domingo: string, usuarioId: string, admin =
   const sabado = somarDias(domingo, 6);
   const comeco = instante(domingo, "00:00");
   const fimDaSemana = instante(somarDias(sabado, 1), "00:00");
-  const [equipe, config, padroes, checkins, pausas, primeiro, limite] = await Promise.all([
+  const [equipe, config, padroes, checkins, pausas, primeiro, limite, feriados] = await Promise.all([
     supabase.from("equipe").select("id, nome, usuario_id, ativo, teste, teste_visivel").order("nome"),
     supabase.from("funil_config").select("atendimento_inicio, atendimento_fim").maybeSingle(),
     supabase.from("escala_padrao").select("id, dia_semana, equipe_id, inicio, fim, tipo, desde, ate").lte("desde", sabado).or(`ate.is.null,ate.gte.${domingo}`),
@@ -81,6 +87,7 @@ export async function carregarSemana(domingo: string, usuarioId: string, admin =
     // primeiro check-in registrado: antes dele o check-in não existia ("—" em vez de "não entrou")
     supabase.from("escala_checkins").select("inicio").order("inicio").limit(1).maybeSingle(),
     pausaLonga(),
+    supabase.from("feriados").select("id, data, nome, tipo, fonte, roda, teste").gte("data", domingo).lte("data", sabado),
   ]);
   for (const r of [equipe, padroes, checkins, pausas]) {
     if (r.error) throw new Error(`Erro ao carregar o check-in: ${r.error.message}`);
@@ -105,6 +112,21 @@ export async function carregarSemana(domingo: string, usuarioId: string, admin =
     agora: await onlineAgora(nomeDe, ocultosPara(equipe.data ?? [], admin), eu),
     eu,
     pausaLongaMin: limite,
+    feriados: Object.fromEntries(
+      (feriados.data ?? []).map((f) => [
+        String(f.data),
+        {
+          id: Number(f.id),
+          nome: String(f.nome),
+          tipo: f.tipo as TipoFeriado,
+          manual: f.fonte === "manual",
+          roda: f.roda as boolean | null,
+          // só pergunta se alguém tem horário fixo no dia
+          precisaDecidir: escaladosNoDia((padroes.data ?? []) as Padrao[], (equipe.data ?? []).map((p) => ({ id: Number(p.id), nome: String(p.nome), ativo: !!p.ativo, teste: !!p.teste })), String(f.data)).length > 0,
+          teste: !!f.teste,
+        },
+      ]),
+    ),
   };
 }
 
@@ -116,4 +138,34 @@ export async function operacaoAgora(usuarioId: string, admin = false): Promise<{
   const eu = (equipe ?? []).find((p) => p.usuario_id === usuarioId)?.id ?? null;
   const [agora, limite] = await Promise.all([onlineAgora(nomeDe, ocultosPara(equipe ?? [], admin), eu), pausaLonga()]);
   return { eu, agora, pausaLongaMin: limite };
+}
+
+/**
+ * Pop-up do feriado (só admin): o feriado de hoje ou amanhã que ainda espera decisão, se já é hora de
+ * perguntar (véspera a partir das 9h). Feriado de teste: só para quem o criou.
+ */
+export async function perguntaFeriado(usuarioId: string): Promise<{ id: number; texto: string } | null> {
+  const supabase = await createClient();
+  const agora = emBrasilia(new Date().toISOString());
+  const { data: feriados } = await supabase
+    .from("feriados")
+    .select("id, data, nome, roda, teste, criado_por")
+    .is("roda", null)
+    .gte("data", agora.dia)
+    .lte("data", somarDias(agora.dia, 1))
+    .order("data");
+  const candidatos = (feriados ?? []).filter((f) => !f.teste || f.criado_por === usuarioId);
+  if (!candidatos.length) return null;
+  const [equipe, padroes] = await Promise.all([
+    supabase.from("equipe").select("id, nome, ativo, teste"),
+    supabase.from("escala_padrao").select("id, dia_semana, equipe_id, inicio, fim, tipo, desde, ate"),
+  ]);
+  const pessoas = (equipe.data ?? []).map((p) => ({ id: Number(p.id), nome: String(p.nome), ativo: !!p.ativo, teste: !!p.teste }));
+  for (const f of candidatos) {
+    const f2 = { data: String(f.data), nome: String(f.nome), roda: f.roda as boolean | null };
+    if (hojePergunta(f2, escaladosNoDia((padroes.data ?? []) as Padrao[], pessoas, f2.data).length > 0, agora.dia, agora.minuto)) {
+      return { id: Number(f.id), texto: textoPergunta(f2, agora.dia) };
+    }
+  }
+  return null;
 }

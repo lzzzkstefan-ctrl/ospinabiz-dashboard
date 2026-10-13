@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { hojeSP } from "@/modulos/funil/calculo";
 import { inicioDaSemana, instante, somarDias } from "@/modulos/escala/regras";
 import { avisarEntradaSaida, avisarPausa, avisoDeTeste, verificarAlertas } from "@/modulos/escala/alertas";
+import { enviarMensagensDaDecisao, verificarFeriados, type EnvioFeriado } from "@/modulos/escala/feriados";
 import { refresh } from "next/cache";
 import { after } from "next/server";
 
@@ -225,6 +226,97 @@ export async function criarPessoa(_anterior: EstadoForm, form: FormData): Promis
   if (error) return { erro: error.code === "23505" ? "Já tem alguém com esse nome na equipe." : "Não deu para salvar." };
   refresh();
   return { ok: `${nome} entrou na equipe. Para entrar na operação (check-in), precisa de login (convite).` };
+}
+
+// ---------------------------------------------------------------------------
+// Feriados (só admin; o RLS confere de novo)
+// ---------------------------------------------------------------------------
+
+const TIPOS_FERIADO_MANUAL = ["estadual", "municipal", "manual"] as const;
+
+/** "Adicionar feriado": estadual de SP, municipal ou ponto facultativo. */
+export async function adicionarFeriado(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return SO_ADMIN;
+  const data = String(form.get("data") ?? "");
+  const nome = String(form.get("nome") ?? "").trim();
+  const tipo = String(form.get("tipo") ?? "");
+  if (!diaOk(data)) return { erro: "Escolha a data." };
+  if (nome.length < 2) return { erro: "Escreva o nome do feriado." };
+  if (!(TIPOS_FERIADO_MANUAL as readonly string[]).includes(tipo)) return { erro: "Escolha o tipo." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("feriados").insert({ data, nome: nome.slice(0, 80), tipo });
+  if (error) return { erro: error.code === "23505" ? "Já tem feriado nesse dia." : mensagem(error) };
+  after(async () => {
+    try {
+      await verificarFeriados(); // se for amanhã (e já passou das 9h), o push sai agora
+    } catch (e) {
+      console.error("escala: feriados depois de adicionar falhou:", e);
+    }
+  });
+  refresh();
+  return { ok: `Feriado de ${data.slice(8, 10)}/${data.slice(5, 7)} adicionado.` };
+}
+
+/** Admin: apaga um feriado cadastrado à mão (os nacionais não saem). */
+export async function apagarFeriado(form: FormData): Promise<void> {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return;
+  const id = Number(form.get("id"));
+  if (!Number.isInteger(id) || id <= 0) return;
+  const supabase = await createClient();
+  await supabase.from("feriados").delete().eq("id", id).eq("fonte", "manual");
+  refresh();
+}
+
+export type ResultadoDecisao = EstadoForm & { envios?: EnvioFeriado[] };
+
+/**
+ * Pop-up do feriado: "Vai rodar normal" / "Não vai rodar" (+ mensagem extra). Grava a decisão (quem e
+ * quando: o banco preenche) e manda o WhatsApp para quem tem horário fixo no dia.
+ */
+export async function decidirFeriado(_anterior: ResultadoDecisao, form: FormData): Promise<ResultadoDecisao> {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return SO_ADMIN;
+  const id = Number(form.get("id"));
+  const escolha = String(form.get("roda") ?? "");
+  if (!Number.isInteger(id) || id <= 0 || !["sim", "nao"].includes(escolha)) return { erro: "Escolha se a operação vai rodar." };
+  const extra = String(form.get("mensagem_extra") ?? "").trim().slice(0, 300) || null;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("feriados")
+    .update({ roda: escolha === "sim", mensagem_extra: extra })
+    .eq("id", id)
+    .is("roda", null)
+    .select("id");
+  if (error) return { erro: mensagem(error) };
+  if (!data?.length) return { erro: "Esse feriado já foi decidido." };
+  const envios = await enviarMensagensDaDecisao(id, hojeSP());
+  refresh();
+  return { ok: escolha === "sim" ? "Decidido: vai rodar normal." : "Decidido: não vai rodar.", envios };
+}
+
+/** Admin: WhatsApp de uma pessoa da equipe (para as mensagens automáticas). Vazio = apaga. */
+export async function salvarWhatsappEquipe(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return SO_ADMIN;
+  const equipeId = Number(form.get("equipe_id"));
+  if (!Number.isInteger(equipeId) || equipeId <= 0) return { erro: "Pessoa inválida." };
+  const numero = String(form.get("whatsapp") ?? "").replace(/\D/g, "");
+  const supabase = await createClient();
+  if (!numero) {
+    const { error } = await supabase.from("equipe_whatsapp").delete().eq("equipe_id", equipeId);
+    if (error) return { erro: mensagem(error) };
+    refresh();
+    return { ok: "WhatsApp apagado." };
+  }
+  if (!/^55\d{10,11}$/.test(numero)) return { erro: "Use DDI + DDD + número (ex.: 5511912345678)." };
+  const { error } = await supabase
+    .from("equipe_whatsapp")
+    .upsert({ equipe_id: equipeId, whatsapp: numero, atualizado_em: new Date().toISOString() }, { onConflict: "equipe_id" });
+  if (error) return { erro: mensagem(error) };
+  refresh();
+  return { ok: "WhatsApp salvo." };
 }
 
 // ---------------------------------------------------------------------------

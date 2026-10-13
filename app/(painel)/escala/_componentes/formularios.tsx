@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NOME_DIA_CURTO } from "@/modulos/escala/regras";
 import { useActionState } from "react";
-import { corrigirTurno, criarPadrao, criarPessoa, salvarPausaLonga } from "../acoes";
+import { adicionarFeriado, corrigirTurno, criarPadrao, criarPessoa, salvarPausaLonga, salvarWhatsappEquipe } from "../acoes";
 
 type PessoaOpcao = { id: number; nome: string };
 
@@ -127,6 +127,55 @@ export function FormPausaLonga({ minutos }: { minutos: number }) {
         <Input name="minutos" inputMode="numeric" defaultValue={String(minutos)} className="w-28 tabular-nums" />
       </Campo>
       <Enviar pendente={pendente} texto="Salvar" />
+      <Aviso estado={estado} />
+    </form>
+  );
+}
+
+/** Admin: feriado estadual, municipal ou ponto facultativo. */
+export function FormFeriado({ hoje }: { hoje: string }) {
+  const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(adicionarFeriado, {});
+  return (
+    <form action={acao} className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-[150px_1fr_220px]">
+        <Campo rotulo="Data">
+          <Input name="data" type="date" min={hoje} required className="[color-scheme:dark]" />
+        </Campo>
+        <Campo rotulo="Nome">
+          <Input name="nome" maxLength={80} required placeholder="Ex.: Revolução Constitucionalista" />
+        </Campo>
+        <Campo rotulo="Tipo">
+          <select name="tipo" defaultValue="estadual" className={classeSelect}>
+            <option value="estadual" className={classeOpcao}>
+              Estadual (SP)
+            </option>
+            <option value="municipal" className={classeOpcao}>
+              Municipal
+            </option>
+            <option value="manual" className={classeOpcao}>
+              Ponto facultativo / outro
+            </option>
+          </select>
+        </Campo>
+      </div>
+      <div className="flex items-center gap-3">
+        <Enviar pendente={pendente} texto="Adicionar feriado" />
+        <Aviso estado={estado} />
+      </div>
+    </form>
+  );
+}
+
+/** Admin: WhatsApp de uma pessoa (mensagens automáticas, ex.: feriado). Vazio apaga. */
+export function FormWhatsapp({ equipeId, mascarado }: { equipeId: number; mascarado: string | null }) {
+  const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(salvarWhatsappEquipe, {});
+  return (
+    <form action={acao} className="flex flex-wrap items-end gap-2">
+      <input type="hidden" name="equipe_id" value={equipeId} />
+      <Campo rotulo={mascarado ? `WhatsApp (atual ${mascarado})` : "WhatsApp (não cadastrado)"}>
+        <Input name="whatsapp" inputMode="numeric" maxLength={20} placeholder="5511912345678" className="w-[180px]" />
+      </Campo>
+      <Enviar pendente={pendente} texto="Salvar" variante="outline" />
       <Aviso estado={estado} />
     </form>
   );
