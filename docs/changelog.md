@@ -2,6 +2,10 @@
 
 Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à mão.
 
+## 16/10/2026
+
+- Funil: botão Número banido lista os leads com conversa em número banido (etapa, vendedor e se já estão em outro número), órfãos primeiro. BMs: nova situação Banido; fora da operação não pede mais telefone.
+
 ## 13/10/2026
 
 - Check-in: feriados no calendário (nacionais da BrasilAPI + manuais), pop-up e push na véspera para o admin decidir se a operação roda, folga sem descoberto/atraso e mensagem no WhatsApp para a equipe (aguardando o template da Meta)

@@ -122,10 +122,13 @@ function LinhaNumero({ numero, ctx }: { numero: Numero; ctx: Contexto }) {
   return (
     <li className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line-soft py-2 last:border-b-0">
       <span className="w-12 text-[15px] font-semibold tabular-nums text-white">{numero.final}</span>
+      {numero.situacao === "banido" && <Etiqueta cor="vermelho">banido</Etiqueta>}
+      {numero.situacao === "desconectado" && <Etiqueta cor="cinza">desconectado</Etiqueta>}
       {numero.telefone ? (
         <span className="text-[12px] tabular-nums text-ink-dim">{formatarTelefone(numero.telefone)}</span>
       ) : (
-        <Etiqueta cor="laranja">falta telefone</Etiqueta>
+        // fora da operação o telefone não faz falta (o monitor não testa)
+        numero.situacao === "operacao" && <Etiqueta cor="laranja">falta telefone</Etiqueta>
       )}
       <Etiqueta cor="azul">{formatarLimite(numero.limite)}</Etiqueta>
       <span className="text-[12px] text-ink-faint">{numero.responsavel?.nome ?? "sem responsável"}</span>

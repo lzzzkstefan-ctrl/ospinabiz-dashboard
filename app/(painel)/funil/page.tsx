@@ -6,6 +6,7 @@ import {
   carregarFunil,
   chegadaNoPeriodo,
   configDoFunil,
+  leadsEmNumeroBanido,
   leadsEsperando,
   mudancasDoFunil,
   naoComecaram,
@@ -16,6 +17,7 @@ import {
   type Esperando,
   type Filas,
   type ItemFila,
+  type LeadBanido,
   type NaoComecou,
   type StatusSincronizacao,
 } from "@/modulos/funil/dados";
@@ -27,7 +29,8 @@ import { SincronizarAgora } from "./_componentes/sincronizar-agora";
 // Funil e Leads (v1). Contexto e regras em docs/modulos/funil.md; cálculo em modulos/funil/calculo.ts.
 // Admin vê tudo e filtra por vendedor/número; o vendedor vê só o funil dele (garantido pelo RLS).
 
-type Busca = { p?: string; de?: string; ate?: string; v?: string; n?: string; conv?: string };
+// b=1: filtro "Número banido" (lista os leads com conversa em número banido)
+type Busca = { p?: string; de?: string; ate?: string; v?: string; n?: string; conv?: string; b?: string };
 type Props = { searchParams: Promise<Busca> };
 
 export default function FunilPage({ searchParams }: Props) {
@@ -66,10 +69,11 @@ async function Conteudo({ searchParams }: Props) {
   const opcoes = admin ? await opcoesDoFunil() : { vendedores: [], numeros: [] };
   const vendedorId = admin && opcoes.vendedores.some((v) => String(v.id) === sp.v) ? Number(sp.v) : null;
   const numeroId = admin && opcoes.numeros.some((n) => n.id === sp.n) ? sp.n! : null;
+  const soBanido = sp.b === "1";
 
   // card, tooltip por número e tabela por número saem do MESMO resultado (uma leitura dos leads)
   const cfg = await configDoFunil();
-  const [r, sync, nomes, esperando, respostas, bms, mudancas, chegada, parados] = await Promise.all([
+  const [r, sync, nomes, esperando, respostas, bms, mudancas, chegada, parados, banidos] = await Promise.all([
     carregarFunil({ desde, ate, vendedorId, numeroId }, cfg),
     statusDaSincronizacao(),
     nomesDosNumeros(),
@@ -79,6 +83,7 @@ async function Conteudo({ searchParams }: Props) {
     mudancasDoFunil(desde, ate),
     chegadaNoPeriodo({ desde, ate, vendedorId, numeroId }, cfg),
     naoComecaram({ vendedorId, numeroId }),
+    soBanido ? leadsEmNumeroBanido({ vendedorId }) : null,
   ]);
   // marcas de mudança no funil, por dia
   const marcas = new Map<string, string[]>();
@@ -108,6 +113,7 @@ async function Conteudo({ searchParams }: Props) {
   const filtros = new URLSearchParams();
   if (vendedorId) filtros.set("v", String(vendedorId));
   if (numeroId) filtros.set("n", numeroId);
+  if (soBanido) filtros.set("b", "1");
   const linkPeriodo = (p: Periodo) => {
     const q = new URLSearchParams(filtros);
     q.set("p", p);
@@ -127,6 +133,18 @@ async function Conteudo({ searchParams }: Props) {
     q.set("conv", c);
     return `/funil?${q.toString()}#conversao`;
   };
+  // liga/desliga o filtro "Número banido" mantendo o resto
+  const linkBanido = (() => {
+    const q = new URLSearchParams(filtros);
+    q.set("p", periodo);
+    if (periodo === "personalizado") {
+      q.set("de", desde);
+      q.set("ate", ate);
+    }
+    if (soBanido) q.delete("b");
+    else q.set("b", "1");
+    return `/funil?${q.toString()}${soBanido ? "" : "#numero-banido"}`;
+  })();
 
   const compradores = r.compradores.hubla + r.compradores.foraHubla;
 
@@ -173,23 +191,38 @@ async function Conteudo({ searchParams }: Props) {
 
       {/* filtros: tudo numa linha acima dos gráficos */}
       <section className="flex flex-col gap-3">
-        <nav className="flex flex-wrap gap-1.5" aria-label="Período">
-          {PERIODOS.map((p) => (
-            <Link
-              key={p.id}
-              href={linkPeriodo(p.id)}
-              aria-current={periodo === p.id ? "page" : undefined}
-              className={cn(
-                "rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors",
-                periodo === p.id ? "bg-accent/15 text-white" : "text-ink-dim hover:text-white",
-              )}
-            >
-              {p.nome}
-            </Link>
-          ))}
-        </nav>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <nav className="flex flex-wrap gap-1.5" aria-label="Período">
+            {PERIODOS.map((p) => (
+              <Link
+                key={p.id}
+                href={linkPeriodo(p.id)}
+                aria-current={periodo === p.id ? "page" : undefined}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors",
+                  periodo === p.id ? "bg-accent/15 text-white" : "text-ink-dim hover:text-white",
+                )}
+              >
+                {p.nome}
+              </Link>
+            ))}
+          </nav>
+          <Link
+            href={linkBanido}
+            aria-pressed={soBanido}
+            className={cn(
+              "rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors",
+              soBanido
+                ? "border-[rgb(var(--tag-vermelho)/0.6)] bg-[rgb(var(--tag-vermelho)/0.12)] text-white"
+                : "border-line text-ink-dim hover:text-white",
+            )}
+          >
+            Número banido{soBanido ? " ✕" : ""}
+          </Link>
+        </div>
         <form method="get" action="/funil" className="flex flex-wrap items-end gap-3 text-xs text-ink-dim">
           <input type="hidden" name="p" value={periodo === "personalizado" ? "personalizado" : periodo} />
+          {soBanido && <input type="hidden" name="b" value="1" />}
           {periodo === "personalizado" && (
             <>
               <label className="flex flex-col gap-1">
@@ -240,6 +273,7 @@ async function Conteudo({ searchParams }: Props) {
         </form>
       </section>
 
+      {banidos && <LeadsNumeroBanido itens={banidos} admin={admin} />}
       <FilasDataCrazy filas={esperando.filas} admin={admin} />
       <NaoComecaram itens={parados} />
       <ListaEsperando
@@ -688,6 +722,65 @@ function ListaEsperando({
             </tbody>
           </table>
           {itens.length > 100 && <p className="m-0 mt-2 text-[12px] text-ink-faint">Mostrando os 100 que esperam há mais tempo.</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Filtro "Número banido": leads com conversa em número banido (aba BMs), para retomar por outro número. */
+function LeadsNumeroBanido({ itens, admin }: { itens: LeadBanido[]; admin: boolean }) {
+  const hora = (iso: string) =>
+    new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+  const orfaos = itens.filter((e) => e.outros.length === 0).length;
+  return (
+    <section id="numero-banido" className={cn("glass-lite glass-static scroll-mt-28 p-4", orfaos > 0 && "border-[rgb(var(--tag-vermelho)/0.5)]")}>
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-[15px] font-semibold text-white">
+          Leads em número banido · {itens.length}
+          {itens.length > 0 && <span className="font-normal text-ink-dim"> ({orfaos} sem outro número)</span>}
+        </h2>
+        {admin && (
+          <Link href="/bms" className="text-[12px] text-ink-dim underline-offset-4 hover:underline">
+            Marcar número como banido na aba BMs
+          </Link>
+        )}
+      </div>
+      <p className="m-0 mb-3 text-[12px] text-ink-faint">
+        Leads com conversa num número marcado como Banido na aba BMs (qualquer data, conversa aberta ou finalizada). Etapa e vendedor vêm da conversa mais recente (sem eles, do lead).
+        Primeiro quem não tem conversa em nenhum outro número (esses ficaram órfãos); quem já está em outro número mostra qual. Atualiza a cada 15 minutos.
+      </p>
+      {itens.length === 0 ? (
+        <p className="m-0 py-2 text-center text-[13px] italic text-ink-faint">Nenhum lead em número banido.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-[13px] tabular-nums">
+            <thead className="text-[11.5px] text-ink-dim">
+              <tr>
+                <th className="py-1.5 pr-3 font-medium">Lead</th>
+                <th className="py-1.5 pr-3 font-medium">Etapa</th>
+                <th className="py-1.5 pr-3 font-medium">Vendedor</th>
+                <th className="py-1.5 pr-3 font-medium">Número banido</th>
+                <th className="py-1.5 pr-3 font-medium">Outro número</th>
+                <th className="py-1.5 text-right font-medium">Última mensagem</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.slice(0, 300).map((e) => (
+                <tr key={e.chave} className="border-t border-line-soft text-ink">
+                  <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
+                  <td className="py-1.5 pr-3 text-ink-dim">{e.etapa ?? "—"}</td>
+                  <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">sem vendedor</span>}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-[rgb(var(--tag-vermelho))]">{e.banidos.join(" · ")}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3">
+                    {e.outros.length ? e.outros.join(" · ") : <span className="font-semibold text-[rgb(var(--tag-laranja))]">nenhum</span>}
+                  </td>
+                  <td className="whitespace-nowrap py-1.5 text-right text-ink-dim">{e.ultimaEm ? hora(e.ultimaEm) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {itens.length > 300 && <p className="m-0 mt-2 text-[12px] text-ink-faint">Mostrando os 300 primeiros.</p>}
         </div>
       )}
     </section>

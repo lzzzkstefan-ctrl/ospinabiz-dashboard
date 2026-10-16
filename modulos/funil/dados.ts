@@ -384,6 +384,93 @@ export async function naoComecaram(filtro: { vendedorId: number | null; numeroId
     .sort((a, b) => b.esperaMs - a.esperaMs);
 }
 
+export type LeadBanido = {
+  chave: string;
+  rotulo: string | null;
+  vendedor: string | null;
+  etapa: string | null;
+  /** números banidos em que o lead tem conversa */
+  banidos: string[];
+  /** outros números (não banidos) em que o lead já tem conversa: dá para retomar por eles */
+  outros: string[];
+  /** última mensagem trocada (lead ou empresa) em qualquer conversa do lead */
+  ultimaEm: string | null;
+};
+
+/**
+ * Leads em número banido (pedido do Davi, 16/10/2026): leads com conversa num número cuja situação
+ * na aba BMs é "banido", com etapa e vendedor, para decidir quem retomar por outro número. Todas as
+ * conversas contam (abertas e finalizadas), sem limite de período. Uma linha por lead (mesma chave das
+ * filas: lead da Data Crazy, ou o rótulo). Etapa e vendedor vêm da conversa mais recente (sem eles, de outra conversa ou do lead).
+ */
+export async function leadsEmNumeroBanido(filtro: { vendedorId: number | null } = { vendedorId: null }): Promise<LeadBanido[]> {
+  const supabase = await createClient();
+  const { data: banidosData, error } = await supabase.from("funil_numeros").select("dc_id, monitor_numeros!inner(situacao)").eq("monitor_numeros.situacao", "banido");
+  if (error) throw new Error(`Erro ao carregar números banidos: ${error.message}`);
+  const banidos = new Set((banidosData ?? []).map((n) => String(n.dc_id)));
+  if (banidos.size === 0) return [];
+
+  const sel = "dc_id, lead_dc_id, contato_rotulo, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em";
+  let q = supabase.from("funil_conversas").select(sel).in("numero_dc_id", [...banidos]).eq("interno", false).limit(5000);
+  if (filtro.vendedorId) q = q.eq("vendedor_id", filtro.vendedorId);
+  const [conversas, etapas, etiquetas, equipe, numeros] = await Promise.all([
+    q,
+    supabase.from("funil_etapas").select("id, nome, tipo, ordem, perda_na_etapa_id, comprou").eq("ativa", true),
+    supabase.from("funil_etiquetas").select("dc_id, etapa_id"),
+    supabase.from("equipe").select("id, nome"),
+    nomesDosNumeros(),
+  ]);
+  if (conversas.error) throw new Error(`Erro ao carregar conversas em número banido: ${conversas.error.message}`);
+  type Conversa = (typeof conversas.data)[number];
+  // as outras conversas dos mesmos leads (em números que não estão banidos)
+  const leadIds = [...new Set(conversas.data.map((c) => c.lead_dc_id).filter(Boolean).map(String))];
+  const outras: Conversa[] = [];
+  // conversa antiga ou finalizada pode não ter vendedor nem etiqueta: aí valem os do lead
+  const doLead = new Map<string, { vendedor_id: number | null; etiquetas: string[] }>();
+  for (let i = 0; i < leadIds.length; i += 150) {
+    const fatia = leadIds.slice(i, i + 150);
+    const [cs, ls] = await Promise.all([
+      supabase.from("funil_conversas").select(sel).in("lead_dc_id", fatia).eq("interno", false),
+      supabase.from("funil_leads").select("dc_id, vendedor_id, etiquetas_atuais").in("dc_id", fatia),
+    ]);
+    for (const c of cs.data ?? []) if (!banidos.has(String(c.numero_dc_id))) outras.push(c);
+    for (const l of ls.data ?? []) doLead.set(String(l.dc_id), { vendedor_id: l.vendedor_id ? Number(l.vendedor_id) : null, etiquetas: l.etiquetas_atuais ?? [] });
+  }
+
+  const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
+  const listaEtapas = (etapas.data ?? []) as Etapa[];
+  const listaEtiquetas = (etiquetas.data ?? []) as EtiquetaEtapa[];
+  const ultima = (c: Conversa) =>
+    [c.ultima_recebida_em, c.ultima_enviada_em].filter(Boolean).map(String).sort().at(-1) ?? null;
+  const chaveDe = (c: Conversa) => (c.lead_dc_id ? `l:${c.lead_dc_id}` : c.contato_rotulo ? `r:${c.contato_rotulo}` : `c:${c.dc_id}`);
+
+  const grupos = new Map<string, Conversa[]>();
+  for (const c of [...conversas.data, ...outras]) grupos.set(chaveDe(c), [...(grupos.get(chaveDe(c)) ?? []), c]);
+  const nomeNumero = (c: Conversa) => (c.numero_dc_id ? (numeros.get(String(c.numero_dc_id)) ?? "número sem nome") : null);
+
+  const linhas: LeadBanido[] = [];
+  for (const [chave, cs] of grupos) {
+    const noBanido = cs.filter((c) => banidos.has(String(c.numero_dc_id)));
+    if (noBanido.length === 0) continue;
+    // a conversa mais recente manda na etapa e no vendedor; sem eles, outra conversa e por fim o lead
+    const ordem = [...cs].sort((a, b) => (ultima(b) ?? "").localeCompare(ultima(a) ?? ""));
+    const lead = doLead.get(String(ordem.find((c) => c.lead_dc_id)?.lead_dc_id ?? ""));
+    const vendedorId = ordem.find((c) => c.vendedor_id)?.vendedor_id ?? lead?.vendedor_id ?? null;
+    const etapa = ordem.map((c) => etapaAtual(c.etiquetas_atuais ?? [], listaEtiquetas, listaEtapas)).find(Boolean) ?? etapaAtual(lead?.etiquetas ?? [], listaEtiquetas, listaEtapas);
+    linhas.push({
+      chave,
+      rotulo: cs.find((c) => c.contato_rotulo)?.contato_rotulo ?? null,
+      vendedor: vendedorId ? (nomeDe.get(Number(vendedorId)) ?? null) : null,
+      etapa,
+      banidos: [...new Set(noBanido.map(nomeNumero).filter((n): n is string => !!n))].sort(),
+      outros: [...new Set(cs.filter((c) => !banidos.has(String(c.numero_dc_id))).map(nomeNumero).filter((n): n is string => !!n))].sort(),
+      ultimaEm: cs.map(ultima).filter((x): x is string => !!x).sort().at(-1) ?? null,
+    });
+  }
+  // quem ainda não tem outro número primeiro (são os órfãos); dentro, a conversa mais recente primeiro
+  return linhas.sort((a, b) => (a.outros.length === 0) !== (b.outros.length === 0) ? (a.outros.length === 0 ? -1 : 1) : (b.ultimaEm ?? "").localeCompare(a.ultimaEm ?? ""));
+}
+
 export type PrimeiraResposta = { vendedor: string; leads: number; mediaMs: number; medianaMs: number };
 
 /** Tempo de primeira resposta (horário de atendimento) por quem respondeu, dos leads que entraram no período. */

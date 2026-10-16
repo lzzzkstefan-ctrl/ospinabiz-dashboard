@@ -69,6 +69,9 @@ export function CamposNumero({
           <option value="desconectado" className={classeOpcao}>
             Desconectado
           </option>
+          <option value="banido" className={classeOpcao}>
+            Banido
+          </option>
         </select>
       </Campo>
     </div>

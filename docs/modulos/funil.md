@@ -248,3 +248,18 @@ Rota `/funil` (menu "Funil"). Cálculo em `modulos/funil/calculo.ts`, leitura em
   - Gráfico de leads por hora de chegada (0h–23h, Brasília), com a faixa fora do horário em laranja.
 - Cálculo em `chegadaDosLeads` (modulos/funil/calculo.ts).
 
+
+## Filtro "Número banido" (16/10/2026, migration monitor_numero_banido)
+
+Pedido do Davi: ver os leads que ficaram num número banido para decidir quem retomar por outro número.
+
+- Número banido = situação **Banido** na aba BMs (nova, além de Em operação e Desconectado). Banido sai do
+  monitor e vai para "Fora da operação", igual ao desconectado. Fora da operação a etiqueta "falta telefone"
+  não aparece (o telefone completo só serve para o teste do monitor).
+- Botão **Número banido** nos filtros do Funil (`?b=1`): mostra a seção "Leads em número banido". Entra todo
+  lead com conversa (aberta ou finalizada, qualquer data) em número banido; uma linha por lead.
+- Colunas: lead, etapa, vendedor, número banido, outro número (conversa do mesmo lead em número não banido) e
+  última mensagem. Etapa e vendedor vêm da conversa mais recente; sem eles, de outra conversa e por fim do
+  lead (`funil_leads`), porque conversa antiga/finalizada costuma vir sem vendedor.
+- Ordem: primeiro os órfãos (sem nenhum outro número), depois os demais; dentro, a conversa mais recente.
+- O vendedor vê só os dele (RLS das conversas). O filtro de vendedor vale; o de número e o período não.

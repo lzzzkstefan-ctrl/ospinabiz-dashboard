@@ -1,6 +1,6 @@
 // Regras do cadastro de BMs e números monitorados (sem banco, sem tela).
 
-export type Situacao = "operacao" | "desconectado";
+export type Situacao = "operacao" | "desconectado" | "banido";
 export type Pessoa = { id: number; nome: string };
 export type Numero = {
   id: number;
@@ -71,7 +71,7 @@ const TITULOS: Record<IdSecao, string> = {
 
 function secaoDoNumero(numero: Numero, bm: Bm): IdSecao {
   if (!bm.ativo || !numero.ativo) return "arquivados";
-  if (numero.situacao === "desconectado") return "fora";
+  if (numero.situacao !== "operacao") return "fora";
   return bm.acesso_admin ? "com_acesso" : "sem_acesso";
 }
 
@@ -122,7 +122,8 @@ export function lerCamposNumero(
   const respTexto = String(form.get("responsavel_id") ?? "");
   const responsavel_id = respTexto ? Number(respTexto) : null;
 
-  const situacao = form.get("situacao") === "desconectado" ? "desconectado" : "operacao";
+  const s = form.get("situacao");
+  const situacao: Situacao = s === "desconectado" || s === "banido" ? s : "operacao";
   const apelido = limparTexto(form.get("apelido"), 60) || `${final} ${nomeBm(bm_id)}`;
 
   return { campos: { bm_id, final, telefone, apelido, limite, responsavel_id, situacao } };
