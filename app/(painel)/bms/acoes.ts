@@ -4,8 +4,8 @@
 // (o RLS do banco confere de novo) e atualizam a tela depois de salvar.
 
 import { ehAdmin } from "@/lib/auth/papeis";
-import { atualizarBm, atualizarNumero, inserirBm, inserirNumero, nomesDasBms } from "@/modulos/bms/dados";
-import { lerCamposNumero, limparTexto } from "@/modulos/bms/regras";
+import { atualizarBm, atualizarNumero, banirBm, desfazerBanBm, inserirBm, inserirNumero, nomesDasBms } from "@/modulos/bms/dados";
+import { hojeBrasilia, lerCamposNumero, limparTexto } from "@/modulos/bms/regras";
 import { refresh } from "next/cache";
 
 export type EstadoForm = { erro?: string; ok?: string };
@@ -87,4 +87,35 @@ export async function alternarAtivo(form: FormData): Promise<void> {
   if (form.get("tabela") === "bm") await atualizarBm(id, { ativo });
   else await atualizarNumero(id, { ativo });
   refresh();
+}
+
+/** Marca a BM como banida (data padrão: hoje) e todos os números dela como banidos, com a mesma data. */
+export async function banir(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  if (!(await ehAdmin())) return SO_ADMIN;
+
+  const id = idDoForm(form);
+  if (!id) return { erro: "BM não encontrada." };
+  const data = String(form.get("data") ?? "") || hojeBrasilia();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return { erro: "Data do ban inválida." };
+  if (data > hojeBrasilia()) return { erro: "A data do ban não pode ser no futuro." };
+
+  const { erro } = await banirBm(id, data, limparTexto(form.get("motivo"), 300));
+  if (erro) return { erro };
+
+  refresh();
+  return { ok: "BM marcada como banida." };
+}
+
+/** Desfaz o ban: a BM e os números voltam para a situação de antes. */
+export async function desfazerBan(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  if (!(await ehAdmin())) return SO_ADMIN;
+
+  const id = idDoForm(form);
+  if (!id) return { erro: "BM não encontrada." };
+
+  const { erro } = await desfazerBanBm(id);
+  if (erro) return { erro };
+
+  refresh();
+  return { ok: "Ban desfeito." };
 }

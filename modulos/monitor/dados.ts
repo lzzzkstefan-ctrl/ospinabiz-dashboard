@@ -15,13 +15,14 @@ export async function carregarMonitor(): Promise<DadosMonitor> {
   const supabase = await createClient();
 
   const [numeros, aberto, fechado] = await Promise.all([
-    // em operação = situação "operacao", número ativo e BM ativa
+    // em operação = situação "operacao", número ativo e BM ativa e não banida
     supabase
       .from("monitor_numeros")
-      .select("id, final, telefone, bm:monitor_bms!inner(id, nome, ativo)")
+      .select("id, final, telefone, bm:monitor_bms!inner(id, nome, ativo, banida_em)")
       .eq("situacao", "operacao")
       .eq("ativo", true)
-      .eq("bm.ativo", true),
+      .eq("bm.ativo", true)
+      .is("bm.banida_em", null),
     supabase
       .from("monitor_testes")
       .select("id, iniciado_em, situacao")

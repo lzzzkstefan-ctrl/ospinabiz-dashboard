@@ -10,10 +10,29 @@ export type Numero = {
   apelido: string;
   limite: number | null;
   situacao: Situacao;
+  /** data do ban (yyyy-mm-dd), só quando situação = banido */
+  banido_em: string | null;
   ativo: boolean;
   responsavel: Pessoa | null;
 };
-export type Bm = { id: number; nome: string; acesso_admin: boolean; ativo: boolean; numeros: Numero[] };
+export type Bm = {
+  id: number;
+  nome: string;
+  acesso_admin: boolean;
+  ativo: boolean;
+  /** data do ban da BM (yyyy-mm-dd); null = não banida */
+  banida_em: string | null;
+  ban_motivo: string | null;
+  numeros: Numero[];
+};
+
+/** "2026-10-16" -> "16/10/2026" */
+export const dataBR = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
+
+/** Hoje em Brasília (yyyy-mm-dd), padrão da data do ban. */
+export function hojeBrasilia(agora = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(agora);
+}
 
 /** Limites de mensagens que a tela oferece (a Meta usa esses degraus). */
 export const LIMITES = [250, 1000, 2000, 10000, 100000] as const;
@@ -49,34 +68,37 @@ export function limparTexto(valor: FormDataEntryValue | null, maximo: number): s
   return String(valor ?? "").trim().replace(/\s+/g, " ").slice(0, maximo);
 }
 
-/** O monitor só testa número em operação, ativo, de BM ativa e com telefone completo. */
-export function entraNoTeste(numero: Numero, bm: Pick<Bm, "ativo">): boolean {
-  return bm.ativo && numero.ativo && numero.situacao === "operacao" && numero.telefone !== null;
+/** O monitor só testa número em operação, ativo, de BM ativa e não banida, e com telefone completo. */
+export function entraNoTeste(numero: Numero, bm: Pick<Bm, "ativo" | "banida_em">): boolean {
+  return bm.ativo && !bm.banida_em && numero.ativo && numero.situacao === "operacao" && numero.telefone !== null;
 }
 
 // ---------------------------------------------------------------------------
-// Seções da tela: Ativos com acesso / Ativos sem acesso / Fora da operação.
+// Seções da tela: Ativos com acesso / Ativos sem acesso / Fora da operação / Levou ban.
 // Cada número cai numa seção; dentro dela, os números ficam agrupados por BM.
 // Número arquivado (ativo = não) ou de BM arquivada vai para "Arquivados".
+// BM banida (todos os números dela) e número banido de BM ativa vão para "Levou ban".
 // ---------------------------------------------------------------------------
-export type IdSecao = "com_acesso" | "sem_acesso" | "fora" | "arquivados";
+export type IdSecao = "com_acesso" | "sem_acesso" | "fora" | "levou_ban" | "arquivados";
 export type Secao = { id: IdSecao; titulo: string; grupos: { bm: Bm; numeros: Numero[] }[]; total: number };
 
 const TITULOS: Record<IdSecao, string> = {
   com_acesso: "Ativos com acesso",
   sem_acesso: "Ativos sem acesso",
   fora: "Fora da operação",
+  levou_ban: "Levou ban",
   arquivados: "Arquivados",
 };
 
 function secaoDoNumero(numero: Numero, bm: Bm): IdSecao {
   if (!bm.ativo || !numero.ativo) return "arquivados";
-  if (numero.situacao !== "operacao") return "fora";
+  if (bm.banida_em || numero.situacao === "banido") return "levou_ban";
+  if (numero.situacao === "desconectado") return "fora";
   return bm.acesso_admin ? "com_acesso" : "sem_acesso";
 }
 
 export function agruparEmSecoes(bms: Bm[]): Secao[] {
-  const ordem: IdSecao[] = ["com_acesso", "sem_acesso", "fora", "arquivados"];
+  const ordem: IdSecao[] = ["com_acesso", "sem_acesso", "fora", "levou_ban", "arquivados"];
   return ordem.map((id) => {
     const grupos = bms
       .map((bm) => ({ bm, numeros: bm.numeros.filter((n) => secaoDoNumero(n, bm) === id) }))

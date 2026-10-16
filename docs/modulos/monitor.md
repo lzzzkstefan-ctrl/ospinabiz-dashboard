@@ -85,3 +85,20 @@ Estas decisões substituem o que está acima onde houver conflito.
   `X-Hub-Signature-256` com o app secret antes de processar qualquer coisa.
 - **Números monitorados:** ficam numa tabela do banco, carregados da planilha. Nunca no código nem no git.
 - **Login:** Supabase Auth, só convite, papéis `admin` e `atendente`.
+
+## BM banida e seção "Levou ban" (16/10/2026, migration bms_ban)
+
+- "Editar BM" tem a situação **Banida**: data do ban (padrão hoje, Brasília; não aceita data futura) e motivo.
+  Banir a BM marca todos os números dela como **Banido**, com a mesma data, e guarda em
+  `situacao_antes_ban` a situação que cada um tinha. **Desfazer ban** volta a BM e esses números para a
+  situação de antes; número que já estava banido sozinho antes continua banido.
+- Funções no banco: `public.bm_banir(bm, data, motivo)` e `public.bm_desfazer_ban(bm)` (só admin). O gatilho
+  `monitor_numeros_ban` preenche `banido_em` quando o número vira banido (hoje, se não vier) e limpa ao sair.
+- Aba BMs: BM banida e número banido saem de Ativos com/sem acesso e Fora da operação e vão para
+  **Levou ban** (no fim, recolhida). Card apagado com selo vermelho, data, motivo, quantos números tinha e,
+  por número, final, limite, responsável, leads e vendas que gerou (lead no número da 1ª conversa; venda =
+  lead que comprou, Hubla ou Pix/CNPJ — mesma conta do Funil).
+- Banido não entra no monitor (só testa situação "operacao" de BM ativa e não banida), nos alertas nem no
+  contador "em operação". Os leads e as vendas continuam nos relatórios. Os números banidos entram no filtro
+  "Número banido" do Funil.
+- 16/10/2026: BM 01 (12 números) e BM KAIKY (2682) marcadas como banidas, motivo "Ban permanente da Meta".

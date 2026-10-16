@@ -4,7 +4,7 @@ Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à
 
 ## 16/10/2026
 
-- Funil: botão Número banido lista os leads com conversa em número banido (etapa, vendedor e se já estão em outro número), órfãos primeiro. BMs: nova situação Banido; fora da operação não pede mais telefone.
+- Funil: filtro Número banido (leads em número banido, órfãos primeiro). BMs: BM Banida com data e motivo (bane os números, com Desfazer ban) e seção Levou ban com leads e vendas por número; banidos fora do monitor e do contador.
 
 ## 13/10/2026
 
