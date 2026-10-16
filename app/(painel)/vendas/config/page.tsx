@@ -3,14 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Etiqueta } from "@/components/ui/etiqueta";
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { listarCustos, listarEventosComErro, listarTickets, margemDoMes, type MargemDoMes } from "@/modulos/vendas/dados";
-import { geralEquipe, listarPlataformas } from "@/modulos/vendas/tela";
+import { geralEquipe, listarIdsViral, listarPlataformas } from "@/modulos/vendas/tela";
 import { Plataformas } from "./plataformas";
 import { centavos, custosDoMes, diaSP, lerMes, mesDe, nomeDoMes, precoCurto, reais, somarMes } from "@/modulos/vendas/regras";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { alternarCusto, alternarTicket, reprocessar, reprocessarTodos } from "../acoes";
-import { FormMes, FormMeta, FormNovoCusto, FormTicket, FormValorCusto } from "../_componentes/formularios";
+import { alternarCusto, alternarIdViral, alternarTicket, reprocessar, reprocessarTodos } from "../acoes";
+import { FormIdViral, FormMes, FormMeta, FormNovoCusto, FormTicket, FormValorCusto } from "../_componentes/formularios";
 
 type Props = { searchParams: Promise<{ mes?: string | string[] }> };
 
@@ -49,13 +49,14 @@ async function ConteudoConfig({ searchParams }: Props) {
   const mesAtual = mesDe(diaSP(new Date())!);
   const mes = lerMes(sp.mes, mesAtual);
 
-  const [margem, tickets, custos, eventos, plataformas, equipe] = await Promise.all([
+  const [margem, tickets, custos, eventos, plataformas, equipe, viral] = await Promise.all([
     margemDoMes(mes),
     listarTickets(),
     listarCustos(),
     listarEventosComErro(),
     listarPlataformas(),
     geralEquipe(mes),
+    listarIdsViral(),
   ]);
   const doMes = custosDoMes(
     mes,
@@ -72,7 +73,7 @@ async function ConteudoConfig({ searchParams }: Props) {
 
       <Secao titulo="Meta do mês">
         <p className="text-[12.5px] text-ink-dim">
-          Quantidade de vendas da equipe em {nomeDoMes(mes)}. Aparece na Geral de todos (vendas pagas: {equipe.pagas}).
+          Quantidade de vendas do Protocolo Game Changer da equipe em {nomeDoMes(mes)} (o Viral não conta na meta). Aparece na Geral de todos (vendas pagas: {equipe.pagas}).
         </p>
         <FormMeta mes={mes} meta={equipe.meta} />
       </Secao>
@@ -136,6 +137,33 @@ async function ConteudoConfig({ searchParams }: Props) {
         <div className="glass-lite glass-static p-4">
           <p className="mb-2 text-[11px] uppercase tracking-wide text-ink-faint">Novo ticket</p>
           <FormTicket />
+        </div>
+      </Secao>
+
+      <Secao titulo="Protocolo Viral">
+        <p className="text-[12.5px] text-ink-dim">
+          Downsell para o lead &quot;Sem dinheiro&quot;. A venda é do Viral quando o produto ou a oferta tem um dos IDs abaixo (nunca pelo nome nem pelo
+          valor). Faturamento = o que o cliente pagou. Comissão = a mesma regra do GCS: líquido da venda (o que a Hubla repassa, sem os juros do
+          parcelamento) × o % da faixa escolhida no fechamento.
+        </p>
+        <ul className="flex flex-col">
+          {viral.map((i) => (
+            <li key={i.hubla_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-soft py-2 last:border-b-0">
+              <span className="font-mono text-[13px] text-white">{i.hubla_id}</span>
+              <Etiqueta cor={i.tipo === "produto" ? "roxo" : "azul"}>{i.tipo}</Etiqueta>
+              {i.descricao && <span className="text-[12.5px] text-ink-dim">{i.descricao}</span>}
+              {!i.ativo && <Etiqueta cor="cinza">desativado</Etiqueta>}
+              <form action={alternarIdViral} className="ml-auto">
+                <input type="hidden" name="hubla_id" value={i.hubla_id} />
+                <input type="hidden" name="ativo" value={String(!i.ativo)} />
+                <Button type="submit" size="sm" variant="ghost">{i.ativo ? "Desativar" : "Ativar"}</Button>
+              </form>
+            </li>
+          ))}
+        </ul>
+        <div className="glass-lite glass-static p-4">
+          <p className="mb-2 text-[11px] uppercase tracking-wide text-ink-faint">Novo ID (oferta nova do Viral em outro produto, por exemplo)</p>
+          <FormIdViral />
         </div>
       </Secao>
 

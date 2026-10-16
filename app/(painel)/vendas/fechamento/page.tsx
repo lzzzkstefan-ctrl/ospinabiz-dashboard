@@ -48,7 +48,15 @@ async function Relatorio({ searchParams }: Props) {
     ["Bruto de ticket (base da comissão)", reais(r.bruto)],
     ["Líquido de ticket (base da comissão)", reais(r.liquido)],
     ["Margem de comissão", `${rel.faixa}%`],
-    ["Comissão", reais(r.comissao[rel.faixa])],
+    ["Comissão GCS", reais(r.comissao[rel.faixa])],
+    ...(r.viralQtd > 0
+      ? ([
+          ["Vendas pagas do Protocolo Viral", String(r.viralQtd)],
+          ["Líquido do Protocolo Viral", reais(r.viralLiquido)],
+          [`Comissão do Protocolo Viral (${rel.faixa}%)`, reais(r.viralComissao[rel.faixa])],
+        ] as [string, string][])
+      : []),
+    ["Comissão total", reais(r.comissao[rel.faixa] + r.viralComissao[rel.faixa])],
     ["Reembolsos", String(r.reembolsos)],
     ["Chargebacks", String(r.chargebacks)],
   ];

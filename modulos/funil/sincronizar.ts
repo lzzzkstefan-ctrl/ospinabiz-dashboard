@@ -875,11 +875,11 @@ async function atualizarCompras(db: Db, janela: string) {
   ]);
   if (!leads.length) return;
 
-  const vendas = await lerTudo<{ id: number; data: string; itens: string[]; bumps: string[]; vendas_clientes: { telefone: string | null } | null }>(
+  const vendas = await lerTudo<{ id: number; data: string; itens: string[]; bumps: string[]; linha: string; vendas_clientes: { telefone: string | null } | null }>(
     (de, ate) =>
       db
         .from("vendas")
-        .select("id, data, itens, bumps, vendas_clientes(telefone)")
+        .select("id, data, itens, bumps, linha, vendas_clientes(telefone)")
         .eq("status", "pago")
         .gte("data", janela.slice(0, 10))
         .order("data")
@@ -910,7 +910,8 @@ async function atualizarCompras(db: Db, janela: string) {
       etiquetaForaHubla: tags.some((t) => t.pagou_fora_hubla),
       etiquetaDeCompra: tags.some((t) => t.etapa_id !== null && etapasDeCompra.has(t.etapa_id)),
     });
-    const downsell = venda ? downsellDosItens([...venda.itens, ...venda.bumps], produtos) : null;
+    // venda do Protocolo Viral (reconhecida pelo ID da Hubla em Vendas) = downsell 'viral'
+    const downsell = venda ? (venda.linha === "viral" ? "viral" : downsellDosItens([...venda.itens, ...venda.bumps], produtos)) : null;
     const vendaId = venda?.id ?? null;
 
     if (l.compra === compra && l.venda_id === vendaId && l.downsell === downsell) return [];

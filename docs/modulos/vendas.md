@@ -198,3 +198,36 @@ Só o chefe lê (RLS `vendas_chefe()`); ninguém escreve nem apaga direto (testa
 chefe, gerente e vendedor temporários). Na tela: "Registro de alterações" no painel do mês, para o
 chefe, em qualquer mês (antes só em mês fechado).
 
+## Protocolo Viral (16/10/2026, migration `vendas_viral`)
+
+O Viral é o downsell para o lead "Sem dinheiro": 15 ofertas na Hubla, de R$ 48,90 a R$ 118,90. Ele
+chega pelo mesmo webhook do GCS, com `utm_term` = vendedor e `utm_content` = `lead_{telefone}`.
+Decisão e porquês em `docs/decisoes.md`.
+
+- **Como é reconhecido:** pelo ID do produto ou da oferta em `vendas_produtos_hubla` (Configuração de
+  vendas, seção Protocolo Viral). O cadastro começa com o produto `ptOj9sEG0z4hnImIeHvC`, que vale
+  para todas as ofertas dele. Nome e valor não contam (`ofertaViral` e `montarVendaNova` em `regras.ts`).
+- **A venda:** `linha = 'viral'`, sem ticket.
+  - `valor_pago` = total que o cliente pagou (faturamento).
+  - `viral_preco` = preço da oferta.
+  - `viral_liquido` = o que a Hubla repassa sem os juros do parcelamento (gatilho `vendas_comissao_viral`).
+- **Comissão = regra do GCS:** líquido × % da faixa do fechamento (6 a 10%), calculada venda a venda
+  com meio centavo para cima (`comissaoDe` e `privado.vendas_viral_comissao`).
+  - Uma venda ainda sem o valor da Hubla fica sem comissão até ele chegar.
+  - Enquanto houver venda assim, o mês não fecha.
+- **Fechamento:** `comissao` = GCS + Viral na faixa. A parte do Viral também fica em `viral_qtd`,
+  `viral_bruto`, `viral_liquido` e `viral_comissao`. O estorno de uma venda do Viral reembolsada em mês
+  fechado = líquido dela × faixa do fechamento.
+- **Tela do vendedor:**
+  - bloco "Protocolo Viral" com vendas, faturamento, ticket médio, comissão na faixa e vendas por oferta;
+  - filtro "Protocolo Viral" e etiqueta "Viral R$ X" na lista;
+  - o Viral não entra no total de vendas nem no bruto/líquido de ticket do GCS;
+  - a comissão total (GCS + Viral) aparece no fechamento, no "Copiar resumo" e na mensagem.
+- **Geral (chefe e gerente):**
+  - tabela GCS x Viral por vendedor (quantidade, faturamento, ticket médio e comissão na faixa sugerida);
+  - conversão do downsell: leads que receberam a etiqueta 🪞DOWNSELL VIRAL no mês x quantos deles
+    compraram o Viral, ligando a venda ao lead pelo telefone, como na sincronização do Funil;
+  - vendas por oferta (48,90 a 118,90).
+  - Tudo sai de funções do banco que devolvem só números (`vendas_viral_resumo`, `vendas_viral_conversao`).
+- **Meta da equipe e tabela "Por vendedor":** só GCS.
+- **Funil:** venda do Viral ligada ao lead marca `funil_leads.downsell = 'viral'`.

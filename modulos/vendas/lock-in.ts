@@ -1,10 +1,13 @@
 // Regras da tela de Vendas no formato do Lock in (masterview), por vendedor.
 // Sem banco e sem tela. Dinheiro em centavos. Os valores de cada venda vêm da cópia
 // guardada nela (snapshot): mudar ou desativar ticket nunca recalcula venda antiga.
-// Diferença do resumir() de regras.ts: aqui "total de vendas" = TODAS as pagas (com e
+// Diferença do resumir() de regras.ts: aqui "total de vendas" = TODAS as pagas do GCS (com e
 // sem ticket), como no Lock in; sem ticket conta só na quantidade.
+// Protocolo Viral (linha 'viral', 16/10/2026) fica à parte em resumo.viral: não entra no total
+// de vendas nem no bruto/líquido de ticket. A comissão dele segue a regra do GCS (líquido × % da
+// faixa) e soma no "a receber".
 
-import { centavos, FAIXAS, type Faixa, type StatusVenda } from "./regras";
+import { centavos, comissaoDe, FAIXAS, type Faixa, type StatusVenda } from "./regras";
 
 export type TicketLI = {
   id: number;
@@ -68,6 +71,14 @@ export type VendaLI = {
   snap_comissao_8: number | string | null;
   snap_comissao_9: number | string | null;
   snap_comissao_10: number | string | null;
+  /** gcs = Protocolo Game Changer (ticket); viral = Protocolo Viral */
+  linha: "gcs" | "viral";
+  /** valor que o cliente pagou (no Viral, o total da fatura) */
+  valor_pago: number | string | null;
+  /** Viral: preço da oferta na Hubla */
+  viral_preco: number | string | null;
+  /** Viral: líquido da venda (base da comissão, sem juros); null = sem o valor da Hubla */
+  viral_liquido: number | string | null;
   cliente: string;
 };
 
@@ -95,8 +106,23 @@ export function comissaoVenda(v: VendaLI, t: TicketLI | undefined, m: Faixa): nu
 // ---------- resumo ----------
 export type LinhaTicket = { ticket: TicketLI; qtd: number; bruto: number; liquido: number; comissao: Record<Faixa, number> };
 
+/** Protocolo Viral no período (centavos). porPreco: preço da oferta → vendas pagas. */
+export type ResumoViral = {
+  qtd: number;
+  faturamento: number;
+  /** base da comissão: o que a Hubla repassou, sem juros do parcelamento */
+  liquido: number;
+  /** comissão em cada faixa (mesma regra do GCS: líquido × %, venda a venda) */
+  comissao: Record<Faixa, number>;
+  /** pagas ainda sem o líquido da Hubla (sem comissão até chegar) */
+  semLiquido: number;
+  reembolsos: number;
+  chargebacks: number;
+  porPreco: { preco: number; qtd: number }[];
+};
+
 export type ResumoLI = {
-  /** todas as pagas */
+  /** todas as pagas do GCS */
   qtd: number;
   bruto: number;
   liquido: number;
@@ -109,7 +135,34 @@ export type ResumoLI = {
   porTicket: LinhaTicket[];
   reembolsos: number;
   chargebacks: number;
+  viral: ResumoViral;
 };
+
+/** Comissão do mês: GCS + Protocolo Viral, na mesma faixa. */
+export const comissaoTotal = (r: ResumoLI, m: Faixa) => r.comissao[m] + r.viral.comissao[m];
+
+export function resumirViral(vendas: VendaLI[]): ResumoViral {
+  const r: ResumoViral = { qtd: 0, faturamento: 0, liquido: 0, comissao: zero(), semLiquido: 0, reembolsos: 0, chargebacks: 0, porPreco: [] };
+  const precos = new Map<number, number>();
+  for (const v of vendas) {
+    if (v.linha !== "viral" || v.aguardando_confirmacao) continue;
+    if (v.status === "reembolso") r.reembolsos++;
+    if (v.status === "chargeback") r.chargebacks++;
+    if (v.status !== "pago") continue;
+    r.qtd++;
+    r.faturamento += centavos(v.valor_pago);
+    if (v.viral_liquido == null) r.semLiquido++;
+    else {
+      const liq = centavos(v.viral_liquido);
+      r.liquido += liq;
+      for (const m of FAIXAS) r.comissao[m] += comissaoDe(liq, m);
+    }
+    const preco = centavos(v.viral_preco ?? v.valor_pago);
+    precos.set(preco, (precos.get(preco) ?? 0) + 1);
+  }
+  r.porPreco = [...precos.entries()].map(([preco, qtd]) => ({ preco, qtd })).sort((a, b) => a.preco - b.preco);
+  return r;
+}
 
 export function resumirLI(vendas: VendaLI[], tickets: TicketLI[]): ResumoLI {
   const linhas = new Map<number, LinhaTicket>();
@@ -119,6 +172,7 @@ export function resumirLI(vendas: VendaLI[], tickets: TicketLI[]): ResumoLI {
   let chargebacks = 0;
   for (const v of vendas) {
     if (v.aguardando_confirmacao) continue; // pendente: não conta até ser confirmada
+    if (v.linha === "viral") continue; // à parte (resumirViral)
     if (v.status === "reembolso") reembolsos++;
     if (v.status === "chargeback") chargebacks++;
     if (v.status !== "pago") continue;
@@ -136,7 +190,18 @@ export function resumirLI(vendas: VendaLI[], tickets: TicketLI[]): ResumoLI {
     linhas.set(t.id, l);
   }
   const porTicket = [...tickets].sort((a, b) => a.ordem - b.ordem).filter((t) => linhas.has(t.id)).map((t) => linhas.get(t.id)!);
-  const r: ResumoLI = { qtd: semTicket + semTicketProduto, bruto: 0, liquido: 0, comissao: zero(), semTicket, semTicketProduto, porTicket, reembolsos, chargebacks };
+  const r: ResumoLI = {
+    qtd: semTicket + semTicketProduto,
+    bruto: 0,
+    liquido: 0,
+    comissao: zero(),
+    semTicket,
+    semTicketProduto,
+    porTicket,
+    reembolsos,
+    chargebacks,
+    viral: resumirViral(vendas),
+  };
   for (const l of porTicket) {
     r.qtd += l.qtd;
     r.bruto += l.bruto;
@@ -179,6 +244,17 @@ export function textoResumo(r: ResumoLI, margem: Faixa): string {
     "",
     `Margem: ${margem}%`,
     `Comissão: ${brl(r.comissao[margem])}`,
+    ...(r.viral.qtd || r.viral.reembolsos
+      ? [
+          "",
+          "PROTOCOLO VIRAL",
+          `Vendas: ${r.viral.qtd}`,
+          `Faturamento: ${brl(r.viral.faturamento)}`,
+          `Líquido: ${brl(r.viral.liquido)}`,
+          `Comissão: ${brl(r.viral.comissao[margem])}`,
+          `Comissão total (GCS + Viral): ${brl(comissaoTotal(r, margem))}`,
+        ]
+      : []),
     "",
     "Vendas:",
     ...[
@@ -239,7 +315,8 @@ export function textoFechamento(p: {
   ajustes?: AjusteLI[];
 }): string {
   const { resumo: r, margem } = p;
-  const comissao = p.comissao ?? r.comissao[margem];
+  // mês aberto: GCS na faixa + Viral; mês fechado: o total congelado
+  const comissao = p.comissao ?? comissaoTotal(r, margem);
   const estornos = p.estornos ?? [];
   const ajustes = p.ajustes ?? [];
   const final = valorFinalDe(comissao, p.adiantamentos, { estornos, ajustes });
@@ -267,10 +344,13 @@ export function textoFechamento(p: {
     "",
     `-${margem}%`,
     ...porTicket.map((x) => `-${vendas(x.qtd)} ${x.txt}`),
+    ...(r.viral.qtd
+      ? [`-${vendas(r.viral.qtd)} Protocolo Viral (${brl(r.viral.faturamento)}): comissão ${brl(r.viral.comissao[margem])}`]
+      : []),
     ...(p.adiantamentos.length || estornos.length || ajustes.length
       ? [
           "",
-          `-Comissão (${margem}%): ${brl(comissao)}`,
+          r.viral.qtd ? `-Comissão (${margem}% + Viral): ${brl(comissao)}` : `-Comissão (${margem}%): ${brl(comissao)}`,
           ...linhasDeDesconto(estornos, ajustes),
           ...p.adiantamentos.map((a) => `Adiantamento no dia ${a.data.slice(8, 10)}/${a.data.slice(5, 7)}: -${brl(a.valor)}`),
           final >= 0 ? `Valor final a receber: ${brl(final)}` : `Saldo negativo de ${brl(-final)}, descontado no próximo fechamento`,
@@ -316,16 +396,16 @@ export function resumoAnual(
     const f = fechamentos.find((x) => x.mes === chave);
     const margem = f?.faixa ?? sugeridas.get(chave) ?? null;
     const adiant = adiantamentos.filter((a) => a.mes === chave).sort((a, b) => a.data.localeCompare(b.data));
-    const tem = r.qtd > 0 || r.reembolsos > 0 || !!f;
+    const tem = r.qtd > 0 || r.reembolsos > 0 || r.viral.qtd > 0 || r.viral.reembolsos > 0 || !!f;
     // mês fechado: vale a comissão congelada no fechamento (a diferença vira estorno no mês seguinte)
-    const comissao = f ? f.comissao : r.comissao[margem ?? 10];
+    const comissao = f ? f.comissao : comissaoTotal(r, margem ?? 10);
     const extras = {
       estornos: estornos.filter((e) => e.descontadoNoMes === chave),
       ajustes: ajustes.filter((a) => a.mes === chave),
     };
     return {
       mes,
-      vendas: r.qtd,
+      vendas: r.qtd + r.viral.qtd,
       comissao: tem ? comissao : 0,
       margem,
       fonte: f ? "fechamento" : tem ? "calculado" : null,
@@ -333,7 +413,7 @@ export function resumoAnual(
       chargebacks: r.chargebacks,
       adiantamentos: adiant,
       valorFinal: tem ? valorFinalDe(comissao, adiant, extras) : null,
-      difere: !!f && (f.comissao !== r.comissao[f.faixa] || f.qtd !== r.qtd),
+      difere: !!f && (f.comissao !== comissaoTotal(r, f.faixa) || f.qtd !== r.qtd),
     };
   });
 }

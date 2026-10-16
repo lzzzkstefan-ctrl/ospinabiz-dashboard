@@ -36,6 +36,9 @@ async function Conteudo({ params }: { params: Promise<{ codigo: string }> }) {
     { lbl: "faturamento bruto", num: formatBRLServidor(r.bruto) },
     { lbl: "vendas aprovadas", num: String(r.qtd) },
     { lbl: margem ? `comissão (${margem}%)` : "comissão (% a definir)", num: margem ? formatBRLServidor(r.comissao[margem]) : "—" },
+    ...(r.viral.qtd
+      ? [{ lbl: `Protocolo Viral (${r.viral.qtd} venda${r.viral.qtd > 1 ? "s" : ""})`, num: margem ? formatBRLServidor(r.viral.comissao[margem]) : "—" }]
+      : []),
     { lbl: "reembolsos", num: String(r.reembolsos) },
     { lbl: "chargebacks", num: String(r.chargebacks) },
   ];
@@ -57,7 +60,7 @@ async function Conteudo({ params }: { params: Promise<{ codigo: string }> }) {
         ))}
       </section>
       <p className="mb-5 text-[12px] text-ink-faint">
-        Vendas aprovadas = pagas no mês
+        Vendas aprovadas = pagas no mês do Protocolo Game Changer; o Protocolo Viral (downsell) tem comissão própria, à parte
         {r.semTicketProduto > 0 && ` (inclui ${r.semTicketProduto} sem comissão, listadas no fim)`}. Reembolso e chargeback não contam venda nem comissão.
       </p>
       <ListaPublica vendas={dados.publicas} nomeArquivo={`vendas-${dados.mes}.csv`} plataformas={dados.plataformas} />

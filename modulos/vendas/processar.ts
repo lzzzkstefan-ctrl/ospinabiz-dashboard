@@ -7,10 +7,12 @@
 // Usa a chave secreta (roda no servidor, depois da resposta à Hubla).
 // Toda gravação em vendas vai com alterado_via = 'hubla': em mês fechado o banco aceita só
 // reembolso/chargeback e venda nova, registra em vendas_alteracoes e gera o estorno.
+// Protocolo Viral (16/10/2026): produto ou oferta com ID em vendas_produtos_hubla → linha 'viral',
+// sem ticket, valor = total pago na fatura; a comissão do Viral o banco calcula ao gravar.
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerFatura, type FaturaHubla } from "./hubla";
-import { diaSP, finalDoLead, ticketDoPrincipal, ticketDosItens, vendedorDoUtm, type Ticket } from "./regras";
+import { diaSP, finalDoLead, montarVendaNova, vendedorDoUtm, type IdHubla, type Ticket } from "./regras";
 
 type Db = ReturnType<typeof createAdminClient>;
 type Conclusao = { resultado: string; vendaId?: number | null };
@@ -85,9 +87,10 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
     return { resultado: "repetido", vendaId: existente.data.id };
   }
 
-  const [vendedores, tickets, reembolsoAntes] = await Promise.all([
+  const [vendedores, tickets, idsViral, reembolsoAntes] = await Promise.all([
     db.from("vendedores").select("equipe_id, utm_term, ativo"),
     db.from("tickets").select("*"),
+    db.from("vendas_produtos_hubla").select("hubla_id, tipo").eq("ativo", true),
     db
       .from("hubla_eventos")
       .select("id, recebido_em")
@@ -98,14 +101,11 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
   ]);
   if (vendedores.error) throw new Error(`erro ao ler vendedores: ${vendedores.error.message}`);
   if (tickets.error) throw new Error(`erro ao ler tickets: ${tickets.error.message}`);
+  if (idsViral.error) throw new Error(`erro ao ler os IDs do Viral: ${idsViral.error.message}`);
   if (reembolsoAntes.error) throw new Error(`erro ao ler eventos: ${reembolsoAntes.error.message}`);
 
   const vendedorId = vendedorDoUtm(f.utmTerm, vendedores.data);
-  // regra A: Protocolo na venda (principal ou bump) = ticket, pelo valor cobrado dele;
-  // payload sem as ofertas cai na regra pelos nomes
-  const ticket = f.principais.length
-    ? ticketDoPrincipal(f.principais, f.ofertasBump, tickets.data as Ticket[])
-    : ticketDosItens(f.itens, tickets.data as Ticket[]);
+  const produto = montarVendaNova(f, tickets.data as Ticket[], idsViral.data as IdHubla[]);
   const jaReembolsada = reembolsoAntes.data.length > 0;
   const agora = new Date().toISOString();
 
@@ -117,13 +117,7 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
       forma_atribuicao: vendedorId ? "utm" : null,
       atribuida_em: vendedorId ? agora : null,
       utm_term: f.utmTerm,
-      ticket_id: ticket.ticketId,
-      motivo_sem_ticket: ticket.motivo,
-      principal_produto: ticket.principalProduto,
-      // principal primeiro (a tela mostra itens[0] como a oferta); bumps à parte, só para ver
-      itens: f.principais.length ? [...f.principais.map((p) => p.nome), ...f.itens.filter((i) => !f.principais.some((p) => p.nome === i))] : f.itens,
-      bumps: ticket.bumps,
-      valor_pago: f.valorPagoCentavos === null ? null : f.valorPagoCentavos / 100,
+      ...produto,
       receita_liquida: f.receitaLiquidaCentavos === null ? null : f.receitaLiquidaCentavos / 100,
       status: jaReembolsada ? "reembolso" : "pago",
       reembolsado_em: jaReembolsada ? reembolsoAntes.data[0].recebido_em : null,

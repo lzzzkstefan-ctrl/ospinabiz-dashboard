@@ -4,7 +4,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { COLUNAS_VENDA, margemDoMes } from "./dados";
-import { centavos, intervaloMes, precoCurto, resumir, type Faixa, type Resumo, type Ticket, type Venda } from "./regras";
+import { centavos, comissaoDe, intervaloMes, precoCurto, resumir, type Faixa, type Resumo, type Ticket, type Venda } from "./regras";
 
 export type LinhaRelatorio = {
   data: string; // dd/mm/aaaa
@@ -72,6 +72,21 @@ export function linhasDoRelatorio(d: DadosFechamento, faixa: Faixa): LinhaRelato
     const t = v.ticket_id ? d.tickets.find((x) => x.id === v.ticket_id) : undefined;
     const conta = v.status === "pago" && v.ticket_id !== null;
     const primeiro = (d.clientes.get(v.id) ?? "").trim().split(/\s+/)[0] || "Cliente";
+    if (v.linha === "viral") {
+      // Protocolo Viral: valor pago de verdade; líquido (sem juros) × % da faixa, como o GCS
+      const pago = v.status === "pago";
+      const liq = pago && v.viral_liquido != null ? centavos(v.viral_liquido) : null;
+      return {
+        data: dataBR(v.data),
+        hora: horaBR(v.pago_em),
+        cliente: v.final_lead ? `${primeiro} -${v.final_lead}` : primeiro,
+        ticket: `Viral ${v.valor_pago == null ? "" : precoCurto(centavos(v.valor_pago))}`.trim(),
+        status: v.status,
+        bruto: pago && v.valor_pago != null ? centavos(v.valor_pago) : null,
+        liquido: liq,
+        comissao: liq === null ? null : comissaoDe(liq, faixa),
+      };
+    }
     return {
       data: dataBR(v.data),
       hora: horaBR(v.pago_em),
@@ -105,7 +120,11 @@ export function csvDoFechamento(nomeVendedor: string, mesNome: string, faixa: Fa
       linha("Faturamento bruto", numeroBR(r.bruto)),
       linha("Líquido", numeroBR(r.liquido)),
       linha("Margem de comissão", `${faixa}%`),
-      linha("Comissão", numeroBR(r.comissao[faixa])),
+      linha("Comissão GCS", numeroBR(r.comissao[faixa])),
+      linha("Vendas pagas do Protocolo Viral", r.viralQtd),
+      linha("Líquido do Protocolo Viral", numeroBR(r.viralLiquido)),
+      linha(`Comissão do Protocolo Viral (${faixa}%)`, numeroBR(r.viralComissao[faixa])),
+      linha("Comissão total", numeroBR(r.comissao[faixa] + r.viralComissao[faixa])),
       linha("Reembolsos", r.reembolsos),
       linha("Chargebacks", r.chargebacks),
       "",
@@ -149,7 +168,8 @@ export async function carregarRelatorio(mes: string, vendedorId: number): Promis
   const desatualizado =
     Number(f.qtd) !== r.qtd ||
     centavos(f.bruto) !== r.bruto ||
-    centavos(f.comissao) !== r.comissao[faixa] ||
+    // comissão congelada = GCS + Viral na faixa
+    centavos(f.comissao) !== r.comissao[faixa] + r.viralComissao[faixa] ||
     Number(f.reembolsos) !== r.reembolsos ||
     Number(f.chargebacks) !== r.chargebacks;
   return {

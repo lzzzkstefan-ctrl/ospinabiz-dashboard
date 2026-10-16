@@ -36,6 +36,10 @@ export type Venda = {
   reembolsado_em: string | null;
   final_lead: string | null;
   origem: "webhook" | "importacao" | "manual";
+  /** gcs = Protocolo Game Changer (ticket); viral = Protocolo Viral (sem ticket) */
+  linha?: "gcs" | "viral";
+  /** Viral: líquido da venda (base da comissão, sem juros), guardado ao nascer; null = sem o valor da Hubla */
+  viral_liquido?: number | string | null;
   /** cópia dos valores do ticket no momento da venda (trigger no banco); null = sem ticket */
   snap_bruto: number | string | null;
   snap_liquido: number | string | null;
@@ -67,6 +71,10 @@ export function mesDe(dia: string): string {
 export function mesJaAcabou(mes: string, agora: Date = new Date()): boolean {
   return mes < mesDe(diaSP(agora)!);
 }
+
+/** Fechar com venda do Viral sem líquido congelaria o mês sem a comissão dela. */
+export const VIRAL_SEM_LIQUIDO =
+  "Há venda do Protocolo Viral ainda sem o valor líquido da Hubla (sem ele não há comissão). Reprocesse o evento em Configuração antes de fechar o mês.";
 
 /** Mensagem de quando falta a confirmação para fechar um mês que ainda não acabou. */
 export const MES_NAO_ACABOU = "Este mês ainda não acabou. Vendas que entrarem depois ficam fora do fechamento. Confirme para fechar mesmo assim.";
@@ -178,13 +186,72 @@ export function ticketDoPrincipal(
 }
 
 // ---------------------------------------------------------------------------
+// Protocolo Viral (downsell, 16/10/2026): reconhecido pelo ID do produto ou da oferta na Hubla,
+// guardado em vendas_produtos_hubla (o chefe edita na Configuração). Nunca pelo nome nem pelo valor.
+// ---------------------------------------------------------------------------
+export type IdHubla = { hubla_id: string; tipo: "produto" | "oferta" };
+type OfertaComIds = { valorCentavos: number | null; produtoId?: string | null; ofertaId?: string | null };
+
+/** Oferta do Viral na fatura (a primeira que bate com um ID cadastrado), ou null = venda do GCS. */
+export function ofertaViral<T extends OfertaComIds>(ofertas: T[], ids: IdHubla[]): T | null {
+  const produtos = new Set(ids.filter((i) => i.tipo === "produto").map((i) => i.hubla_id));
+  const ofertasIds = new Set(ids.filter((i) => i.tipo === "oferta").map((i) => i.hubla_id));
+  return ofertas.find((o) => (o.produtoId && produtos.has(o.produtoId)) || (o.ofertaId && ofertasIds.has(o.ofertaId))) ?? null;
+}
+
+type FaturaParaVenda = {
+  principais: (OfertaComIds & { produto: string | null; nome: string })[];
+  ofertasBump: (OfertaComIds & { produto: string | null; nome: string })[];
+  itens: string[];
+  valorPagoCentavos: number | null;
+  valorTotalCentavos: number | null;
+};
+
+/**
+ * Produto, ticket e valor de uma venda nova do webhook (sem dono nem datas; ver processar.ts).
+ * - Viral: linha 'viral', sem ticket, valor = total que o cliente pagou, preço = valor da oferta.
+ * - GCS: regra A (Protocolo na venda = ticket pelo valor cobrado); payload sem as ofertas cai
+ *   na regra pelos nomes. valor_pago = subtotal da fatura (só referência), como sempre.
+ */
+export function montarVendaNova(f: FaturaParaVenda, tickets: Ticket[], idsViral: IdHubla[]) {
+  // principal primeiro (a tela mostra itens[0] como a oferta); bumps à parte, só para ver
+  const itens = f.principais.length ? [...f.principais.map((p) => p.nome), ...f.itens.filter((i) => !f.principais.some((p) => p.nome === i))] : f.itens;
+  const viral = ofertaViral([...f.principais, ...f.ofertasBump], idsViral);
+  if (viral) {
+    const total = f.valorTotalCentavos ?? f.valorPagoCentavos;
+    return {
+      linha: "viral" as const,
+      ticket_id: null,
+      motivo_sem_ticket: null,
+      principal_produto: false,
+      itens,
+      bumps: f.ofertasBump.filter((o) => o !== viral).map((o) => o.produto ?? o.nome),
+      valor_pago: total === null ? null : total / 100,
+      viral_preco: viral.valorCentavos === null ? null : viral.valorCentavos / 100,
+    };
+  }
+  const ticket = f.principais.length ? ticketDoPrincipal(f.principais, f.ofertasBump, tickets) : ticketDosItens(f.itens, tickets);
+  return {
+    linha: "gcs" as const,
+    ticket_id: ticket.ticketId,
+    motivo_sem_ticket: ticket.motivo,
+    principal_produto: ticket.principalProduto,
+    itens,
+    bumps: ticket.bumps,
+    valor_pago: f.valorPagoCentavos === null ? null : f.valorPagoCentavos / 100,
+    viral_preco: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // "A revisar" (só admin): venda sem dono, ou venda nova paga sem ticket.
 // Venda importada sem ticket (produto, combo do histórico) não entra: já foi
 // conferida na origem e fica só na lista do mês, com o motivo.
 // ---------------------------------------------------------------------------
 export function precisaRevisar(v: Venda): boolean {
   const semDono = v.vendedor_id === null && !v.sem_vendedor;
-  const semTicket = v.status === "pago" && v.ticket_id === null && v.origem !== "importacao";
+  // Viral não tem ticket: nunca "a revisar" por isso
+  const semTicket = v.status === "pago" && v.ticket_id === null && v.origem !== "importacao" && v.linha !== "viral";
   return semDono || semTicket;
 }
 
@@ -201,7 +268,11 @@ export function comissaoDe(liquidoCentavos: number, pct: Faixa): number {
   return Math.floor((liquidoCentavos * pct + 50) / 100);
 }
 export type Resumo = {
-  qtd: number; // vendas pagas com ticket
+  qtd: number; // vendas pagas com ticket (GCS)
+  /** Protocolo Viral: pagas, líquido e comissão em cada faixa (mesma regra do GCS; fora de bruto/líquido do GCS) */
+  viralQtd: number;
+  viralLiquido: number;
+  viralComissao: Record<Faixa, number>;
   semTicket: number; // vendas pagas sem ticket identificado (sem valor nem comissão)
   bruto: number;
   liquido: number;
@@ -230,6 +301,9 @@ function valoresDaVenda(v: Venda, t: Ticket) {
 export function resumir(vendas: Venda[], tickets: Ticket[]): Resumo {
   const r: Resumo = {
     qtd: 0,
+    viralQtd: 0,
+    viralLiquido: 0,
+    viralComissao: { 6: 0, 7: 0, 8: 0, 9: 0, 10: 0 },
     semTicket: 0,
     bruto: 0,
     liquido: 0,
@@ -241,6 +315,18 @@ export function resumir(vendas: Venda[], tickets: Ticket[]): Resumo {
   const porTicket = new Map<number, { ticketId: number; bruto: number; qtd: number }>();
 
   for (const v of vendas) {
+    // Viral à parte: reembolsos e chargebacks do resumo são só do GCS (como em resumirLI)
+    if (v.linha === "viral") {
+      if (v.status === "pago") {
+        r.viralQtd += 1;
+        if (v.viral_liquido != null) {
+          const liq = centavos(v.viral_liquido);
+          r.viralLiquido += liq;
+          for (const f of FAIXAS) r.viralComissao[f] += comissaoDe(liq, f);
+        }
+      }
+      continue;
+    }
     if (v.status === "reembolso") r.reembolsos += 1;
     if (v.status === "chargeback") r.chargebacks += 1;
     if (v.status !== "pago") continue;

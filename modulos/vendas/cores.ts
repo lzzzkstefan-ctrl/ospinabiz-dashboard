@@ -26,6 +26,8 @@ export const CORES_TICKET: Record<number, string> = {
 export const COR_PRODUTO = "#94a3b8";
 /** venda sem ticket que precisa de revisão */
 export const COR_REVISAR = "#ef4444";
+/** Protocolo Viral (downsell): todas as ofertas na mesma cor */
+export const COR_VIRAL = "#e879f9";
 /** ticket sem cor definida */
 export const COR_NEUTRA = "#8a96a3";
 

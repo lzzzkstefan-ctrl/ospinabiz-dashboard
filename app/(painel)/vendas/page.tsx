@@ -16,9 +16,13 @@ import {
   listarPlataformas,
   listarTicketsLI,
   mesDoVendedor,
+  viralConversao,
+  viralGeral,
   whatsappFechamento,
   type LinhaGeral,
+  type LinhaViral,
 } from "@/modulos/vendas/tela";
+import { COR_VIRAL } from "@/modulos/vendas/cores";
 import Link from "next/link";
 import { Suspense } from "react";
 import { formatBRLServidor } from "./_lockin/formato";
@@ -168,7 +172,7 @@ async function Mes({
   const chefe = papel === "chefe";
   const ano = Number(mes.slice(0, 4));
   const fim = `${somarMes(mes, 1)}-01`;
-  const [tickets, vendas, margem, mesVend, adiantamentos, fechamentos, whatsapp, plataformas, estornos, ajustes, linhasGeral, equipe] = await Promise.all([
+  const [tickets, vendas, margem, mesVend, adiantamentos, fechamentos, whatsapp, plataformas, estornos, ajustes, linhasGeral, equipe, viral, conversao] = await Promise.all([
     listarTicketsLI(),
     carregarVendas(vendedor?.id ?? null, `${mes}-01`, fim),
     // só a faixa sugerida sai daqui (a margem e os custos ficam no servidor)
@@ -182,6 +186,8 @@ async function Mes({
     vendedor ? listarAjustes(vendedor.id, ano) : [],
     vendedor ? null : geralCompleta(mes),
     vendedor ? null : geralEquipe(mes),
+    vendedor ? null : viralGeral(mes),
+    vendedor ? null : viralConversao(mes),
   ]);
   const fechado = fechamentos.find((f) => f.mes === mes) ?? null;
   // registro de alterações: só o chefe, de qualquer mês (desde 10/10/2026 o mês aberto também é registrado)
@@ -194,6 +200,7 @@ async function Mes({
         <>
           <Meta mes={mes} pagas={equipe.pagas} meta={equipe.meta} />
           <ResumoPorVendedor linhas={linhasGeral} nomes={nomes} faixa={margem} />
+          {viral && conversao && <GcsEViral gcs={linhasGeral} viral={viral} conversao={conversao} nomes={nomes} faixa={margem} />}
         </>
       )}
       <PainelVendas
@@ -239,12 +246,14 @@ async function Mes({
 async function GeralSemVendas({ papel, eu, nomes, mes }: { papel: PapelVendas; eu: { id: number; nome: string }; nomes: Map<number, string>; mes: string }) {
   const fim = `${somarMes(mes, 1)}-01`;
   const completa = papel === "gerente";
-  const [equipe, linhas, margem, minhas, tickets] = await Promise.all([
+  const [equipe, linhas, margem, minhas, tickets, viral, conversao] = await Promise.all([
     geralEquipe(mes),
     completa ? geralCompleta(mes) : null,
     completa ? margemDoMes(mes).then((m) => m.faixa) : null,
     carregarVendas(eu.id, `${mes}-01`, fim),
     listarTicketsLI(),
+    completa ? viralGeral(mes) : null,
+    completa ? viralConversao(mes) : null,
   ]);
   // ticket médio DELE (bruto de ticket ÷ vendas pagas com ticket). O da equipe não aparece:
   // com a quantidade da equipe, revelaria o faturamento do outro.
@@ -255,6 +264,7 @@ async function GeralSemVendas({ papel, eu, nomes, mes }: { papel: PapelVendas; e
       <MesNav mes={mes} />
       <Meta mes={mes} pagas={equipe.pagas} meta={equipe.meta} ticketMedio={comTicket ? Math.round(r.bruto / comTicket) : null} />
       {linhas && <ResumoPorVendedor linhas={linhas} nomes={nomes} faixa={margem} />}
+      {linhas && viral && conversao && <GcsEViral gcs={linhas} viral={viral} conversao={conversao} nomes={nomes} faixa={margem} />}
       {!completa && (
         <p className="m-0 text-[12px] text-ink-faint">
           A Geral mostra só números da equipe, sem valores em reais. As suas vendas e a sua comissão ficam na aba {eu.nome}.
@@ -362,6 +372,150 @@ function ResumoPorVendedor({ linhas: brutas, nomes, faixa }: { linhas: LinhaGera
         pendentes ficam fora){semValor > 0 ? ` (${semValor} venda(s) do mês ainda sem esse valor)` : ""}; bruto e líquido de ticket = base da comissão (sem bumps), sempre pela
         tabela de tickets. Recebido real = parte do ticket no valor que entrou de verdade (com juros do parcelamento), só informação, desde outubro/2026.
       </p>
+    </section>
+  );
+}
+
+/** Ofertas do Viral na Hubla: R$ 48,90 a R$ 118,90, de 5 em 5 (centavos). */
+const OFERTAS_VIRAL = Array.from({ length: 15 }, (_, i) => 4890 + i * 500);
+
+/**
+ * GCS x Protocolo Viral por vendedor (quantidade, faturamento, ticket médio e comissão), conversão do
+ * downsell (etiqueta do Viral x compras) e vendas por oferta. Chefe e gerente; só números do banco.
+ */
+function GcsEViral({
+  gcs,
+  viral,
+  conversao,
+  nomes,
+  faixa,
+}: {
+  gcs: LinhaGeral[];
+  viral: LinhaViral[];
+  conversao: { marcados: number; compraram: number; etiquetaDefinida: boolean };
+  nomes: Map<number, string>;
+  faixa: Faixa | null;
+}) {
+  const f: Faixa = faixa ?? 10;
+  const nome = (id: number | null) => (id === null ? "Sem vendedor" : (nomes.get(id) ?? "Vendedor inativo"));
+  const ids = [...new Set([...gcs.map((l) => l.vendedorId), ...viral.map((l) => l.vendedorId)])];
+  const linhas = ids
+    .map((id) => {
+      const g = gcs.find((l) => l.vendedorId === id);
+      const v = viral.filter((l) => l.vendedorId === id);
+      const soma = (k: "pagas" | "faturamento" | "semLiquido") => v.reduce((s, l) => s + l[k], 0);
+      return {
+        id,
+        nome: nome(id),
+        gcs: { qtd: g?.pagas ?? 0, comTicket: g?.comTicket ?? 0, bruto: g?.bruto ?? 0, comissao: g?.comissao[f] ?? 0 },
+        viral: { qtd: soma("pagas"), faturamento: soma("faturamento"), comissao: v.reduce((s, l) => s + l.comissao[f], 0), semLiquido: soma("semLiquido") },
+      };
+    })
+    .filter((l) => l.gcs.qtd + l.viral.qtd > 0)
+    .sort((a, b) => (a.id === null ? 1 : b.id === null ? -1 : a.nome.localeCompare(b.nome, "pt-BR")));
+  const totalViral = linhas.reduce((s, l) => s + l.viral.qtd, 0);
+  const porPreco = new Map<number, number>();
+  for (const l of viral) if (l.preco !== null && l.pagas) porPreco.set(l.preco, (porPreco.get(l.preco) ?? 0) + l.pagas);
+  const precos = [...new Set([...OFERTAS_VIRAL, ...porPreco.keys()])].sort((a, b) => a - b);
+  const max = Math.max(1, ...porPreco.values());
+  const medio = (total: number, qtd: number) => (qtd ? formatBRLServidor(Math.round(total / qtd)) : "—");
+  const th = "py-1.5 pr-3 text-right font-medium";
+  const td = "whitespace-nowrap py-1.5 pr-3 text-right";
+
+  return (
+    <section className="glass-lite glass-static flex flex-col gap-5 p-4">
+      <div>
+        <h3 className="m-0 inline-flex items-center gap-2 text-[15px] font-semibold text-white">
+          GCS x <span className="h-2.5 w-2.5 rounded-full" style={{ background: COR_VIRAL }} aria-hidden /> Protocolo Viral
+        </h3>
+        <p className="m-0 mt-1 text-[11.5px] text-ink-faint">
+          GCS: vendas pagas, bruto de ticket e comissão a {f}%{faixa ? " (faixa sugerida)" : " (sem faixa sugerida ainda)"}; ticket médio = bruto ÷ vendas com
+          ticket. Viral: faturamento = valor que o cliente pagou; comissão = mesma regra do GCS (líquido sem juros × {f}%).
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-left text-[13px] tabular-nums">
+          <thead className="text-[11.5px] text-ink-dim">
+            <tr>
+              <th className="py-1.5 pr-3 font-medium" rowSpan={2}>Vendedor</th>
+              <th className="py-1 pr-3 text-center font-medium text-ink" colSpan={4}>GCS</th>
+              <th className="py-1 pr-3 text-center font-medium text-ink" colSpan={4}>Protocolo Viral</th>
+            </tr>
+            <tr>
+              <th className={th}>Vendas</th>
+              <th className={th}>Faturamento</th>
+              <th className={th}>Ticket médio</th>
+              <th className={th}>Comissão {f}%</th>
+              <th className={th}>Vendas</th>
+              <th className={th}>Faturamento</th>
+              <th className={th}>Ticket médio</th>
+              <th className={th}>Comissão {f}%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.length === 0 && (
+              <tr>
+                <td colSpan={9} className="py-3 italic text-ink-faint">Sem vendas pagas neste mês.</td>
+              </tr>
+            )}
+            {linhas.map((l) => {
+              return (
+                <tr key={String(l.id)} className="border-t border-line-soft text-ink">
+                  <td className="py-1.5 pr-3 text-white">{l.nome}</td>
+                  <td className={td}>{l.gcs.qtd}</td>
+                  <td className={td}>{formatBRLServidor(l.gcs.bruto)}</td>
+                  <td className={td}>{medio(l.gcs.bruto, l.gcs.comTicket)}</td>
+                  <td className={cn(td, "text-white")}>{formatBRLServidor(l.gcs.comissao)}</td>
+                  <td className={td}>{l.viral.qtd}</td>
+                  <td className={td}>{formatBRLServidor(l.viral.faturamento)}</td>
+                  <td className={td}>{medio(l.viral.faturamento, l.viral.qtd)}</td>
+                  <td className={cn(td, "text-white")}>
+                    {formatBRLServidor(l.viral.comissao)}
+                    {l.viral.semLiquido > 0 && <span className="ml-1 text-[11px] text-accent-3">({l.viral.semLiquido} sem valor da Hubla)</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+        <div className="flex flex-col gap-1">
+          <h4 className="m-0 text-[13.5px] font-semibold text-white">Conversão do downsell</h4>
+          {conversao.etiquetaDefinida ? (
+            <>
+              <p className="m-0 text-[13px] text-ink">
+                <span className="tabular-nums text-white">{conversao.marcados}</span> lead{conversao.marcados === 1 ? "" : "s"} com a etiqueta 🪞 Downsell Viral no mês ·{" "}
+                <span className="tabular-nums text-white">{conversao.compraram}</span> compr{conversao.compraram === 1 ? "ou" : "aram"} o Viral
+                {conversao.marcados > 0 && (
+                  <>
+                    {" "}· <span className="font-semibold tabular-nums text-white">{Math.round((conversao.compraram / conversao.marcados) * 1000) / 10}%</span>
+                  </>
+                )}
+              </p>
+              <p className="m-0 text-[11.5px] text-ink-faint">
+                Lead conta no mês em que recebeu a etiqueta; compra = venda do Viral ligada ao lead pelo telefone (sincronização do Funil). Vendas do Viral no
+                mês, com ou sem etiqueta: {totalViral}.
+              </p>
+            </>
+          ) : (
+            <p className="m-0 text-[12.5px] text-ink-faint">Etiqueta do downsell não configurada.</p>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <h4 className="m-0 text-[13.5px] font-semibold text-white">Vendas por oferta</h4>
+          {precos.map((p) => (
+            <div key={p} className="grid grid-cols-[64px_1fr_28px] items-center gap-2 text-[12.5px] tabular-nums">
+              <span className={porPreco.get(p) ? "text-ink" : "text-ink-faint"}>{(p / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+              <span className="h-2 rounded-full bg-bg-raised-2">
+                {porPreco.get(p) ? <span className="block h-2 rounded-full" style={{ width: `${((porPreco.get(p) ?? 0) / max) * 100}%`, background: COR_VIRAL }} /> : null}
+              </span>
+              <span className={cn("text-right", porPreco.get(p) ? "text-white" : "text-ink-faint")}>{porPreco.get(p) ?? 0}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

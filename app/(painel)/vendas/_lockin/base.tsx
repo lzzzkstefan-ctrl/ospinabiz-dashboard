@@ -4,7 +4,7 @@
 // janela, botão de confirmação, etiquetas de ticket/status/plataforma e a rosca.
 
 import { Etiqueta, type CorEtiqueta } from "@/components/ui/etiqueta";
-import { COR_NEUTRA, COR_PRODUTO, COR_REVISAR } from "@/modulos/vendas/cores";
+import { COR_NEUTRA, COR_PRODUTO, COR_REVISAR, COR_VIRAL } from "@/modulos/vendas/cores";
 import type { LinhaTicket, PlataformaLI, TicketLI } from "@/modulos/vendas/lock-in";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
@@ -147,6 +147,19 @@ export function TicketTag({ ticket, solto }: { ticket: TicketLI; solto?: boolean
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: ticket.cor }} aria-hidden />
       {ticket.nome}
       {ticket.provisorio && <span className="text-[10.5px] text-ink-faint">provisório</span>}
+    </span>
+  );
+}
+
+/** Venda do Protocolo Viral: "Viral R$ 48,90" (preço da oferta). */
+export function ViralTag({ preco, solto }: { preco: number | null; solto?: boolean }) {
+  return (
+    <span
+      className={cn("inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink", !solto && "rounded-full border px-2 py-0.5")}
+      style={solto ? undefined : { borderColor: `${COR_VIRAL}80`, background: `${COR_VIRAL}1f` }}
+    >
+      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: COR_VIRAL }} aria-hidden />
+      Viral{preco != null ? ` ${formatBRL(preco)}` : ""}
     </span>
   );
 }

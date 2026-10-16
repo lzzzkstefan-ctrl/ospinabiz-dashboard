@@ -24,7 +24,7 @@ export type Vendedor = { equipe_id: number; nome: string; utm_term: string; ativ
 
 export const COLUNAS_VENDA =
   "id, id_fatura, vendedor_id, sem_vendedor, forma_atribuicao, atribuida_em, utm_term, ticket_id, motivo_sem_ticket, itens, bumps, valor_pago, status, pago_em, data, reembolsado_em, final_lead, origem, " +
-  "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10";
+  "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, linha, viral_liquido";
 
 /** Supabase devolve no máximo 1000 linhas por consulta: busca em páginas. */
 async function todasAsPaginas<T>(pagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
@@ -92,7 +92,7 @@ export async function carregarPainel(mes: string, hoje: string, admin: boolean):
       ? supabase
           .from("vendas")
           .select(COLUNAS_VENDA)
-          .or("and(vendedor_id.is.null,sem_vendedor.eq.false),and(status.eq.pago,ticket_id.is.null,origem.neq.importacao)")
+          .or("and(vendedor_id.is.null,sem_vendedor.eq.false),and(status.eq.pago,ticket_id.is.null,origem.neq.importacao,linha.eq.gcs)")
           .order("pago_em", { ascending: false })
           .returns<Venda[]>()
       : null,

@@ -17,7 +17,7 @@ import {
   salvarObservacoes,
   salvarWhatsapp,
 } from "../acoes-lockin";
-import { mesCapitalizado, rotuloEstorno, textoFechamento, valorFinalDe, type AjusteLI, type ResumoLI } from "@/modulos/vendas/lock-in";
+import { comissaoTotal, mesCapitalizado, rotuloEstorno, textoFechamento, valorFinalDe, type AjusteLI, type ResumoLI } from "@/modulos/vendas/lock-in";
 import type { Faixa } from "@/modulos/vendas/regras";
 import type { Alteracao, EstornoDoVendedor } from "@/modulos/vendas/tela";
 import { cn } from "@/lib/utils";
@@ -81,7 +81,8 @@ export function Fechamento({
   const link = codigo && origem ? `${origem}/r/${codigo}` : null;
   // mês fechado: comissão congelada + estornos descontados nele; aberto: comissão de agora +
   // estornos pendentes de meses anteriores (serão descontados quando fechar)
-  const comissaoBase = fechadoEm ? fechadoEm.comissao : resumo.comissao[margem];
+  // comissão de agora = GCS na faixa + Protocolo Viral
+  const comissaoBase = fechadoEm ? fechadoEm.comissao : comissaoTotal(resumo, margem);
   const estornosDoMes = fechadoEm
     ? estornos.filter((e) => e.descontadoNoMes === mes)
     : estornos.filter((e) => e.descontadoNoMes === null && e.mesOrigem < mes);

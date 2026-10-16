@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { atribuirVenda, corrigirVenda, criarCusto, fecharMes, salvarMes, salvarMeta, salvarTicket, valorDoCusto } from "../acoes";
+import { adicionarIdViral, atribuirVenda, corrigirVenda, criarCusto, fecharMes, salvarMes, salvarMeta, salvarTicket, valorDoCusto } from "../acoes";
 
 // Formulários da aba Vendas (os que mostram mensagem de resultado ou precisam do navegador).
 
@@ -152,6 +152,29 @@ const reaisTexto = (v: number | null) => (v === null ? "" : (v / 100).toFixed(2)
 
 /** Admin: valores do mês que entram na margem. Valores em centavos. */
 /** Meta do mês: quantidade de vendas da equipe (só o chefe; o RLS confere de novo). */
+/** Novo ID da Hubla do Viral (produto ou oferta). */
+export function FormIdViral() {
+  const [estado, acao] = useActionState<EstadoForm, FormData>(adicionarIdViral, {});
+  return (
+    <form action={acao} className="flex flex-wrap items-end gap-3">
+      <Campo rotulo="ID na Hubla">
+        <Input name="hubla_id" autoComplete="off" placeholder="ex.: ptOj9sEG0z4hnImIeHvC" className="w-64 font-mono text-[13px]" />
+      </Campo>
+      <Campo rotulo="É ID de">
+        <select name="tipo" defaultValue="oferta" className={`${classeSelect} w-32`}>
+          <option value="oferta" className={classeOpcao}>oferta</option>
+          <option value="produto" className={classeOpcao}>produto</option>
+        </select>
+      </Campo>
+      <Campo rotulo="Descrição (opcional)">
+        <Input name="descricao" maxLength={120} placeholder="ex.: oferta R$ 53,90" className="w-56" />
+      </Campo>
+      <Salvar texto="Adicionar" />
+      <Aviso estado={estado} />
+    </form>
+  );
+}
+
 export function FormMeta({ mes, meta }: { mes: string; meta: number | null }) {
   const [estado, acao] = useActionState<EstadoForm, FormData>(salvarMeta, {});
   return (

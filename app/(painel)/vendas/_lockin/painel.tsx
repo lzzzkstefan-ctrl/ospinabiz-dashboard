@@ -7,6 +7,7 @@
 import { confirmarVenda, criarVenda, editarVenda, gravarImportacao, previaImportacao, type VendaInput } from "../acoes-lockin";
 import {
   brutoVenda,
+  comissaoTotal,
   comissaoVenda,
   liquidoVenda,
   resumirLI,
@@ -17,7 +18,7 @@ import {
   type TicketLI,
   type VendaLI,
 } from "@/modulos/vendas/lock-in";
-import { FAIXAS, somarMes, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
+import { centavos, comissaoDe, FAIXAS, somarMes, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
 import { cn } from "@/lib/utils";
 import { ArrowDown, ArrowUp, Check, Copy, Plus, Upload } from "lucide-react";
 import Link from "next/link";
@@ -37,11 +38,12 @@ import {
   StatusTag,
   PlataformasContexto,
   TicketTag,
+  ViralTag,
 } from "./base";
 import { Fechamento } from "./fechamento";
 import type { AjusteLI } from "@/modulos/vendas/lock-in";
 import type { Alteracao, EstornoDoVendedor } from "@/modulos/vendas/tela";
-import { COR_NEUTRA, COR_PRODUTO, COR_REVISAR, FUNDO_SELECIONADO } from "@/modulos/vendas/cores";
+import { COR_NEUTRA, COR_PRODUTO, COR_REVISAR, COR_VIRAL, FUNDO_SELECIONADO } from "@/modulos/vendas/cores";
 
 export type VerLista = "pago" | "reembolso" | "tabela";
 export type VendedorOpcao = { id: number; nome: string };
@@ -244,6 +246,8 @@ export function PainelVendas({
         </p>
       )}
 
+      <BlocoViral resumo={resumo} margem={margem} />
+
       {/* margem */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[12.5px] text-ink-dim">Margem</span>
@@ -383,7 +387,7 @@ export function PainelVendas({
             fechamento.fechado
               ? {
                   ...fechamento.fechado,
-                  difere: fechamento.fechado.qtd !== resumoMes.qtd || fechamento.fechado.comissao !== resumoMes.comissao[fechamento.fechado.faixa],
+                  difere: fechamento.fechado.qtd !== resumoMes.qtd || fechamento.fechado.comissao !== comissaoTotal(resumoMes, fechamento.fechado.faixa),
                   ticketsDepois: Math.max(0, fechamento.fechado.semTicket - (resumoMes.semTicket + resumoMes.semTicketProduto)),
                 }
               : null
@@ -459,12 +463,13 @@ export function PainelVendas({
 }
 
 // ---------- filtros ----------
-type FiltroVendas = "todas" | "ticket" | "produto" | "indefinido" | "pendente";
+type FiltroVendas = "todas" | "ticket" | "viral" | "produto" | "indefinido" | "pendente";
 const FILTROS: { id: FiltroVendas; nome: string; teste: (v: VendaLI) => boolean }[] = [
   { id: "todas", nome: "Todas", teste: () => true },
   { id: "ticket", nome: "Com ticket", teste: (v) => v.ticket_id != null },
-  { id: "produto", nome: "Sem comissão (produto)", teste: (v) => v.ticket_id == null && v.principal_produto },
-  { id: "indefinido", nome: "A revisar", teste: (v) => v.ticket_id == null && !v.principal_produto },
+  { id: "viral", nome: "Protocolo Viral", teste: (v) => v.linha === "viral" },
+  { id: "produto", nome: "Sem comissão (produto)", teste: (v) => v.linha !== "viral" && v.ticket_id == null && v.principal_produto },
+  { id: "indefinido", nome: "A revisar", teste: (v) => v.linha !== "viral" && v.ticket_id == null && !v.principal_produto },
   { id: "pendente", nome: "Aguardando confirmação", teste: (v) => !!v.aguardando_confirmacao },
 ];
 const filtrar = (vendas: VendaLI[], f: FiltroVendas) => vendas.filter(FILTROS.find((x) => x.id === f)!.teste);
@@ -497,6 +502,67 @@ function FiltroChips({ vendas, filtro, onFiltro }: { vendas: VendaLI[]; filtro: 
 }
 
 const ofertaDe = (v: VendaLI) => v.itens[0] ?? null;
+const precoViral = (v: VendaLI) => ((v.viral_preco ?? v.valor_pago) == null ? null : centavos(v.viral_preco ?? v.valor_pago));
+
+/** Protocolo Viral do período: vendas, faturamento (valor pago), ticket médio, comissão e por oferta. */
+function BlocoViral({ resumo, margem }: { resumo: ReturnType<typeof resumirLI>; margem: Faixa }) {
+  const r = resumo.viral;
+  if (!r.qtd && !r.reembolsos && !r.chargebacks) return null;
+  const max = Math.max(1, ...r.porPreco.map((p) => p.qtd));
+  return (
+    <section className="glass-lite glass-static -mt-2 flex flex-col gap-3 p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="m-0 inline-flex items-center gap-2 text-[15px] font-semibold text-white">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: COR_VIRAL }} aria-hidden />
+          Protocolo Viral
+        </h3>
+        <span className="text-[12px] text-ink-faint">
+          downsell · fora do total de vendas e da base da comissão do GCS
+          {r.reembolsos + r.chargebacks > 0 ? ` · ${r.reembolsos + r.chargebacks} reembolso/chargeback` : ""}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { lbl: "vendas do Viral", num: String(r.qtd) },
+          { lbl: "faturamento (valor pago)", num: formatBRL(r.faturamento) },
+          { lbl: "ticket médio", num: r.qtd ? formatBRL(Math.round(r.faturamento / r.qtd)) : "—" },
+          { lbl: `comissão do Viral (${margem}% do líquido)`, num: formatBRL(r.comissao[margem]), destaque: true },
+        ].map((c) => (
+          <div key={c.lbl} className={cn(cartao, c.destaque && "border-accent/40")}>
+            <span className="block text-[20px] font-semibold leading-none tabular-nums text-white">{c.num}</span>
+            <span className="mt-1 block text-xs text-ink-dim">{c.lbl}</span>
+          </div>
+        ))}
+      </div>
+      <p className="m-0 text-[11.5px] text-ink-faint">
+        Mesma regra do GCS: líquido da venda (o que a Hubla repassa, sem juros do parcelamento) {formatBRL(r.liquido)} × {margem}%.
+        {r.semLiquido > 0 && (
+          <span className="text-accent-3">
+            {" "}
+            {r.semLiquido} venda{r.semLiquido > 1 ? "s" : ""} ainda sem o valor da Hubla (fica{r.semLiquido > 1 ? "m" : ""} sem comissão até chegar).
+          </span>
+        )}
+      </p>
+      {r.porPreco.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[12px] text-ink-dim">Vendas por oferta</span>
+          {r.porPreco.map((p) => (
+            <div key={p.preco} className="grid grid-cols-[72px_1fr_28px] items-center gap-2 text-[12.5px] tabular-nums">
+              <span className="text-ink">{formatBRL(p.preco).replace("R$ ", "")}</span>
+              <span className="h-2 rounded-full bg-bg-raised-2">
+                <span className="block h-2 rounded-full" style={{ width: `${(p.qtd / max) * 100}%`, background: COR_VIRAL }} />
+              </span>
+              <span className="text-right text-white">{p.qtd}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="m-0 text-[12.5px] text-ink-dim">
+        Comissão total do período (GCS + Viral a {margem}%): <span className="font-semibold text-white">{formatBRL(comissaoTotal(resumo, margem))}</span>
+      </p>
+    </section>
+  );
+}
 
 function Grade({ vendas, ticketDe, onAbrir, vazio }: { vendas: VendaLI[]; ticketDe: Map<number, TicketLI>; onAbrir: (id: number) => void; vazio: "pago" | "reembolso" }) {
   if (!vendas.length) {
@@ -518,7 +584,7 @@ function Grade({ vendas, ticketDe, onAbrir, vazio }: { vendas: VendaLI[]; ticket
               <span className="shrink-0 text-[11px] tabular-nums text-ink-faint">{dataBR(v.data).slice(0, 5)}</span>
             </span>
             <span className="flex flex-wrap gap-1.5">
-              {t ? <TicketTag ticket={t} /> : <SemComissaoTag oferta={ofertaDe(v)} produto={v.principal_produto} />}
+              {v.linha === "viral" ? <ViralTag preco={precoViral(v)} /> : t ? <TicketTag ticket={t} /> : <SemComissaoTag oferta={ofertaDe(v)} produto={v.principal_produto} />}
               <PlataformaTag plataforma={v.plataforma} />
               <StatusTag status={v.status} />
               {v.aguardando_confirmacao && <span className="etiqueta etiqueta-laranja">aguardando confirmação</span>}
@@ -551,6 +617,17 @@ function TabelaVendas({
   const nomeVendedor = (v: VendaLI) => (v.sem_vendedor ? "nenhum" : (vendedores.find((x) => x.id === v.vendedor_id)?.nome ?? "a revisar"));
   const linhas = vendas.map((v) => {
     const t = v.ticket_id ? ticketDe.get(v.ticket_id) : undefined;
+    if (v.linha === "viral") {
+      // Viral: valor pago de verdade; líquido (sem juros) × % da faixa, como o GCS
+      const liq = v.viral_liquido == null ? null : centavos(v.viral_liquido);
+      return {
+        v,
+        t,
+        bruto: v.valor_pago == null ? null : centavos(v.valor_pago),
+        liquido: liq,
+        comissao: v.status !== "pago" ? 0 : liq === null ? null : comissaoDe(liq, margem),
+      };
+    }
     return {
       v,
       t,
@@ -605,7 +682,9 @@ function TabelaVendas({
               <td className="whitespace-nowrap px-3 py-2">{dataBR(v.data)}</td>
               <td className="whitespace-nowrap px-3 py-2">{v.cliente}</td>
               {mostrarVendedor && <td className="whitespace-nowrap px-3 py-2">{nomeVendedor(v)}</td>}
-              <td className="px-3 py-2">{t ? <TicketTag ticket={t} solto /> : <SemComissaoTag oferta={ofertaDe(v)} produto={v.principal_produto} solto />}</td>
+              <td className="px-3 py-2">
+                {v.linha === "viral" ? <ViralTag preco={precoViral(v)} solto /> : t ? <TicketTag ticket={t} solto /> : <SemComissaoTag oferta={ofertaDe(v)} produto={v.principal_produto} solto />}
+              </td>
               <td className="px-3 py-2">
                 <PlataformaTag plataforma={v.plataforma} />
               </td>
@@ -653,7 +732,17 @@ function DetalheVenda({
         <StatusTag status={v.status} />
         <span className="text-[12px] text-ink-faint">{dataBR(v.data)}</span>
       </div>
+      {v.linha === "viral" && (
+        <div className="-mt-1 mb-4 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] tabular-nums text-ink-dim">
+          <ViralTag preco={precoViral(v)} />
+          <span>valor pago {v.valor_pago == null ? "—" : formatBRL(centavos(v.valor_pago))}</span>
+          <span className={v.status === "pago" ? "text-white" : "line-through"}>
+            {v.viral_liquido == null ? "sem o valor líquido da Hubla ainda" : `líquido ${formatBRL(centavos(v.viral_liquido))} · comissão ${margem}% ${formatBRL(comissaoDe(centavos(v.viral_liquido), margem))}`}
+          </span>
+        </div>
+      )}
       {!t &&
+        v.linha !== "viral" &&
         (v.principal_produto ? (
           <p className="-mt-1 mb-4 text-[12.5px] text-ink-dim">
             Sem comissão (produto){ofertaDe(v) ? `: ${ofertaDe(v)}` : ""}. O produto principal não é ticket, então não gera comissão.
@@ -846,6 +935,11 @@ function VendaForm({
       </div>
       )}
 
+      {venda?.linha === "viral" ? (
+        <div className="text-xs text-ink-dim">
+          Produto <span className="ml-1 text-[13px] font-semibold text-white">Protocolo Viral</span> (sem ticket; comissão = líquido × % da faixa)
+        </div>
+      ) : (
       <div className="text-xs text-ink-dim">
         <div className="mb-1.5">Ticket</div>
         <Botoes
@@ -865,6 +959,7 @@ function VendaForm({
           }
         />
       </div>
+      )}
 
       <div className="text-xs text-ink-dim">
         <div className="mb-1.5">Plataforma</div>

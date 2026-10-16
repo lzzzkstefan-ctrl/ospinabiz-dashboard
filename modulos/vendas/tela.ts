@@ -9,13 +9,14 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { corDoTicket } from "./cores";
+import { COR_VIRAL, corDoTicket } from "./cores";
 import { type AjusteLI, type EstornoLI, type PlataformaLI, type TicketLI, type VendaLI } from "./lock-in";
 import { calcularMargem, centavos, custosDoMes, resumir, type Faixa, type Ticket, type Venda } from "./regras";
 
 const COLUNAS =
   "id, id_fatura, vendedor_id, sem_vendedor, ticket_id, principal_produto, motivo_sem_ticket, itens, bumps, status, data, pago_em, final_lead, origem, plataforma, " +
-  "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, receita_liquida, teste, aguardando_confirmacao";
+  "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, receita_liquida, teste, aguardando_confirmacao, " +
+  "linha, valor_pago, viral_preco, viral_liquido";
 
 async function todas<T>(pagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
   const tudo: T[] = [];
@@ -335,6 +336,23 @@ export async function buscarMesPublico(codigo: string) {
     adiantamentos: (adiant.data ?? []).map((x) => ({ valor: centavos(x.valor), data: String(x.data) })),
     publicas: lista.map((v): VendaPublica => {
       const t = v.ticket_id ? porId.get(v.ticket_id) : undefined;
+      if (v.linha === "viral") {
+        // Protocolo Viral: aparece como um "ticket" próprio, pelo preço da oferta
+        const preco = v.viral_preco ?? v.valor_pago;
+        return {
+          cliente: v.cliente,
+          ticket: `Protocolo Viral${preco == null ? "" : ` R$ ${Number(preco).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}`,
+          cor: COR_VIRAL,
+          provisorio: false,
+          produto: false,
+          oferta: null,
+          status: v.status,
+          data: v.data,
+          pagoEm: v.pago_em,
+          idFatura: v.id_fatura,
+          plataforma: v.plataforma,
+        };
+      }
       return {
         cliente: v.cliente,
         ticket: t?.nome ?? null,
@@ -367,6 +385,8 @@ export type LinhaGeral = {
   semReceita: number;
   /** só informação: parte do ticket no valor recebido de verdade (com juros); a comissão usa a tabela */
   recebidoReal: number;
+  /** pagas com ticket (base do ticket médio do GCS) */
+  comTicket: number;
 };
 
 /** Geral completa (chefe e gerente), por vendedor, em centavos. */
@@ -387,7 +407,69 @@ export async function geralCompleta(mes: string): Promise<LinhaGeral[]> {
     receita: centavos(r.receita as number),
     semReceita: Number(r.sem_receita),
     recebidoReal: centavos(r.recebido_real as number),
+    comTicket: Number(r.com_ticket ?? 0),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Protocolo Viral na Geral (chefe e gerente): só números agregados do banco
+// ---------------------------------------------------------------------------
+export type LinhaViral = {
+  vendedorId: number | null;
+  /** preço da oferta (centavos); null = venda antiga sem o preço */
+  preco: number | null;
+  pagas: number;
+  reembolsos: number;
+  chargebacks: number;
+  faturamento: number;
+  receita: number;
+  liquido: number;
+  comissao: Record<Faixa, number>;
+  /** pagas ainda sem o líquido da Hubla */
+  semLiquido: number;
+};
+
+function fimDoMes(mes: string): string {
+  const [a, m] = mes.split("-").map(Number);
+  return new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10);
+}
+
+/** Viral do mês por vendedor e por preço da oferta, em centavos. */
+export async function viralGeral(mes: string): Promise<LinhaViral[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("vendas_viral_resumo", { p_inicio: `${mes}-01`, p_fim: fimDoMes(mes) });
+  if (error) throw new Error(`Erro ao carregar o Protocolo Viral: ${error.message}`);
+  return (data as Record<string, unknown>[]).map((r) => ({
+    vendedorId: r.vendedor_id === null ? null : Number(r.vendedor_id),
+    preco: r.preco === null ? null : centavos(r.preco as number),
+    pagas: Number(r.pagas),
+    reembolsos: Number(r.reembolsos),
+    chargebacks: Number(r.chargebacks),
+    faturamento: centavos(r.faturamento as number),
+    receita: centavos(r.receita as number),
+    liquido: centavos(r.liquido as number),
+    comissao: { 6: centavos(r.comissao_6 as number), 7: centavos(r.comissao_7 as number), 8: centavos(r.comissao_8 as number), 9: centavos(r.comissao_9 as number), 10: centavos(r.comissao_10 as number) },
+    semLiquido: Number(r.sem_liquido),
+  }));
+}
+
+/** Conversão do downsell no mês: leads que receberam a etiqueta do Viral x quantos compraram. */
+export async function viralConversao(mes: string): Promise<{ marcados: number; compraram: number; etiquetaDefinida: boolean }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("vendas_viral_conversao", { p_inicio: `${mes}-01`, p_fim: fimDoMes(mes) });
+  if (error) throw new Error(`Erro ao carregar a conversão do Viral: ${error.message}`);
+  const r = (data as { marcados: number; compraram: number; etiqueta_definida: boolean }[])[0];
+  return { marcados: Number(r?.marcados ?? 0), compraram: Number(r?.compraram ?? 0), etiquetaDefinida: Boolean(r?.etiqueta_definida) };
+}
+
+export type IdViral = { hubla_id: string; tipo: "produto" | "oferta"; descricao: string | null; ativo: boolean; criado_em: string };
+
+/** IDs da Hubla do Viral (só o chefe: o RLS devolve vazio aos outros). */
+export async function listarIdsViral(): Promise<IdViral[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("vendas_produtos_hubla").select("hubla_id, tipo, descricao, ativo, criado_em").order("criado_em");
+  if (error) throw new Error(`Erro ao carregar os IDs do Viral: ${error.message}`);
+  return data as IdViral[];
 }
 
 /** Geral da equipe (todos): quantidade de vendas pagas e a meta do mês. Sem valores. */

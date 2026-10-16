@@ -377,3 +377,26 @@ livre para quem escreveu nas últimas 24h; um template só serve para todos os a
 lembrete das 20h vai para todos os admins com WhatsApp (Rodrigo e Davi), porque os dois podem decidir.
 O telefone da equipe fica numa tabela separada que só o admin lê (`equipe` é lida por todos).
 
+## 2026-10-16: Protocolo Viral em Vendas (downsell), reconhecido pelo ID da Hubla
+
+As vendas do Protocolo Viral (downsell para o lead "Sem dinheiro", 15 ofertas de R$ 48,90 a R$ 118,90)
+chegam pelo mesmo webhook da Hubla do GCS. Elas viram `vendas.linha = 'viral'` quando o produto ou a
+oferta tem um ID cadastrado em `vendas_produtos_hubla`, que o chefe edita na Configuração de vendas.
+O Viral não tem ticket. O faturamento é o total que o cliente pagou (`amount.totalCents`), e o preço
+da oferta fica à parte (`viral_preco`). **A comissão segue a mesma regra do GCS** (decisão do Davi):
+o % da faixa escolhida no fechamento (6 a 10%) sobre o líquido da venda. O líquido do Viral é o que a
+Hubla repassa sem os juros do parcelamento (`receita_liquida × preço da oferta ÷ total pago`), e fica
+guardado na venda quando ela nasce (`viral_liquido`).
+
+**Por quê:**
+- **ID e não nome ou valor:** "Ticket - R$208" já cobrou R$ 288, e o nome pode mudar na Hubla. O ID
+  não muda, e oferta nova entra sem mexer no código.
+- **Líquido sem juros:** a comissão do GCS nunca inclui os juros do parcelamento (decisão de 10/10),
+  então o Viral também não inclui. O Viral não tem tabela de tickets, então o líquido sai do valor
+  real que a Hubla repassa.
+- **Guardar o líquido na venda:** é a mesma ideia da cópia do ticket. Mês fechado nunca muda.
+- **No fechamento**, `comissao` continua sendo o total congelado (GCS + Viral na faixa), e as colunas
+  `viral_*` guardam a parte do Viral. Assim o estorno, o saldo negativo e o "a receber" continuam
+  funcionando sem mudar.
+- **A meta e a tabela "Por vendedor" da Geral contam só o GCS.** O Viral tem uma tabela própria
+  (GCS x Viral), a conversão da etiqueta 🪞DOWNSELL VIRAL e a distribuição por oferta.

@@ -4,8 +4,9 @@
 
 export type TipoEvento = "pagamento" | "reembolso" | "outro";
 
-/** nome = "<produto> - <oferta>"; produto = nome do produto (o que aparece como bump) */
-export type OfertaHubla = { produto: string | null; nome: string; valorCentavos: number | null };
+/** nome = "<produto> - <oferta>"; produto = nome do produto (o que aparece como bump).
+ * produtoId/ofertaId = IDs da Hubla (o Viral é reconhecido por eles, nunca pelo nome). */
+export type OfertaHubla = { produto: string | null; nome: string; valorCentavos: number | null; produtoId?: string | null; ofertaId?: string | null };
 
 export type FaturaHubla = {
   tipoBruto: string;
@@ -22,6 +23,8 @@ export type FaturaHubla = {
   /** nomes dos order bumps (isOrderBump = true): só para mostrar, nunca contam */
   bumps: string[];
   valorPagoCentavos: number | null; // só referência (subtotal da fatura)
+  /** total que o cliente pagou de verdade (com desconto e juros do parcelamento): valor da venda do Viral */
+  valorTotalCentavos: number | null;
   /** o que fica para a operação na fatura inteira (com bumps), depois da taxa da Hubla.
    * Receita da dash geral; NUNCA entra na comissão. */
   receitaLiquidaCentavos: number | null;
@@ -57,17 +60,18 @@ export function lerFatura(payload: unknown): FaturaHubla {
   const bumps: string[] = [];
   for (const p of lista(evento.products)) {
     const produto = texto(obj(p).name);
+    const produtoId = texto(obj(p).id);
     const ofertas = lista(obj(p).offers);
     if (ofertas.length === 0 && produto) {
       itens.push(produto);
-      principais.push({ produto, nome: produto, valorCentavos: null });
+      principais.push({ produto, nome: produto, valorCentavos: null, produtoId, ofertaId: null });
     }
     for (const o of ofertas) {
       const oferta = texto(obj(o).name);
       const nome = [produto, oferta].filter(Boolean).join(" - ");
       if (!nome) continue;
       itens.push(nome);
-      const item = { produto, nome, valorCentavos: numero(obj(o).amountCents) };
+      const item = { produto, nome, valorCentavos: numero(obj(o).amountCents), produtoId, ofertaId: texto(obj(o).id) };
       if (obj(o).isOrderBump === true) {
         bumps.push(produto ?? nome);
         ofertasBump.push(item);
@@ -93,6 +97,7 @@ export function lerFatura(payload: unknown): FaturaHubla {
     ofertasBump,
     bumps,
     valorPagoCentavos: numero(valor.subtotalCents) ?? numero(valor.totalCents),
+    valorTotalCentavos: numero(valor.totalCents) ?? numero(valor.subtotalCents),
     receitaLiquidaCentavos: recebedor ? numero(recebedor.totalCents) : null,
     pagoEm: texto(pago?.when) ?? texto(fatura.saleDate),
     nome,

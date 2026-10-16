@@ -11,7 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { dadosDoFechamento } from "@/modulos/vendas/fechamento";
 import { processarEvento } from "@/modulos/vendas/processar";
-import { FAIXAS, MES_NAO_ACABOU, mesJaAcabou, type Faixa } from "@/modulos/vendas/regras";
+import { FAIXAS, MES_NAO_ACABOU, mesJaAcabou, VIRAL_SEM_LIQUIDO, type Faixa } from "@/modulos/vendas/regras";
 import { refresh } from "next/cache";
 
 const SO_ADMIN: EstadoForm = { erro: "Só o chefe de Vendas pode alterar." };
@@ -133,6 +133,7 @@ export async function fecharMes(_anterior: EstadoForm, form: FormData): Promise<
 
   const d = await dadosDoFechamento(mes.slice(0, 7), vendedorId);
   const r = d.resumo;
+  if (d.vendas.some((v) => v.linha === "viral" && v.status === "pago" && v.viral_liquido == null)) return { erro: VIRAL_SEM_LIQUIDO };
   const supabase = await createClient();
   const { error } = await supabase.from("vendas_fechamentos").insert({
     mes,
@@ -143,7 +144,11 @@ export async function fecharMes(_anterior: EstadoForm, form: FormData): Promise<
     sem_ticket: r.semTicket,
     bruto: r.bruto / 100,
     liquido: r.liquido / 100,
-    comissao: r.comissao[faixa] / 100,
+    // total congelado = GCS + Protocolo Viral na faixa (a parte do Viral fica também à parte)
+    comissao: (r.comissao[faixa] + r.viralComissao[faixa]) / 100,
+    viral_qtd: r.viralQtd,
+    viral_liquido: r.viralLiquido / 100,
+    viral_comissao: r.viralComissao[faixa] / 100,
     reembolsos: r.reembolsos,
     chargebacks: r.chargebacks,
     fechado_em: new Date().toISOString(),
@@ -224,6 +229,34 @@ export async function alternarTicket(form: FormData): Promise<void> {
   if (!ticketId) return;
   const supabase = await createClient();
   await supabase.from("tickets").update({ ativo: form.get("ativo") === "true" }).eq("id", ticketId);
+  refresh();
+}
+
+// ---------------------------------------------------------------------------
+// Protocolo Viral (só o chefe de Vendas; o banco confere de novo)
+// ---------------------------------------------------------------------------
+
+/** Novo ID da Hubla (produto ou oferta) que faz a venda ser do Protocolo Viral. */
+export async function adicionarIdViral(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  if (!(await ehChefeVendas())) return SO_ADMIN;
+  const hublaId = String(form.get("hubla_id") ?? "").trim();
+  const tipo = String(form.get("tipo") ?? "");
+  const descricao = String(form.get("descricao") ?? "").trim().slice(0, 120) || null;
+  if (!/^[A-Za-z0-9_-]{6,64}$/.test(hublaId)) return { erro: "ID inválido: copie o ID da Hubla (letras, números, - e _)." };
+  if (tipo !== "produto" && tipo !== "oferta") return { erro: "Escolha se é ID de produto ou de oferta." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("vendas_produtos_hubla").insert({ hubla_id: hublaId, tipo, descricao });
+  if (error) return { erro: error.code === "23505" ? "Esse ID já está cadastrado." : "Não deu para salvar." };
+  refresh();
+  return { ok: "ID cadastrado. Vale para as vendas novas." };
+}
+
+export async function alternarIdViral(form: FormData): Promise<void> {
+  if (!(await ehChefeVendas())) return;
+  const hublaId = String(form.get("hubla_id") ?? "");
+  if (!/^[A-Za-z0-9_-]{6,64}$/.test(hublaId)) return;
+  const supabase = await createClient();
+  await supabase.from("vendas_produtos_hubla").update({ ativo: form.get("ativo") === "true" }).eq("hubla_id", hublaId);
   refresh();
 }
 

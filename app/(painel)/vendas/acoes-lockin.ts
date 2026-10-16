@@ -9,8 +9,8 @@
 import { ehChefeVendas, usuarioLogado } from "@/lib/auth/papeis";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { analisarCsv, resumirLI, slugDe, type LinhaImportacao, type Plataforma } from "@/modulos/vendas/lock-in";
-import { FAIXAS, MES_NAO_ACABOU, mesJaAcabou, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
+import { analisarCsv, comissaoTotal, resumirLI, slugDe, type LinhaImportacao, type Plataforma } from "@/modulos/vendas/lock-in";
+import { FAIXAS, MES_NAO_ACABOU, mesJaAcabou, VIRAL_SEM_LIQUIDO, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
 import { carregarVendas, listarTicketsLI } from "@/modulos/vendas/tela";
 import { refresh } from "next/cache";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -156,6 +156,8 @@ export async function registrarFechamento(mes: string, vendedorId: number, faixa
   const fim = new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10);
   const [vendas, tickets] = await Promise.all([carregarVendas(vendedorId, `${mes}-01`, fim), listarTicketsLI()]);
   const r = resumirLI(vendas, tickets);
+  // Viral sem o líquido da Hubla: fechar congelaria o mês sem a comissão dela
+  if (r.viral.semLiquido) return { erro: VIRAL_SEM_LIQUIDO };
   const semTicket = r.semTicket + r.semTicketProduto;
   const supabase = await createClient();
   const { error } = await supabase.from("vendas_fechamentos").insert({
@@ -166,7 +168,12 @@ export async function registrarFechamento(mes: string, vendedorId: number, faixa
     sem_ticket: semTicket,
     bruto: r.bruto / 100,
     liquido: r.liquido / 100,
-    comissao: r.comissao[faixa] / 100,
+    // total congelado = GCS + Protocolo Viral na faixa (a parte do Viral fica também à parte)
+    comissao: comissaoTotal(r, faixa) / 100,
+    viral_qtd: r.viral.qtd,
+    viral_bruto: r.viral.faturamento / 100,
+    viral_liquido: r.viral.liquido / 100,
+    viral_comissao: r.viral.comissao[faixa] / 100,
     reembolsos: r.reembolsos,
     chargebacks: r.chargebacks,
     fechado_em: new Date().toISOString(),
@@ -255,16 +262,18 @@ export async function editarVenda(id: number, v: VendaInput & { semVendedor: boo
   if (v.vendedorId && !(await vendedorExiste(v.vendedorId))) return { erro: "Vendedor inválido." };
 
   const db = createAdminClient();
-  const { data: antes } = await db.from("vendas").select("vendedor_id, sem_vendedor, status, reembolsado_em").eq("id", id).single();
+  const { data: antes } = await db.from("vendas").select("vendedor_id, sem_vendedor, status, reembolsado_em, linha").eq("id", id).single();
   if (!antes) return { erro: "Venda não encontrada." };
   const agora = new Date().toISOString();
   const mudouDono = antes.vendedor_id !== v.vendedorId || antes.sem_vendedor !== v.semVendedor;
+  // Protocolo Viral não tem ticket: a tela nem mostra a escolha, e o servidor ignora
+  const viral = antes.linha === "viral";
   const { error } = await db
     .from("vendas")
     .update({
-      ticket_id: v.ticketId,
-      principal_produto: v.ticketId ? false : v.principalProduto,
-      motivo_sem_ticket: v.ticketId ? null : v.principalProduto ? "produto sem comissão" : "sem ticket (definido pelo admin)",
+      ticket_id: viral ? null : v.ticketId,
+      principal_produto: viral ? false : v.ticketId ? false : v.principalProduto,
+      motivo_sem_ticket: viral ? null : v.ticketId ? null : v.principalProduto ? "produto sem comissão" : "sem ticket (definido pelo admin)",
       status: v.status,
       reembolsado_em: v.status === "pago" ? null : antes.status === v.status ? antes.reembolsado_em : agora,
       data: v.data,
