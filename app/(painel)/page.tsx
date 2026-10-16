@@ -43,8 +43,8 @@ async function ConteudoInicio() {
     usuario ? nomeNaEquipe(usuario.id) : Promise.resolve(null),
     admin ? carregarMonitor() : Promise.resolve(null),
     listarTarefas(),
-    carregarFunil({ desde: hojeSP(), ate: hojeSP(), vendedorId: null, numeroId: null }),
-    carregarFunil({ desde: semana.desde, ate: semana.ate, vendedorId: null, numeroId: null }),
+    carregarFunil({ desde: hojeSP(), ate: hojeSP(), atendenteId: null, numeroId: null }),
+    carregarFunil({ desde: semana.desde, ate: semana.ate, atendenteId: null, numeroId: null }),
     configDoFunil().then((cfg) => leadsEsperando(cfg)),
     usuario ? operacaoAgora(usuario.id, admin) : Promise.resolve(null),
   ]);

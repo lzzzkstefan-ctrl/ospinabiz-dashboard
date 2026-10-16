@@ -4,8 +4,11 @@
 import { createClient } from "@/lib/supabase/server";
 import {
   calcularFunil,
+  rotuloDoNumero,
+  type CadastroNumero,
   chegadaDosLeads,
   etapaAtual,
+  hojeSP,
   mediana,
   tempoEmAtendimento,
   type Chegada,
@@ -16,7 +19,9 @@ import {
   type Resultado,
 } from "./calculo";
 
-export type FiltrosFunil = { desde: string; ate: string; vendedorId: number | null; numeroId: string | null };
+/** atendenteId = atendente da Data Crazy (o vendedor do lead desde 16/10/2026); numeroId = conexão */
+export type FiltrosFunil = { desde: string; ate: string; atendenteId: string | null; numeroId: string | null };
+export type FiltroAtendimento = { atendenteId: string | null; numeroId: string | null };
 
 /** Chegada do lead: o que vier primeiro entre a 1ª mensagem lida e criado_em (que já é a chegada pela
  * 1ª conversa ou pela etiqueta CL, ver sincronizar.ts). */
@@ -41,7 +46,7 @@ export async function carregarFunil(f: FiltrosFunil, horario?: { inicio: string;
       .eq("interno", false)
       .order("dc_id")
       .range(de, de + 999);
-    if (f.vendedorId) q = q.eq("vendedor_id", f.vendedorId);
+    if (f.atendenteId) q = q.eq("atendente_dc_id", f.atendenteId);
     if (f.numeroId) q = q.eq("numero_dc_id", f.numeroId);
     const { data, error } = await q;
     if (error) throw new Error(`Erro ao carregar leads: ${error.message}`);
@@ -73,21 +78,53 @@ export async function carregarFunil(f: FiltrosFunil, horario?: { inicio: string;
   return calcularFunil(leads, etapas.data as Etapa[], etiquetas.data as EtiquetaEtapa[], f.desde, f.ate, horario);
 }
 
-export type OpcoesFunil = { vendedores: { id: number; nome: string }[]; numeros: { id: string; nome: string }[] };
+export type OpcoesFunil = { vendedores: { id: string; nome: string }[]; numeros: { id: string; nome: string }[] };
 
-/** Vendedores (pessoas da equipe ligadas a um atendente que não é suporte) e números da Data Crazy. */
+/**
+ * Vendedores = atendentes da Data Crazy (sem os de suporte), com o nome da pessoa da equipe quando
+ * ligado; números = só os ativos (em operação, de BM ativa e não banida). Banido fica só no filtro
+ * "Número banido". Número ainda sem cadastro na aba BMs entra (não dá para saber a situação).
+ */
 export async function opcoesDoFunil(): Promise<OpcoesFunil> {
-  const supabase = await createClient();
-  const [atendentes, equipe, numeros] = await Promise.all([
-    supabase.from("funil_atendentes").select("equipe_id").eq("suporte_dc", false).not("equipe_id", "is", null),
-    supabase.from("equipe").select("id, nome").eq("ativo", true).order("nome"),
-    supabase.from("funil_numeros").select("dc_id, nome").order("nome"),
-  ]);
-  const ligados = new Set((atendentes.data ?? []).map((a) => a.equipe_id));
+  const [atendentes, ativos, rotulos] = await Promise.all([nomesDosAtendentes(), situacaoDosNumeros(), nomesDosNumeros()]);
   return {
-    vendedores: (equipe.data ?? []).filter((p) => ligados.has(p.id)).map((p) => ({ id: Number(p.id), nome: String(p.nome) })),
-    numeros: (numeros.data ?? []).map((n) => ({ id: String(n.dc_id), nome: String(n.nome).trim() })),
+    vendedores: [...atendentes.entries()].map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome)),
+    numeros: [...rotulos.entries()]
+      .filter(([id]) => ativos.get(id) !== false)
+      .map(([id, nome]) => ({ id, nome }))
+      .sort((a, b) => a.nome.localeCompare(b.nome)),
   };
+}
+
+/**
+ * Nome de cada atendente da Data Crazy que pode ser vendedor (sem os de suporte): o nome da pessoa da
+ * equipe quando ligado, senão o nome na Data Crazy. O vendedor vê só o próprio (RLS).
+ */
+export async function nomesDosAtendentes(): Promise<Map<string, string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("funil_atendentes").select("dc_id, nome, equipe(nome)").eq("suporte_dc", false);
+  if (error) throw new Error(`Erro ao carregar atendentes: ${error.message}`);
+  type Linha = { dc_id: string; nome: string; equipe: { nome: string } | null };
+  return new Map(((data ?? []) as unknown as Linha[]).map((a) => [String(a.dc_id), (a.equipe?.nome ?? a.nome).trim()]));
+}
+
+/** id do número (Data Crazy) -> está ativo? (ausente = sem cadastro na aba BMs) */
+export async function situacaoDosNumeros(): Promise<Map<string, boolean>> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("funil_numeros").select("dc_id, monitor_numeros(situacao, ativo, monitor_bms(ativo, banida_em))");
+  type Linha = { dc_id: string; monitor_numeros: { situacao: string; ativo: boolean; monitor_bms: { ativo: boolean; banida_em: string | null } | null } | null };
+  const m = new Map<string, boolean>();
+  for (const n of (data ?? []) as unknown as Linha[]) {
+    const mn = n.monitor_numeros;
+    if (mn) m.set(String(n.dc_id), mn.situacao === "operacao" && mn.ativo && !!mn.monitor_bms?.ativo && !mn.monitor_bms?.banida_em);
+  }
+  return m;
+}
+
+/** Quem é o vendedor de uma linha: o atendente; dado antigo sem atendente usa a pessoa gravada. */
+function vendedorDe(atendenteId: unknown, vendedorId: unknown, atendentes: Map<string, string>, equipe: Map<number, string>): string | null {
+  if (atendenteId) return atendentes.get(String(atendenteId)) ?? null;
+  return vendedorId ? (equipe.get(Number(vendedorId)) ?? null) : null;
 }
 
 export type StatusSincronizacao = {
@@ -107,12 +144,17 @@ export async function statusDaSincronizacao(): Promise<StatusSincronizacao> {
   };
 }
 
-/** Nome de cada número (instância) da Data Crazy, para o tooltip e a tabela por número. */
+/**
+ * Rótulo de cada número (instância) da Data Crazy, sem o sufixo de vendedor do modelo antigo
+ * ("🍿0348-VY" -> "🍿 0348"): emoji do nome + final (o da aba BMs quando ligado). Se o apelido na aba
+ * BMs foi trocado (não é o padrão "final + BM"), vale o apelido.
+ */
 export async function nomesDosNumeros(): Promise<Map<string, string>> {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("funil_numeros").select("dc_id, nome");
+  const { data, error } = await supabase.from("funil_numeros").select("dc_id, nome, monitor_numeros(final, apelido, monitor_bms(nome))");
   if (error) throw new Error(`Erro ao carregar números: ${error.message}`);
-  return new Map(data.map((n) => [String(n.dc_id), String(n.nome).trim()]));
+  type Linha = { dc_id: string; nome: string; monitor_numeros: CadastroNumero | null };
+  return new Map(((data ?? []) as unknown as Linha[]).map((n) => [String(n.dc_id), rotuloDoNumero(n.nome, n.monitor_numeros)]));
 }
 
 // ---------------------------------------------------------------------------
@@ -173,24 +215,25 @@ export type Filas = { total: number; atendimento: ItemFila[]; aguardando: Espera
  * Uma linha por lead: o mesmo lead em mais de um número vira uma linha só, com os números juntos e o
  * maior tempo de espera (o resto vem da conversa que espera há mais tempo).
  */
-export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: number | null; numeroId: string | null } = { vendedorId: null, numeroId: null }): Promise<ListasEsperando> {
+export async function leadsEsperando(cfg: ConfigFunil, filtro: FiltroAtendimento = { atendenteId: null, numeroId: null }): Promise<ListasEsperando> {
   const supabase = await createClient();
   let q = supabase
     .from("funil_conversas")
-    .select("dc_id, lead_dc_id, contato_rotulo, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em, statuses, fila_desde")
+    .select("dc_id, lead_dc_id, contato_rotulo, atendente_dc_id, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em, statuses, fila_desde")
     // finalizada = finalizada ou arquivada na Data Crazy (se o lead escrever de novo, ela reabre)
     .eq("finalizada", false)
     // número interno (teste) fica fora de toda a dashboard
     .eq("interno", false)
     .limit(5000);
-  if (filtro.vendedorId) q = q.eq("vendedor_id", filtro.vendedorId);
+  if (filtro.atendenteId) q = q.eq("atendente_dc_id", filtro.atendenteId);
   if (filtro.numeroId) q = q.eq("numero_dc_id", filtro.numeroId);
-  const [conversas, etapas, etiquetas, equipe, numeros] = await Promise.all([
+  const [conversas, etapas, etiquetas, equipe, numeros, atendentes] = await Promise.all([
     q,
     supabase.from("funil_etapas").select("id, nome, tipo, ordem, perda_na_etapa_id, comprou").eq("ativa", true),
     supabase.from("funil_etiquetas").select("dc_id, etapa_id"),
     supabase.from("equipe").select("id, nome"),
     nomesDosNumeros(),
+    nomesDosAtendentes(),
   ]);
   if (conversas.error) throw new Error(`Erro ao carregar conversas: ${conversas.error.message}`);
   const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
@@ -227,7 +270,7 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
       const base = {
         conversaId: String(c.dc_id),
         rotulo: c.contato_rotulo,
-        vendedor: c.vendedor_id ? (nomeDe.get(Number(c.vendedor_id)) ?? null) : null,
+        vendedor: vendedorDe(c.atendente_dc_id, c.vendedor_id, atendentes, nomeDe),
         numeros: numero ? [numero] : [],
         etapa: etapaAtual(tags, listaEtiquetas, listaEtapas),
       };
@@ -259,7 +302,7 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: { vendedorId: num
     const linha: Linha = {
       conversaId: String(c.dc_id),
       rotulo: c.contato_rotulo,
-      vendedor: c.vendedor_id ? (nomeDe.get(Number(c.vendedor_id)) ?? null) : null,
+      vendedor: vendedorDe(c.atendente_dc_id, c.vendedor_id, atendentes, nomeDe),
       numeros: numero ? [numero] : [],
       etapa: etapaAtual(tags, listaEtiquetas, listaEtapas),
       desde,
@@ -308,7 +351,7 @@ export async function chegadaNoPeriodo(f: FiltrosFunil, cfg: ConfigFunil): Promi
       .eq("interno", false)
       .order("dc_id")
       .range(de, de + 999);
-    if (f.vendedorId) q = q.eq("vendedor_id", f.vendedorId);
+    if (f.atendenteId) q = q.eq("atendente_dc_id", f.atendenteId);
     if (f.numeroId) q = q.eq("numero_dc_id", f.numeroId);
     const { data, error } = await q;
     if (error) throw new Error(`Erro ao carregar a chegada dos leads: ${error.message}`);
@@ -331,23 +374,24 @@ export type NaoComecou = { leadId: string; rotulo: string | null; vendedor: stri
  * (1ª mensagem ou etiqueta CL) e ainda não têm nenhuma etiqueta de etapa. Fora do funil (suporte,
  * menor…) e quem já comprou não entram. Espera em tempo real, desde a chegada.
  */
-export async function naoComecaram(filtro: { vendedorId: number | null; numeroId: string | null } = { vendedorId: null, numeroId: null }): Promise<NaoComecou[]> {
+export async function naoComecaram(filtro: FiltroAtendimento = { atendenteId: null, numeroId: null }): Promise<NaoComecou[]> {
   const supabase = await createClient();
   let q = supabase
     .from("funil_leads")
-    .select("dc_id, criado_em, primeira_msg_lead_em, numero_dc_id, vendedor_id, compra, funil_eventos(etiqueta_dc_id, acao)")
+    .select("dc_id, criado_em, primeira_msg_lead_em, numero_dc_id, atendente_dc_id, vendedor_id, compra, funil_eventos(etiqueta_dc_id, acao)")
     .gte("criado_em", new Date(Date.now() - 7 * 86_400_000).toISOString())
     .eq("interno", false)
     .eq("funil_eventos.acao", "colocou")
     .limit(3000);
-  if (filtro.vendedorId) q = q.eq("vendedor_id", filtro.vendedorId);
+  if (filtro.atendenteId) q = q.eq("atendente_dc_id", filtro.atendenteId);
   if (filtro.numeroId) q = q.eq("numero_dc_id", filtro.numeroId);
-  const [leads, etapas, etiquetas, equipe, numeros] = await Promise.all([
+  const [leads, etapas, etiquetas, equipe, numeros, atendentes] = await Promise.all([
     q,
     supabase.from("funil_etapas").select("id, tipo").eq("ativa", true),
     supabase.from("funil_etiquetas").select("dc_id, etapa_id"),
     supabase.from("equipe").select("id, nome"),
     nomesDosNumeros(),
+    nomesDosAtendentes(),
   ]);
   if (leads.error) throw new Error(`Erro ao carregar quem não começou: ${leads.error.message}`);
   const tipoDaEtapa = new Map((etapas.data ?? []).map((e) => [Number(e.id), String(e.tipo)]));
@@ -375,7 +419,7 @@ export async function naoComecaram(filtro: { vendedorId: number | null; numeroId
       return {
         leadId: String(l.dc_id),
         rotulo: rotuloDe.get(String(l.dc_id)) ?? null,
-        vendedor: l.vendedor_id ? (nomeDe.get(Number(l.vendedor_id)) ?? null) : null,
+        vendedor: vendedorDe(l.atendente_dc_id, l.vendedor_id, atendentes, nomeDe),
         numero: l.numero_dc_id ? (numeros.get(String(l.numero_dc_id)) ?? null) : null,
         chegada,
         esperaMs: Math.max(0, agora - Date.parse(chegada)),
@@ -403,22 +447,23 @@ export type LeadBanido = {
  * conversas contam (abertas e finalizadas), sem limite de período. Uma linha por lead (mesma chave das
  * filas: lead da Data Crazy, ou o rótulo). Etapa e vendedor vêm da conversa mais recente (sem eles, de outra conversa ou do lead).
  */
-export async function leadsEmNumeroBanido(filtro: { vendedorId: number | null } = { vendedorId: null }): Promise<LeadBanido[]> {
+export async function leadsEmNumeroBanido(filtro: { atendenteId: string | null } = { atendenteId: null }): Promise<LeadBanido[]> {
   const supabase = await createClient();
   const { data: banidosData, error } = await supabase.from("funil_numeros").select("dc_id, monitor_numeros!inner(situacao)").eq("monitor_numeros.situacao", "banido");
   if (error) throw new Error(`Erro ao carregar números banidos: ${error.message}`);
   const banidos = new Set((banidosData ?? []).map((n) => String(n.dc_id)));
   if (banidos.size === 0) return [];
 
-  const sel = "dc_id, lead_dc_id, contato_rotulo, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em";
+  const sel = "dc_id, lead_dc_id, contato_rotulo, atendente_dc_id, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em";
   let q = supabase.from("funil_conversas").select(sel).in("numero_dc_id", [...banidos]).eq("interno", false).limit(5000);
-  if (filtro.vendedorId) q = q.eq("vendedor_id", filtro.vendedorId);
-  const [conversas, etapas, etiquetas, equipe, numeros] = await Promise.all([
+  if (filtro.atendenteId) q = q.eq("atendente_dc_id", filtro.atendenteId);
+  const [conversas, etapas, etiquetas, equipe, numeros, atendentes] = await Promise.all([
     q,
     supabase.from("funil_etapas").select("id, nome, tipo, ordem, perda_na_etapa_id, comprou").eq("ativa", true),
     supabase.from("funil_etiquetas").select("dc_id, etapa_id"),
     supabase.from("equipe").select("id, nome"),
     nomesDosNumeros(),
+    nomesDosAtendentes(),
   ]);
   if (conversas.error) throw new Error(`Erro ao carregar conversas em número banido: ${conversas.error.message}`);
   type Conversa = (typeof conversas.data)[number];
@@ -426,15 +471,20 @@ export async function leadsEmNumeroBanido(filtro: { vendedorId: number | null } 
   const leadIds = [...new Set(conversas.data.map((c) => c.lead_dc_id).filter(Boolean).map(String))];
   const outras: Conversa[] = [];
   // conversa antiga ou finalizada pode não ter vendedor nem etiqueta: aí valem os do lead
-  const doLead = new Map<string, { vendedor_id: number | null; etiquetas: string[] }>();
+  const doLead = new Map<string, { atendente_dc_id: string | null; vendedor_id: number | null; etiquetas: string[] }>();
   for (let i = 0; i < leadIds.length; i += 150) {
     const fatia = leadIds.slice(i, i + 150);
     const [cs, ls] = await Promise.all([
       supabase.from("funil_conversas").select(sel).in("lead_dc_id", fatia).eq("interno", false),
-      supabase.from("funil_leads").select("dc_id, vendedor_id, etiquetas_atuais").in("dc_id", fatia),
+      supabase.from("funil_leads").select("dc_id, atendente_dc_id, vendedor_id, etiquetas_atuais").in("dc_id", fatia),
     ]);
     for (const c of cs.data ?? []) if (!banidos.has(String(c.numero_dc_id))) outras.push(c);
-    for (const l of ls.data ?? []) doLead.set(String(l.dc_id), { vendedor_id: l.vendedor_id ? Number(l.vendedor_id) : null, etiquetas: l.etiquetas_atuais ?? [] });
+    for (const l of ls.data ?? [])
+      doLead.set(String(l.dc_id), {
+        atendente_dc_id: l.atendente_dc_id ? String(l.atendente_dc_id) : null,
+        vendedor_id: l.vendedor_id ? Number(l.vendedor_id) : null,
+        etiquetas: l.etiquetas_atuais ?? [],
+      });
   }
 
   const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
@@ -455,12 +505,17 @@ export async function leadsEmNumeroBanido(filtro: { vendedorId: number | null } 
     // a conversa mais recente manda na etapa e no vendedor; sem eles, outra conversa e por fim o lead
     const ordem = [...cs].sort((a, b) => (ultima(b) ?? "").localeCompare(ultima(a) ?? ""));
     const lead = doLead.get(String(ordem.find((c) => c.lead_dc_id)?.lead_dc_id ?? ""));
-    const vendedorId = ordem.find((c) => c.vendedor_id)?.vendedor_id ?? lead?.vendedor_id ?? null;
+    const comDono = ordem.find((c) => c.atendente_dc_id || c.vendedor_id);
+    const vendedor = comDono
+      ? vendedorDe(comDono.atendente_dc_id, comDono.vendedor_id, atendentes, nomeDe)
+      : lead
+        ? vendedorDe(lead.atendente_dc_id, lead.vendedor_id, atendentes, nomeDe)
+        : null;
     const etapa = ordem.map((c) => etapaAtual(c.etiquetas_atuais ?? [], listaEtiquetas, listaEtapas)).find(Boolean) ?? etapaAtual(lead?.etiquetas ?? [], listaEtiquetas, listaEtapas);
     linhas.push({
       chave,
       rotulo: cs.find((c) => c.contato_rotulo)?.contato_rotulo ?? null,
-      vendedor: vendedorId ? (nomeDe.get(Number(vendedorId)) ?? null) : null,
+      vendedor,
       etapa,
       banidos: [...new Set(noBanido.map(nomeNumero).filter((n): n is string => !!n))].sort(),
       outros: [...new Set(cs.filter((c) => !banidos.has(String(c.numero_dc_id))).map(nomeNumero).filter((n): n is string => !!n))].sort(),
@@ -469,6 +524,123 @@ export async function leadsEmNumeroBanido(filtro: { vendedorId: number | null } 
   }
   // quem ainda não tem outro número primeiro (são os órfãos); dentro, a conversa mais recente primeiro
   return linhas.sort((a, b) => (a.outros.length === 0) !== (b.outros.length === 0) ? (a.outros.length === 0 ? -1 : 1) : (b.ultimaEm ?? "").localeCompare(a.ultimaEm ?? ""));
+}
+
+export type CardAtendente = {
+  id: string;
+  nome: string;
+  /** leads que chegaram hoje com este atendente como dono */
+  leadsHoje: number;
+  /** leads com conversa aberta em atendimento com ele agora */
+  emAtendimento: number;
+  /** leads com conversa aberta dele em que a última mensagem é do lead (a vez é dele) */
+  aguardando: number;
+  /** vendas pagas de hoje da pessoa da equipe ligada ao atendente (null = atendente sem pessoa) */
+  vendasHoje: number | null;
+  /** média até a 1ª resposta dele nos leads de hoje (horário de atendimento) */
+  primeiraRespostaMs: number | null;
+  respondidos: number;
+};
+export type VisaoAtendentes = {
+  cards: CardAtendente[];
+  /** leads com conversa aberta sem atendente, e há quanto tempo espera o mais antigo (tempo real) */
+  semAtendente: { leads: number; maisAntigoMs: number | null };
+  /** leads de hoje por dono (id null = sem atendente), para a barra de distribuição */
+  distribuicao: { id: string | null; nome: string; leads: number }[];
+  totalHoje: number;
+};
+
+/**
+ * Visão por atendente (pedido do Davi, 16/10/2026): o dono do lead é o atendente da conversa na Data
+ * Crazy (o número virou detalhe). Hoje = dia de Brasília. O vendedor vê só o próprio (RLS).
+ */
+export async function visaoPorAtendente(cfg: ConfigFunil): Promise<VisaoAtendentes> {
+  const supabase = await createClient();
+  const hoje = hojeSP();
+  const [atendentes, ligacoes, leads, conversas, vendas] = await Promise.all([
+    nomesDosAtendentes(),
+    supabase.from("funil_atendentes").select("dc_id, equipe_id").eq("suporte_dc", false),
+    supabase
+      .from("funil_leads")
+      .select("dc_id, atendente_dc_id, primeira_msg_lead_em, primeira_resposta_em, primeira_resposta_por")
+      .eq("dia", hoje)
+      .eq("interno", false)
+      .limit(5000),
+    supabase
+      .from("funil_conversas")
+      .select("dc_id, lead_dc_id, contato_rotulo, atendente_dc_id, statuses, ultima_recebida_em, ultima_enviada_em, fila_desde")
+      .eq("finalizada", false)
+      .eq("interno", false)
+      .limit(5000),
+    supabase.from("vendas").select("vendedor_id").eq("data", hoje).eq("status", "pago").eq("aguardando_confirmacao", false).limit(5000),
+  ]);
+  if (leads.error) throw new Error(`Erro ao carregar os leads de hoje: ${leads.error.message}`);
+  if (conversas.error) throw new Error(`Erro ao carregar as conversas: ${conversas.error.message}`);
+
+  const pessoaDe = new Map((ligacoes.data ?? []).map((a) => [String(a.dc_id), a.equipe_id ? Number(a.equipe_id) : null]));
+  const vendasDe = new Map<number, number>();
+  for (const v of vendas.data ?? []) if (v.vendedor_id) vendasDe.set(Number(v.vendedor_id), (vendasDe.get(Number(v.vendedor_id)) ?? 0) + 1);
+
+  const card = new Map<string, CardAtendente>();
+  for (const [id, nome] of atendentes) {
+    const pessoa = pessoaDe.get(id) ?? null;
+    card.set(id, { id, nome, leadsHoje: 0, emAtendimento: 0, aguardando: 0, vendasHoje: pessoa ? (vendasDe.get(pessoa) ?? 0) : null, primeiraRespostaMs: null, respondidos: 0 });
+  }
+
+  // leads de hoje por dono e tempo até a 1ª resposta de quem respondeu
+  let semDonoHoje = 0;
+  const tempos = new Map<string, number[]>();
+  for (const l of leads.data) {
+    const c = l.atendente_dc_id ? card.get(String(l.atendente_dc_id)) : undefined;
+    if (c) c.leadsHoje++;
+    else semDonoHoje++;
+    if (l.primeira_resposta_por && l.primeira_msg_lead_em && l.primeira_resposta_em) {
+      const ms = tempoEmAtendimento(String(l.primeira_msg_lead_em), Date.parse(String(l.primeira_resposta_em)), cfg.inicio, cfg.fim);
+      tempos.set(String(l.primeira_resposta_por), [...(tempos.get(String(l.primeira_resposta_por)) ?? []), ms]);
+    }
+  }
+  for (const [id, ms] of tempos) {
+    const c = card.get(id);
+    if (c) Object.assign(c, { primeiraRespostaMs: ms.reduce((a, b) => a + b, 0) / ms.length, respondidos: ms.length });
+  }
+
+  // agora: uma contagem por lead (o mesmo lead em dois números conta uma vez)
+  const agora = Date.now();
+  const vistos = new Map<string, { atendimento: Set<string>; aguardando: Set<string> }>();
+  const semDono = new Map<string, number>();
+  for (const c of conversas.data) {
+    const chave = c.lead_dc_id ? `l:${c.lead_dc_id}` : c.contato_rotulo ? `r:${c.contato_rotulo}` : `c:${c.dc_id}`;
+    const statuses: string[] = c.statuses ?? [];
+    if (!statuses.length) continue;
+    const id = c.atendente_dc_id ? String(c.atendente_dc_id) : null;
+    if (!id || !card.has(id)) {
+      const desde = c.fila_desde ?? c.ultima_recebida_em;
+      if (desde) semDono.set(chave, Math.max(semDono.get(chave) ?? 0, agora - Date.parse(String(desde))));
+      continue;
+    }
+    const v = vistos.get(id) ?? { atendimento: new Set<string>(), aguardando: new Set<string>() };
+    if (statuses.includes("opened")) v.atendimento.add(chave);
+    const recebida = c.ultima_recebida_em ? Date.parse(String(c.ultima_recebida_em)) : null;
+    const enviada = c.ultima_enviada_em ? Date.parse(String(c.ultima_enviada_em)) : null;
+    if (recebida !== null && (enviada === null || recebida > enviada)) v.aguardando.add(chave);
+    vistos.set(id, v);
+  }
+  for (const [id, v] of vistos) Object.assign(card.get(id)!, { emAtendimento: v.atendimento.size, aguardando: v.aguardando.size });
+
+  const cards = [...card.values()]
+    // atendente sem nada hoje e sem pessoa da equipe fica de fora (ex.: conta antiga)
+    .filter((c) => c.vendasHoje !== null || c.leadsHoje || c.emAtendimento || c.aguardando)
+    .sort((a, b) => b.leadsHoje - a.leadsHoje || a.nome.localeCompare(b.nome));
+  const distribuicao = [
+    ...cards.map((c) => ({ id: c.id as string | null, nome: c.nome, leads: c.leadsHoje })),
+    ...(semDonoHoje ? [{ id: null, nome: "Sem atendente", leads: semDonoHoje }] : []),
+  ];
+  return {
+    cards,
+    semAtendente: { leads: semDono.size, maisAntigoMs: semDono.size ? Math.max(...semDono.values()) : null },
+    distribuicao,
+    totalHoje: leads.data.length,
+  };
 }
 
 export type PrimeiraResposta = { vendedor: string; leads: number; mediaMs: number; medianaMs: number };
@@ -485,7 +657,7 @@ export async function primeiraResposta(f: FiltrosFunil, cfg: ConfigFunil): Promi
     .not("primeira_msg_lead_em", "is", null)
     .eq("interno", false)
     .limit(5000);
-  if (f.vendedorId) q = q.eq("vendedor_id", f.vendedorId);
+  if (f.atendenteId) q = q.eq("atendente_dc_id", f.atendenteId);
   if (f.numeroId) q = q.eq("numero_dc_id", f.numeroId);
   const [leads, atendentes, equipe] = await Promise.all([q, supabase.from("funil_atendentes").select("dc_id, nome, equipe_id"), supabase.from("equipe").select("id, nome")]);
   if (leads.error) throw new Error(`Erro ao carregar primeira resposta: ${leads.error.message}`);

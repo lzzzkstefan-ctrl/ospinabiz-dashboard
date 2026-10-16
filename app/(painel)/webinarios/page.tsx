@@ -44,7 +44,7 @@ async function Conteudo({ searchParams }: Props) {
   const supabase = await createClient();
   const [webinarios, funil, config] = await Promise.all([
     listarWebinarios(),
-    carregarFunil({ desde, ate, vendedorId: null, numeroId: null }),
+    carregarFunil({ desde, ate, atendenteId: null, numeroId: null }),
     supabase.from("webinarios_config").select("custo_mensagem").maybeSingle(),
   ]);
   const elegiveis = funil.elegiveisPorDia.reduce((s, d) => s + d.qtd, 0);

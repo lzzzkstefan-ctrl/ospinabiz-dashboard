@@ -1,6 +1,6 @@
 import { Etiqueta } from "@/components/ui/etiqueta";
 import { ehAdmin } from "@/lib/auth/papeis";
-import { listarBms, listarEquipe, totaisDosNumeros, type TotaisNumero } from "@/modulos/bms/dados";
+import { listarBms, listarEquipe, totaisDosNumeros, trafegoDosNumeros, type TotaisNumero, type TrafegoNumero } from "@/modulos/bms/dados";
 import {
   agruparEmSecoes,
   dataBR,
@@ -35,14 +35,29 @@ export default function BmsPage() {
   );
 }
 
-type Contexto = { admin: boolean; bmsParaSelect: Pick<Bm, "id" | "nome">[]; equipe: Pessoa[] };
+type Contexto = {
+  admin: boolean;
+  bmsParaSelect: Pick<Bm, "id" | "nome">[];
+  equipe: Pessoa[];
+  /** leads de hoje e dos últimos 7 dias por número ativo; maisTrafego = o que mais recebeu na semana */
+  trafego: Map<number, TrafegoNumero>;
+  maisTrafego: number | null;
+};
 
 async function ConteudoBms() {
   const [admin, bms, equipe] = await Promise.all([ehAdmin(), listarBms(), listarEquipe()]);
   const secoes = agruparEmSecoes(bms);
   const ban = secoes.find((s) => s.id === "levou_ban")!;
-  const totais = await totaisDosNumeros(ban.grupos.flatMap((g) => g.numeros.map((n) => n.id)));
-  const ctx: Contexto = { admin, bmsParaSelect: bms.filter((bm) => bm.ativo).map(({ id, nome }) => ({ id, nome })), equipe };
+  const ativos = secoes.filter((s) => s.id === "com_acesso" || s.id === "sem_acesso").flatMap((s) => s.grupos.flatMap((g) => g.numeros.map((n) => n.id)));
+  const [totais, trafego] = await Promise.all([totaisDosNumeros(ban.grupos.flatMap((g) => g.numeros.map((n) => n.id))), trafegoDosNumeros(ativos)]);
+  const topo = [...trafego.entries()].sort((a, b) => b[1].semana - a[1].semana)[0];
+  const ctx: Contexto = {
+    admin,
+    bmsParaSelect: bms.filter((bm) => bm.ativo).map(({ id, nome }) => ({ id, nome })),
+    equipe,
+    trafego,
+    maisTrafego: topo && topo[1].semana > 0 ? topo[0] : null,
+  };
 
   const emOperacao = bms.flatMap((bm) => bm.numeros.filter((n) => bm.ativo && !bm.banida_em && n.ativo && n.situacao === "operacao").map((n) => ({ n, bm })));
   const testaveis = emOperacao.filter(({ n, bm }) => entraNoTeste(n, bm)).length;
@@ -136,6 +151,13 @@ function LinhaNumero({ numero, ctx }: { numero: Numero; ctx: Contexto }) {
       )}
       <Etiqueta cor="azul">{formatarLimite(numero.limite)}</Etiqueta>
       <span className="text-[12px] text-ink-faint">{numero.responsavel?.nome ?? "sem responsável"}</span>
+      {ctx.trafego.has(numero.id) && (
+        <span className="text-[12px] tabular-nums text-ink-dim" title="Leads recebidos (número da primeira conversa do lead)">
+          hoje <span className="font-semibold text-white">{ctx.trafego.get(numero.id)!.hoje}</span> · 7 dias{" "}
+          <span className="font-semibold text-white">{ctx.trafego.get(numero.id)!.semana}</span>
+        </span>
+      )}
+      {ctx.maisTrafego === numero.id && <Etiqueta cor="roxo">mais tráfego</Etiqueta>}
       {ctx.admin && <EditarNumero numero={numero} bms={ctx.bmsParaSelect} equipe={ctx.equipe} />}
     </li>
   );

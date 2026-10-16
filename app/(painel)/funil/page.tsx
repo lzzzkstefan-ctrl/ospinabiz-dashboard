@@ -14,12 +14,14 @@ import {
   opcoesDoFunil,
   primeiraResposta,
   statusDaSincronizacao,
+  visaoPorAtendente,
   type Esperando,
   type Filas,
   type ItemFila,
   type LeadBanido,
   type NaoComecou,
   type StatusSincronizacao,
+  type VisaoAtendentes,
 } from "@/modulos/funil/dados";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -27,7 +29,8 @@ import { BarrasConversao, BarrasPorDia, FunilEtapas, TabelaPorNumero } from "./_
 import { SincronizarAgora } from "./_componentes/sincronizar-agora";
 
 // Funil e Leads (v1). Contexto e regras em docs/modulos/funil.md; cálculo em modulos/funil/calculo.ts.
-// Admin vê tudo e filtra por vendedor/número; o vendedor vê só o funil dele (garantido pelo RLS).
+// Admin vê tudo e filtra por vendedor (= atendente da Data Crazy, o dono do lead desde 16/10/2026) e,
+// em segundo plano, por número; o vendedor vê só o funil dele (garantido pelo RLS).
 
 // b=1: filtro "Número banido" (lista os leads com conversa em número banido)
 type Busca = { p?: string; de?: string; ate?: string; v?: string; n?: string; conv?: string; b?: string };
@@ -67,23 +70,24 @@ async function Conteudo({ searchParams }: Props) {
   const { periodo, desde, ate } = lerPeriodo(sp.p, sp.de, sp.ate, hoje);
 
   const opcoes = admin ? await opcoesDoFunil() : { vendedores: [], numeros: [] };
-  const vendedorId = admin && opcoes.vendedores.some((v) => String(v.id) === sp.v) ? Number(sp.v) : null;
+  const atendenteId = admin && opcoes.vendedores.some((v) => v.id === sp.v) ? sp.v! : null;
   const numeroId = admin && opcoes.numeros.some((n) => n.id === sp.n) ? sp.n! : null;
   const soBanido = sp.b === "1";
 
   // card, tooltip por número e tabela por número saem do MESMO resultado (uma leitura dos leads)
   const cfg = await configDoFunil();
-  const [r, sync, nomes, esperando, respostas, bms, mudancas, chegada, parados, banidos] = await Promise.all([
-    carregarFunil({ desde, ate, vendedorId, numeroId }, cfg),
+  const [r, sync, nomes, esperando, respostas, bms, mudancas, chegada, parados, banidos, visao] = await Promise.all([
+    carregarFunil({ desde, ate, atendenteId, numeroId }, cfg),
     statusDaSincronizacao(),
     nomesDosNumeros(),
-    leadsEsperando(cfg, { vendedorId, numeroId }),
-    primeiraResposta({ desde, ate, vendedorId, numeroId }, cfg),
+    leadsEsperando(cfg, { atendenteId, numeroId }),
+    primeiraResposta({ desde, ate, atendenteId, numeroId }, cfg),
     bmDosNumeros(),
     mudancasDoFunil(desde, ate),
-    chegadaNoPeriodo({ desde, ate, vendedorId, numeroId }, cfg),
-    naoComecaram({ vendedorId, numeroId }),
-    soBanido ? leadsEmNumeroBanido({ vendedorId }) : null,
+    chegadaNoPeriodo({ desde, ate, atendenteId, numeroId }, cfg),
+    naoComecaram({ atendenteId, numeroId }),
+    soBanido ? leadsEmNumeroBanido({ atendenteId }) : null,
+    visaoPorAtendente(cfg),
   ]);
   // marcas de mudança no funil, por dia
   const marcas = new Map<string, string[]>();
@@ -111,7 +115,7 @@ async function Conteudo({ searchParams }: Props) {
 
   // links de período mantêm os filtros
   const filtros = new URLSearchParams();
-  if (vendedorId) filtros.set("v", String(vendedorId));
+  if (atendenteId) filtros.set("v", atendenteId);
   if (numeroId) filtros.set("n", numeroId);
   if (soBanido) filtros.set("b", "1");
   const linkPeriodo = (p: Periodo) => {
@@ -150,6 +154,8 @@ async function Conteudo({ searchParams }: Props) {
 
   return (
     <>
+      <VisaoPorAtendente visao={visao} admin={admin} />
+
       {/* números principais */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Numero
@@ -237,9 +243,9 @@ async function Conteudo({ searchParams }: Props) {
           )}
           {admin && (
             <>
-              <label className="flex flex-col gap-1">
-                Vendedor
-                <select name="v" defaultValue={vendedorId ? String(vendedorId) : ""} className={campo}>
+              <label className="flex flex-col gap-1 font-medium text-ink">
+                Vendedor (atendente)
+                <select name="v" defaultValue={atendenteId ?? ""} className={cn(campo, "min-w-[180px] border-accent/40")}>
                   <option value="">Todos</option>
                   {opcoes.vendedores.map((v) => (
                     <option key={v.id} value={v.id}>
@@ -248,9 +254,9 @@ async function Conteudo({ searchParams }: Props) {
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col gap-1">
-                Número de WhatsApp
-                <select name="n" defaultValue={numeroId ?? ""} className={cn(campo, "max-w-[220px]")}>
+              <label className="flex flex-col gap-1 text-ink-faint">
+                Número (ativos)
+                <select name="n" defaultValue={numeroId ?? ""} className={cn(campo, "max-w-[160px] py-1 text-[12px] text-ink-dim")}>
                   <option value="">Todos</option>
                   {opcoes.numeros.map((n) => (
                     <option key={n.id} value={n.id}>
@@ -443,6 +449,83 @@ async function Conteudo({ searchParams }: Props) {
 
 const campo = "rounded-lg border border-line bg-bg-raised-2 px-2.5 py-1.5 text-[13px] text-ink [color-scheme:dark]";
 
+// cores da barra de distribuição (uma por atendente; "Sem atendente" fica laranja)
+const CORES = ["bg-accent", "bg-[rgb(var(--tag-roxo))]", "bg-[rgb(var(--tag-verde))]", "bg-[rgb(var(--tag-azul))]", "bg-[rgb(var(--tag-amarelo))]"];
+
+/** Um card por atendente (o dono do lead), o card "Sem atendente" e a distribuição dos leads de hoje. */
+function VisaoPorAtendente({ visao, admin }: { visao: VisaoAtendentes; admin: boolean }) {
+  const s = visao.semAtendente;
+  const cor = (id: string | null, i: number) => (id === null ? "bg-[rgb(var(--tag-laranja))]" : CORES[i % CORES.length]);
+  return (
+    <section id="atendentes" className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-[15px] font-semibold text-white">Hoje por atendente</h2>
+        <p className="m-0 text-[12px] text-ink-faint">
+          O dono do lead é o atendente da conversa na Data Crazy (o número é só detalhe).{!admin && " Só os seus leads."}
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {visao.cards.map((c) => (
+          <div key={c.id} className="glass-lite glass-static flex flex-col gap-2 p-4">
+            <p className="m-0 text-[14px] font-semibold text-white">{c.nome}</p>
+            <dl className="m-0 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-[12.5px] tabular-nums">
+              <dt className="text-ink-dim">Leads recebidos hoje</dt>
+              <dd className="m-0 text-right text-[15px] font-semibold text-white">{c.leadsHoje}</dd>
+              <dt className="text-ink-dim">Em atendimento agora</dt>
+              <dd className="m-0 text-right text-white">{c.emAtendimento}</dd>
+              <dt className="text-ink-dim">Aguardando resposta dele</dt>
+              <dd className={cn("m-0 text-right", c.aguardando ? "font-semibold text-[rgb(var(--tag-laranja))]" : "text-white")}>{c.aguardando}</dd>
+              <dt className="text-ink-dim">Vendas hoje</dt>
+              <dd className="m-0 text-right text-white">{c.vendasHoje ?? <span className="text-ink-faint">—</span>}</dd>
+              <dt className="text-ink-dim">1ª resposta (média)</dt>
+              <dd className="m-0 text-right text-white">
+                {c.primeiraRespostaMs === null ? <span className="text-ink-faint">—</span> : duracao(c.primeiraRespostaMs)}
+                {c.respondidos > 0 && <span className="text-ink-faint"> · {c.respondidos}</span>}
+              </dd>
+            </dl>
+          </div>
+        ))}
+        <div className={cn("glass-lite glass-static flex flex-col gap-2 p-4", s.leads > 0 && "border-[rgb(var(--tag-laranja)/0.5)]")}>
+          <p className="m-0 text-[14px] font-semibold text-white">Sem atendente</p>
+          <p className={cn("m-0 text-[26px] font-semibold tabular-nums", s.leads ? "text-[rgb(var(--tag-laranja))]" : "text-white")}>{s.leads}</p>
+          <p className="m-0 text-[12px] text-ink-dim">
+            {s.maisAntigoMs === null ? "nenhum lead sem dono agora" : `leads sem dono · o mais antigo espera há ${duracao(s.maisAntigoMs)}`}
+          </p>
+        </div>
+      </div>
+      <div className="glass-lite glass-static p-4">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-[13px] font-semibold text-ink">Distribuição dos leads de hoje · {visao.totalHoje}</h3>
+          <span className="text-[11.5px] text-ink-faint">para conferir se o rodízio está equilibrado</span>
+        </div>
+        {visao.totalHoje === 0 ? (
+          <p className="m-0 text-[12.5px] italic text-ink-faint">Nenhum lead hoje ainda.</p>
+        ) : (
+          <>
+            <div className="flex h-3 w-full overflow-hidden rounded-full bg-bg-raised-2" role="img" aria-label="Distribuição dos leads de hoje por atendente">
+              {visao.distribuicao
+                .filter((d) => d.leads > 0)
+                .map((d, i) => (
+                  <div key={d.id ?? "sem"} className={cor(d.id, i)} style={{ width: `${(d.leads / visao.totalHoje) * 100}%` }} title={`${d.nome}: ${d.leads}`} />
+                ))}
+            </div>
+            <ul className="m-0 mt-2 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[12px] tabular-nums text-ink-dim">
+              {visao.distribuicao
+                .filter((d) => d.leads > 0)
+                .map((d, i) => (
+                  <li key={d.id ?? "sem"} className="inline-flex items-center gap-1.5">
+                    <span className={cn("inline-block h-2.5 w-2.5 rounded-sm", cor(d.id, i))} />
+                    {d.nome} {Math.round((d.leads / visao.totalHoje) * 100)}% <span className="text-ink-faint">({d.leads})</span>
+                  </li>
+                ))}
+            </ul>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function Numero({ rotulo, valor, detalhe, alerta = false }: { rotulo: string; valor: string; detalhe?: string; alerta?: boolean }) {
   return (
     <div className="glass-lite glass-static flex flex-col gap-1 p-4">
@@ -549,7 +632,7 @@ function TabelaFila({
                 )}
                 <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
                 <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">ninguém</span>}</td>
-                <td className="whitespace-nowrap py-1.5 pr-3">{e.numeros.join(" · ") || "—"}</td>
+                <td className="whitespace-nowrap py-1.5 pr-3 text-[12px] text-ink-faint">{e.numeros.join(" · ") || "—"}</td>
                 <td className="py-1.5 pr-3 text-ink-dim">{e.etapa ?? "—"}</td>
                 <td className="whitespace-nowrap py-1.5 text-right font-semibold text-white">{duracao(e.esperaMs)}</td>
               </tr>
@@ -713,8 +796,8 @@ function ListaEsperando({
               {itens.slice(0, 100).map((e) => (
                 <tr key={e.conversaId} className="border-t border-line-soft text-ink">
                   <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
-                  <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">sem vendedor</span>}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3">{e.numeros.length ? e.numeros.join(" · ") : "—"}</td>
+                  <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">ninguém</span>}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-[12px] text-ink-faint">{e.numeros.length ? e.numeros.join(" · ") : "—"}</td>
                   <td className="py-1.5 pr-3 text-ink-dim">{e.etapa ?? "—"}</td>
                   <td className={cn("whitespace-nowrap py-1.5 text-right font-semibold", aguardando ? "text-ink" : "text-[rgb(var(--tag-laranja))]")}>{duracao(e.esperaMs)}</td>
                 </tr>
@@ -758,8 +841,8 @@ function LeadsNumeroBanido({ itens, admin }: { itens: LeadBanido[]; admin: boole
             <thead className="text-[11.5px] text-ink-dim">
               <tr>
                 <th className="py-1.5 pr-3 font-medium">Lead</th>
-                <th className="py-1.5 pr-3 font-medium">Etapa</th>
                 <th className="py-1.5 pr-3 font-medium">Vendedor</th>
+                <th className="py-1.5 pr-3 font-medium">Etapa</th>
                 <th className="py-1.5 pr-3 font-medium">Número banido</th>
                 <th className="py-1.5 pr-3 font-medium">Outro número</th>
                 <th className="py-1.5 text-right font-medium">Última mensagem</th>
@@ -769,10 +852,10 @@ function LeadsNumeroBanido({ itens, admin }: { itens: LeadBanido[]; admin: boole
               {itens.slice(0, 300).map((e) => (
                 <tr key={e.chave} className="border-t border-line-soft text-ink">
                   <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
+                  <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">ninguém</span>}</td>
                   <td className="py-1.5 pr-3 text-ink-dim">{e.etapa ?? "—"}</td>
-                  <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">sem vendedor</span>}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3 text-[rgb(var(--tag-vermelho))]">{e.banidos.join(" · ")}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3">
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-[12px] text-[rgb(var(--tag-vermelho)/0.8)]">{e.banidos.join(" · ")}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-[12px] text-ink-faint">
                     {e.outros.length ? e.outros.join(" · ") : <span className="font-semibold text-[rgb(var(--tag-laranja))]">nenhum</span>}
                   </td>
                   <td className="whitespace-nowrap py-1.5 text-right text-ink-dim">{e.ultimaEm ? hora(e.ultimaEm) : "—"}</td>
@@ -817,7 +900,7 @@ function NaoComecaram({ itens }: { itens: NaoComecou[] }) {
                 <tr key={e.leadId} className="border-t border-line-soft text-ink">
                   <td className="py-1.5 pr-3 text-white">{e.rotulo ?? "—"}</td>
                   <td className="py-1.5 pr-3">{e.vendedor ?? <span className="text-ink-faint">ninguém</span>}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3">{e.numero ?? "—"}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-[12px] text-ink-faint">{e.numero ?? "—"}</td>
                   <td className="whitespace-nowrap py-1.5 pr-3 text-ink-dim">{hora(e.chegada)}</td>
                   <td className="whitespace-nowrap py-1.5 text-right font-semibold text-[rgb(var(--tag-laranja))]">{duracao(e.esperaMs)}</td>
                 </tr>

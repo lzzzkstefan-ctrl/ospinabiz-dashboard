@@ -263,3 +263,29 @@ Pedido do Davi: ver os leads que ficaram num número banido para decidir quem re
   lead (`funil_leads`), porque conversa antiga/finalizada costuma vir sem vendedor.
 - Ordem: primeiro os órfãos (sem nenhum outro número), depois os demais; dentro, a conversa mais recente.
 - O vendedor vê só os dele (RLS das conversas). O filtro de vendedor vale; o de número e o período não.
+
+## Dono do lead = atendente (16/10/2026, decisão do Davi; sem migration)
+
+Mudança de modelo: antes cada número era de um vendedor ("2504-DAVI", "0348-VY"); agora sobraram poucos
+números e os leads são distribuídos por **atendente** na Data Crazy.
+
+- Investigação: o vendedor já vinha do atendente da conversa (`attendants` da conversa ou, no histórico, a
+  troca de atendente), nunca do sufixo do nome do número. O sufixo só aparecia no nome exibido. O que mudou:
+  - a tela mostra o **atendente** (`atendente_dc_id`), com o nome da pessoa da equipe quando ligado, senão o
+    nome na Data Crazy (ex.: atendente sem pessoa ligada deixava de aparecer como "ninguém"). Linha antiga
+    sem atendente usa a pessoa gravada (`vendedor_id`); dados gravados não mudam;
+  - o filtro **Vendedor (atendente)** é o principal e filtra por `atendente_dc_id` (`?v=<id na Data Crazy>`);
+    **Número (ativos)** é secundário e lista só número em operação de BM ativa e não banida (sem cadastro na
+    aba BMs entra); banido fica só no filtro "Número banido";
+  - vendas e comissão continuam pelo `utm_term` da Hubla (não mexido).
+- Número vira detalhe: `rotuloDoNumero` (calculo.ts) mostra emoji + final ("🍿 0348"), sem o sufixo; apelido
+  trocado na aba BMs (diferente do padrão "final + BM") vale. Nas tabelas, Número vem depois de Vendedor, menor
+  e apagado.
+- **Hoje por atendente** (topo do Funil, `visaoPorAtendente`): um card por atendente (sem os de suporte; conta
+  sem pessoa e sem movimento hoje fica de fora) com leads recebidos hoje (dono = atendente), em atendimento agora
+  (conversa aberta com status opened), aguardando resposta dele (conversa aberta, última mensagem do lead, sem
+  limite de horas), vendas de hoje (pagas e confirmadas, da pessoa ligada) e média até a 1ª resposta nos leads
+  de hoje (horário de atendimento). Card **Sem atendente**: leads com conversa aberta sem atendente e há quanto
+  tempo (real) espera o mais antigo. Barra de **distribuição** dos leads de hoje por dono.
+- Aba BMs: cada número ativo mostra leads de **hoje** e dos **últimos 7 dias** (número da 1ª conversa do lead) e o
+  selo "mais tráfego" no que mais recebeu na semana.

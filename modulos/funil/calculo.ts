@@ -421,3 +421,24 @@ export function chegadaDosLeads(leads: LeadChegada[], inicio: string, fim: strin
   return { total, noPrazo, fora: resumo(grupos.fora), semAtendente: resumo(grupos.semAtendente), aTempo: resumo(grupos.aTempo), porHora };
 }
 
+
+// ---------------------------------------------------------------------------
+// Rótulo do número (16/10/2026): o número virou detalhe; o dono do lead é o atendente.
+// ---------------------------------------------------------------------------
+export type CadastroNumero = { final: string; apelido: string; monitor_bms: { nome: string } | null };
+
+/**
+ * "🍿0348-VY" -> "🍿 0348": emoji do nome na Data Crazy + final (o da aba BMs quando ligado), sem o
+ * sufixo de vendedor do modelo antigo. Apelido trocado na aba BMs (não o padrão "final + BM") vale.
+ */
+export function rotuloDoNumero(nomeDc: string, cadastro: CadastroNumero | null): string {
+  const nome = String(nomeDc).trim();
+  const i = nome.search(/\d/);
+  const emoji = (i > 0 ? nome.slice(0, i) : "").replace(/[-\s]+$/, "").trim();
+  const final = cadastro?.final ?? nome.match(/\d{4}/)?.[0] ?? null;
+  const apelido = cadastro?.apelido?.trim();
+  const padrao = cadastro ? `${cadastro.final} ${cadastro.monitor_bms?.nome ?? ""}`.trim() : null;
+  const base = apelido && apelido !== padrao ? apelido : final;
+  if (!base) return nome;
+  return emoji ? `${emoji} ${base}` : base;
+}

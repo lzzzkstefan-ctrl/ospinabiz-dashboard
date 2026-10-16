@@ -3,7 +3,7 @@
 // garante que só admin grava; aqui só traduzimos o resultado.
 
 import { createClient } from "@/lib/supabase/server";
-import { mensagemDoErro, type Bm, type CamposNumero, type Pessoa } from "./regras";
+import { hojeBrasilia, mensagemDoErro, type Bm, type CamposNumero, type Pessoa } from "./regras";
 
 export type Resultado = { erro?: string };
 
@@ -110,6 +110,45 @@ export async function totaisDosNumeros(ids: number[]): Promise<Map<number, Totai
     if (data.length < 1000) break;
   }
   return totais;
+}
+
+export type TrafegoNumero = { hoje: number; semana: number };
+
+/**
+ * Leads que cada número ativo recebeu hoje e nos últimos 7 dias (hoje incluso, dia de Brasília), para ver
+ * qual número concentra o tráfego. Lead conta no número da primeira conversa (mesma conta do Funil).
+ */
+export async function trafegoDosNumeros(ids: number[]): Promise<Map<number, TrafegoNumero>> {
+  const trafego = new Map<number, TrafegoNumero>(ids.map((id) => [id, { hoje: 0, semana: 0 }]));
+  if (!ids.length) return trafego;
+  const supabase = await createClient();
+  const { data: ligados, error } = await supabase.from("funil_numeros").select("dc_id, monitor_numero_id").in("monitor_numero_id", ids);
+  if (error) throw new Error(`Erro ao carregar os números da Data Crazy: ${error.message}`);
+  const doMonitor = new Map((ligados ?? []).map((n) => [String(n.dc_id), Number(n.monitor_numero_id)]));
+  if (!doMonitor.size) return trafego;
+  const hoje = hojeBrasilia();
+  const d = new Date(`${hoje}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 6);
+  const desde = d.toISOString().slice(0, 10);
+  for (let de = 0; ; de += 1000) {
+    const { data, error: e } = await supabase
+      .from("funil_leads")
+      .select("numero_dc_id, dia")
+      .in("numero_dc_id", [...doMonitor.keys()])
+      .gte("dia", desde)
+      .eq("interno", false)
+      .order("dc_id")
+      .range(de, de + 999);
+    if (e) throw new Error(`Erro ao contar os leads por número: ${e.message}`);
+    for (const l of data) {
+      const t = trafego.get(doMonitor.get(String(l.numero_dc_id))!);
+      if (!t) continue;
+      t.semana++;
+      if (String(l.dia) === hoje) t.hoje++;
+    }
+    if (data.length < 1000) break;
+  }
+  return trafego;
 }
 
 /** Nome de uma BM pelo id (para montar o apelido padrão). */
