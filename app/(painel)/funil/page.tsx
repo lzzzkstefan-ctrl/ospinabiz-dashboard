@@ -280,7 +280,7 @@ async function Conteudo({ searchParams }: Props) {
       </section>
 
       {banidos && <LeadsNumeroBanido itens={banidos} admin={admin} />}
-      <FilasDataCrazy filas={esperando.filas} admin={admin} />
+      <FilasDataCrazy filas={esperando.filas} admin={admin} emBanidos={esperando.abertasEmBanidos} />
       <NaoComecaram itens={parados} />
       <ListaEsperando
         id="esperando"
@@ -565,7 +565,7 @@ function AvisoSincronizacao({ sync }: { sync: StatusSincronizacao }) {
 }
 
 /** Filas da Data Crazy: Não iniciados + Em atendimento numa lista (coluna Situação) e Aguardando. */
-function FilasDataCrazy({ filas, admin }: { filas: Filas; admin: boolean }) {
+function FilasDataCrazy({ filas, admin, emBanidos }: { filas: Filas; admin: boolean; emBanidos: number }) {
   const naoIniciados = filas.atendimento.filter((f) => f.situacao === "nao_iniciado").length;
   return (
     <section id="filas" className="glass-lite glass-static scroll-mt-28 p-4">
@@ -576,7 +576,7 @@ function FilasDataCrazy({ filas, admin }: { filas: Filas; admin: boolean }) {
         </span>
       </div>
       <p className="m-0 mb-3 text-[12px] text-ink-faint">
-        Não iniciado = ninguém assumiu o atendimento. Uma linha por lead (o mesmo lead em dois números aparece uma vez, com os números juntos). O Aguardando (o lead espera a empresa) pode repetir um lead da outra lista, como no CRM. O tempo é real (não só
+        Não iniciado = ninguém assumiu o atendimento. Conversas em número banido ficam fora. Uma linha por lead (o mesmo lead em dois números aparece uma vez, com os números juntos). O Aguardando (o lead espera a empresa) pode repetir um lead da outra lista, como no CRM. O tempo é real (não só
         o horário de atendimento): no Aguardando, desde a última mensagem do lead; na outra, desde o início do atendimento atual. Atualiza a cada 15 minutos.
         {!admin && " Só as suas conversas (as que ninguém assumiu ainda não têm vendedor)."}
       </p>
@@ -584,6 +584,12 @@ function FilasDataCrazy({ filas, admin }: { filas: Filas; admin: boolean }) {
         <TabelaFila titulo="Não iniciados e em atendimento" itens={filas.atendimento} comSituacao />
         <TabelaFila titulo="Aguardando" detalhe="o lead espera a empresa" itens={filas.aguardando} />
       </div>
+      {emBanidos > 0 && (
+        // conversas de número banido ficam fora das filas, das listas e dos totais
+        <Link href="/funil?b=1#numero-banido" className="mt-3 inline-block text-[12px] text-ink-faint underline-offset-4 hover:text-ink-dim hover:underline">
+          {emBanidos} {emBanidos === 1 ? "conversa aberta" : "conversas abertas"} em números banidos
+        </Link>
+      )}
     </section>
   );
 }

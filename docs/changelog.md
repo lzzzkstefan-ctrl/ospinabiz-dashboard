@@ -4,6 +4,7 @@ Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à
 
 ## 16/10/2026
 
+- Funil: conversas de número banido saem das Filas, de Leads esperando, de Chegaram e não começaram e dos totais; uma linha embaixo das Filas leva ao filtro Número banido.
 - Funil: dono do lead = atendente da Data Crazy. Cards Hoje por atendente, Sem atendente e distribuição do dia; filtro Vendedor principal; número sem sufixo (🍿 0348) e só ativos no filtro. BMs: leads de hoje e 7 dias por número.
 - Funil: filtro Número banido (leads em número banido, órfãos primeiro). BMs: BM Banida com data e motivo (bane os números, com Desfazer ban) e seção Levou ban com leads e vendas por número; banidos fora do monitor e do contador.
 

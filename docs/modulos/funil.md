@@ -289,3 +289,11 @@ números e os leads são distribuídos por **atendente** na Data Crazy.
   tempo (real) espera o mais antigo. Barra de **distribuição** dos leads de hoje por dono.
 - Aba BMs: cada número ativo mostra leads de **hoje** e dos **últimos 7 dias** (número da 1ª conversa do lead) e o
   selo "mais tráfego" no que mais recebeu na semana.
+
+## Número banido fora das filas (16/10/2026, pedido do Davi; sem migration)
+
+- Conversas em número banido (`numerosBanidos()`: situação Banido na aba BMs) ficam fora das Filas da Data
+  Crazy, de "Leads esperando resposta", "Aguardando o lead", da visão "Hoje por atendente" e dos totais
+  (inclusive o resumo do Início). "Chegaram e ainda não começaram" tira o lead cujo número (o da 1ª conversa)
+  está banido.
+- Embaixo das Filas, uma linha discreta "N conversas abertas em números banidos" leva ao filtro "Número banido".

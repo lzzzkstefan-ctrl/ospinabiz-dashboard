@@ -194,7 +194,22 @@ export type Esperando = {
  *   ao webinar de downsell). Só leads (alunos ficam fora).
  * Todas passando de X horas, contando só o horário de atendimento. Aluno = etiqueta de etapa de compra.
  */
-export type ListasEsperando = { leads: Esperando[]; alunos: Esperando[]; aguardandoLead: Esperando[]; filas: Filas };
+export type ListasEsperando = {
+  leads: Esperando[];
+  alunos: Esperando[];
+  aguardandoLead: Esperando[];
+  filas: Filas;
+  /** conversas abertas em número banido: ficam fora de todas as listas e contadores (16/10/2026) */
+  abertasEmBanidos: number;
+};
+
+/** Números da Data Crazy marcados como banidos na aba BMs (BM banida também bane os números dela). */
+export async function numerosBanidos(): Promise<Set<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("funil_numeros").select("dc_id, monitor_numeros!inner(situacao)").eq("monitor_numeros.situacao", "banido");
+  if (error) throw new Error(`Erro ao carregar números banidos: ${error.message}`);
+  return new Set((data ?? []).map((n) => String(n.dc_id)));
+}
 
 /**
  * Filas da Data Crazy (pedido do Davi, 10/10/2026). Os status da API são marcas que se somam
@@ -227,15 +242,17 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: FiltroAtendimento
     .limit(5000);
   if (filtro.atendenteId) q = q.eq("atendente_dc_id", filtro.atendenteId);
   if (filtro.numeroId) q = q.eq("numero_dc_id", filtro.numeroId);
-  const [conversas, etapas, etiquetas, equipe, numeros, atendentes] = await Promise.all([
+  const [conversas, etapas, etiquetas, equipe, numeros, atendentes, banidos] = await Promise.all([
     q,
     supabase.from("funil_etapas").select("id, nome, tipo, ordem, perda_na_etapa_id, comprou").eq("ativa", true),
     supabase.from("funil_etiquetas").select("dc_id, etapa_id"),
     supabase.from("equipe").select("id, nome"),
     nomesDosNumeros(),
     nomesDosAtendentes(),
+    numerosBanidos(),
   ]);
   if (conversas.error) throw new Error(`Erro ao carregar conversas: ${conversas.error.message}`);
+  let abertasEmBanidos = 0;
   const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
   const listaEtapas = (etapas.data ?? []) as Etapa[];
   const listaEtiquetas = (etiquetas.data ?? []) as EtiquetaEtapa[];
@@ -257,6 +274,11 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: FiltroAtendimento
     return { ...maior, vendedor: maior.vendedor ?? atual.vendedor ?? nova.vendedor, numeros: [...new Set([...atual.numeros, ...nova.numeros])].sort() };
   };
   for (const c of conversas.data) {
+    // número banido: fora das filas, das listas e dos totais (só conta quantas conversas abertas ficaram lá)
+    if (c.numero_dc_id && banidos.has(String(c.numero_dc_id))) {
+      if ((c.statuses ?? []).length) abertasEmBanidos++;
+      continue;
+    }
     // mesmo lead = mesmo lead da Data Crazy; sem lead ligado, o rótulo (primeiro nome + 4 dígitos)
     const chave = c.lead_dc_id ? `l:${c.lead_dc_id}` : c.contato_rotulo ? `r:${c.contato_rotulo}` : `c:${c.dc_id}`;
     // filas: toda conversa aberta, sem limite de horas
@@ -332,7 +354,7 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: FiltroAtendimento
   // Não iniciados primeiro; dentro de cada grupo, quem está há mais tempo na fila
   filas.atendimento.sort((a, b) => (a.situacao === b.situacao ? b.esperaMs - a.esperaMs : a.situacao === "nao_iniciado" ? -1 : 1));
   filas.aguardando.sort((a, b) => b.esperaMs - a.esperaMs);
-  return { leads: todos.filter((e) => !e.aluno), alunos: todos.filter((e) => e.aluno), aguardandoLead: ordenar(aguardando), filas };
+  return { leads: todos.filter((e) => !e.aluno), alunos: todos.filter((e) => e.aluno), aguardandoLead: ordenar(aguardando), filas, abertasEmBanidos };
 }
 
 /**
@@ -385,13 +407,14 @@ export async function naoComecaram(filtro: FiltroAtendimento = { atendenteId: nu
     .limit(3000);
   if (filtro.atendenteId) q = q.eq("atendente_dc_id", filtro.atendenteId);
   if (filtro.numeroId) q = q.eq("numero_dc_id", filtro.numeroId);
-  const [leads, etapas, etiquetas, equipe, numeros, atendentes] = await Promise.all([
+  const [leads, etapas, etiquetas, equipe, numeros, atendentes, banidos] = await Promise.all([
     q,
     supabase.from("funil_etapas").select("id, tipo").eq("ativa", true),
     supabase.from("funil_etiquetas").select("dc_id, etapa_id"),
     supabase.from("equipe").select("id, nome"),
     nomesDosNumeros(),
     nomesDosAtendentes(),
+    numerosBanidos(),
   ]);
   if (leads.error) throw new Error(`Erro ao carregar quem não começou: ${leads.error.message}`);
   const tipoDaEtapa = new Map((etapas.data ?? []).map((e) => [Number(e.id), String(e.tipo)]));
@@ -402,6 +425,8 @@ export async function naoComecaram(filtro: FiltroAtendimento = { atendenteId: nu
   const agora = Date.now();
   const pendentes = leads.data.filter((l) => {
     if (l.compra === "hubla" || l.compra === "fora_hubla") return false;
+    // número banido fica fora (aparece no filtro "Número banido")
+    if (l.numero_dc_id && banidos.has(String(l.numero_dc_id))) return false;
     const tipos = (l.funil_eventos ?? []).map((e) => (e.etiqueta_dc_id ? tipoDaEtiqueta.get(String(e.etiqueta_dc_id)) : null));
     return !tipos.some((t) => t === "etapa" || t === "fora");
   });
@@ -449,9 +474,7 @@ export type LeadBanido = {
  */
 export async function leadsEmNumeroBanido(filtro: { atendenteId: string | null } = { atendenteId: null }): Promise<LeadBanido[]> {
   const supabase = await createClient();
-  const { data: banidosData, error } = await supabase.from("funil_numeros").select("dc_id, monitor_numeros!inner(situacao)").eq("monitor_numeros.situacao", "banido");
-  if (error) throw new Error(`Erro ao carregar números banidos: ${error.message}`);
-  const banidos = new Set((banidosData ?? []).map((n) => String(n.dc_id)));
+  const banidos = await numerosBanidos();
   if (banidos.size === 0) return [];
 
   const sel = "dc_id, lead_dc_id, contato_rotulo, atendente_dc_id, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em";
@@ -557,7 +580,7 @@ export type VisaoAtendentes = {
 export async function visaoPorAtendente(cfg: ConfigFunil): Promise<VisaoAtendentes> {
   const supabase = await createClient();
   const hoje = hojeSP();
-  const [atendentes, ligacoes, leads, conversas, vendas] = await Promise.all([
+  const [atendentes, ligacoes, leads, conversas, vendas, banidos] = await Promise.all([
     nomesDosAtendentes(),
     supabase.from("funil_atendentes").select("dc_id, equipe_id").eq("suporte_dc", false),
     supabase
@@ -568,11 +591,12 @@ export async function visaoPorAtendente(cfg: ConfigFunil): Promise<VisaoAtendent
       .limit(5000),
     supabase
       .from("funil_conversas")
-      .select("dc_id, lead_dc_id, contato_rotulo, atendente_dc_id, statuses, ultima_recebida_em, ultima_enviada_em, fila_desde")
+      .select("dc_id, lead_dc_id, contato_rotulo, atendente_dc_id, numero_dc_id, statuses, ultima_recebida_em, ultima_enviada_em, fila_desde")
       .eq("finalizada", false)
       .eq("interno", false)
       .limit(5000),
     supabase.from("vendas").select("vendedor_id").eq("data", hoje).eq("status", "pago").eq("aguardando_confirmacao", false).limit(5000),
+    numerosBanidos(),
   ]);
   if (leads.error) throw new Error(`Erro ao carregar os leads de hoje: ${leads.error.message}`);
   if (conversas.error) throw new Error(`Erro ao carregar as conversas: ${conversas.error.message}`);
@@ -611,7 +635,7 @@ export async function visaoPorAtendente(cfg: ConfigFunil): Promise<VisaoAtendent
   for (const c of conversas.data) {
     const chave = c.lead_dc_id ? `l:${c.lead_dc_id}` : c.contato_rotulo ? `r:${c.contato_rotulo}` : `c:${c.dc_id}`;
     const statuses: string[] = c.statuses ?? [];
-    if (!statuses.length) continue;
+    if (!statuses.length || (c.numero_dc_id && banidos.has(String(c.numero_dc_id)))) continue;
     const id = c.atendente_dc_id ? String(c.atendente_dc_id) : null;
     if (!id || !card.has(id)) {
       const desde = c.fila_desde ?? c.ultima_recebida_em;
