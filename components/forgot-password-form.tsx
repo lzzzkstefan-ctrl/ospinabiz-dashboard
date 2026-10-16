@@ -48,7 +48,7 @@ export function ForgotPasswordForm({
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       {success ? (
-        <div className="glass">
+        <div className="glass" suppressHydrationWarning>
           <CardHeader>
             <CardTitle className="text-[24px] text-white">Confira seu e-mail</CardTitle>
             <CardDescription>Instruções enviadas</CardDescription>
@@ -61,7 +61,7 @@ export function ForgotPasswordForm({
           </CardContent>
         </div>
       ) : (
-        <div className="glass">
+        <div className="glass" suppressHydrationWarning>
           <CardHeader>
             <CardTitle className="text-[24px] text-white">Recuperar senha</CardTitle>
             <CardDescription>

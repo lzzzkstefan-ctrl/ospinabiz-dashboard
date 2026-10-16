@@ -40,7 +40,7 @@ export default function Page({ searchParams }: { searchParams: Promise<Params> }
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
-        <div className="glass">
+        <div className="glass" suppressHydrationWarning>
           <Suspense>
             <Formulario searchParams={searchParams} />
           </Suspense>

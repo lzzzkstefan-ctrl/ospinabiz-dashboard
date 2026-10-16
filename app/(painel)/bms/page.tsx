@@ -56,7 +56,7 @@ async function ConteudoBms() {
       </div>
 
       {admin && (
-        <section className="glass grid gap-6 p-5 md:grid-cols-[1fr_2fr]">
+        <section className="glass grid gap-6 p-5 md:grid-cols-[1fr_2fr]" suppressHydrationWarning>
           <FormNovaBm />
           <FormNovoNumero bms={ctx.bmsParaSelect} equipe={equipe} />
         </section>

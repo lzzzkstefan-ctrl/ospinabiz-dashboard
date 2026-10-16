@@ -45,6 +45,8 @@ export function TrocarCapa() {
         type="button"
         disabled={enviando}
         onClick={() => inputRef.current?.click()}
+        // a classe "glass-fora-da-tela" é posta de propósito fora do React (components/pausar-brilho.tsx)
+        suppressHydrationWarning
         className="glass pointer-events-auto absolute right-6 top-6 rounded-full px-4 py-2 text-xs font-medium text-ink transition-colors hover:text-white disabled:opacity-60 md:top-[104px]"
       >
         {enviando ? "enviando..." : "trocar capa"}

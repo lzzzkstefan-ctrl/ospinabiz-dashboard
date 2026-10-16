@@ -58,7 +58,7 @@ async function ConteudoMonitor() {
 
   return (
     <>
-      <section className="glass glass-destaque flex flex-col gap-4 p-5">
+      <section className="glass glass-destaque flex flex-col gap-4 p-5" suppressHydrationWarning>
         {dados.ultimoFechado ? (
           <div>
             <p className="text-[10.5px] uppercase tracking-wide text-ink-faint">
