@@ -328,3 +328,31 @@ export async function reprocessarTodos(): Promise<void> {
   for (const e of data ?? []) await processarEvento(e.id);
   refresh();
 }
+
+// ---------------------------------------------------------------------------
+// Reembolsos
+// ---------------------------------------------------------------------------
+
+/** "Marcar como revertido": a função do banco confere quem pode (admin, chefe ou o vendedor dono) e registra quem e quando. */
+export async function marcarRevertido(reembolsoId: number): Promise<{ erro?: string }> {
+  const usuario = await usuarioLogado();
+  if (!usuario || usuario.vendas === "nenhum") return { erro: "Faça login." };
+  if (!Number.isInteger(reembolsoId) || reembolsoId <= 0) return { erro: "Pedido inválido." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("vendas_reembolso_reverter", { p_id: reembolsoId });
+  if (error) return { erro: /pendente|encontrado|login/i.test(error.message) ? error.message : "Não deu para salvar." };
+  refresh();
+  return {};
+}
+
+/** Dias de garantia da Hubla: prazo dos pedidos de reembolso novos = pago em + dias. */
+export async function salvarPrazoReembolso(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  if (!(await ehChefeVendas())) return SO_ADMIN;
+  const dias = Number(form.get("dias"));
+  if (!Number.isInteger(dias) || dias < 1 || dias > 60) return { erro: "Use um número de 1 a 60 dias." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("vendas_config").update({ reembolso_prazo_dias: dias, atualizado_em: new Date().toISOString() }).eq("id", true);
+  if (error) return { erro: "Não deu para salvar." };
+  refresh();
+  return { ok: "Salvo. Vale para os pedidos novos." };
+}

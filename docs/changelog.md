@@ -4,6 +4,7 @@ Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à
 
 ## 16/10/2026
 
+- Pedido de reembolso da Hubla avisa na hora por push (admins, chefes e o vendedor), com lembretes de 24h e de prazo; tela Reembolsos com contagem regressiva, WhatsApp, copiar ID, marcar como revertido e taxa de reversão; selo na venda
 - Vendas: Protocolo Viral reconhecido pelo ID da Hubla, com comissão na faixa do GCS sobre o líquido sem juros; bloco do Viral por vendedor, GCS x Viral na Geral, conversão do downsell e vendas por oferta
 - Verificar feriados
 - Funil: conversas de número banido saem das Filas, de Leads esperando, de Chegaram e não começaram e dos totais; uma linha embaixo das Filas leva ao filtro Número banido.

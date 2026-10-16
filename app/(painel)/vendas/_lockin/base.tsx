@@ -190,6 +190,12 @@ export function StatusTag({ status }: { status: string }) {
   return <Etiqueta cor={COR_STATUS[status] ?? "cinza"}>{NOME_STATUS[status] ?? status}</Etiqueta>;
 }
 
+/** Selo da venda paga com pedido de reembolso pendente na Hubla (tela Reembolsos). */
+export function ReembolsoPedidoTag({ venda }: { venda: { status: string; reembolso_pedido?: boolean } }) {
+  if (!venda.reembolso_pedido || venda.status !== "pago") return null;
+  return <Etiqueta cor="laranja">reembolso solicitado</Etiqueta>;
+}
+
 /** Plataformas cadastradas (nome e cor), dadas pela página que monta a tela. */
 export const PlataformasContexto = createContext<PlataformaLI[]>([]);
 

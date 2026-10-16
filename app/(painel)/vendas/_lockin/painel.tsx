@@ -37,6 +37,7 @@ import {
   SemComissaoTag,
   StatusTag,
   PlataformasContexto,
+  ReembolsoPedidoTag,
   TicketTag,
   ViralTag,
 } from "./base";
@@ -587,6 +588,7 @@ function Grade({ vendas, ticketDe, onAbrir, vazio }: { vendas: VendaLI[]; ticket
               {v.linha === "viral" ? <ViralTag preco={precoViral(v)} /> : t ? <TicketTag ticket={t} /> : <SemComissaoTag oferta={ofertaDe(v)} produto={v.principal_produto} />}
               <PlataformaTag plataforma={v.plataforma} />
               <StatusTag status={v.status} />
+              <ReembolsoPedidoTag venda={v} />
               {v.aguardando_confirmacao && <span className="etiqueta etiqueta-laranja">aguardando confirmação</span>}
             </span>
           </button>
@@ -689,7 +691,10 @@ function TabelaVendas({
                 <PlataformaTag plataforma={v.plataforma} />
               </td>
               <td className="px-3 py-2">
-                <StatusTag status={v.status} />
+                <span className="flex flex-wrap gap-1.5">
+                  <StatusTag status={v.status} />
+                  <ReembolsoPedidoTag venda={v} />
+                </span>
               </td>
               <td className="whitespace-nowrap px-3 py-2 text-right">{bruto == null ? "—" : formatBRL(bruto)}</td>
               <td className="whitespace-nowrap px-3 py-2 text-right">{liquido == null ? "—" : formatBRL(liquido)}</td>
@@ -730,6 +735,7 @@ function DetalheVenda({
       <div className="-mt-2 mb-3 flex flex-wrap gap-1.5">
         <PlataformaTag plataforma={v.plataforma} />
         <StatusTag status={v.status} />
+        <ReembolsoPedidoTag venda={v} />
         <span className="text-[12px] text-ink-faint">{dataBR(v.data)}</span>
       </div>
       {v.linha === "viral" && (

@@ -400,3 +400,24 @@ guardado na venda quando ela nasce (`viral_liquido`).
   funcionando sem mudar.
 - **A meta e a tabela "Por vendedor" da Geral contam só o GCS.** O Viral tem uma tabela própria
   (GCS x Viral), a conversão da etiqueta 🪞DOWNSELL VIRAL e a distribuição por oferta.
+
+## 2026-10-16: Alerta de pedido de reembolso da Hubla (eventos refund_request.*)
+
+Na Hubla, o pedido de reembolso feito dentro da garantia é executado sozinho se ninguém resolver. Para
+o vendedor tentar reverter a tempo, os eventos de **Solicitação de Reembolso** (criada, cancelada,
+rejeitada, aceita) entram pelo mesmo webhook das vendas e viram `vendas_reembolsos`. O pedido novo
+manda um push na hora para os admins, os chefes de Vendas e o vendedor dono. Há também um lembrete
+se o pedido continuar pendente 24h depois e outro quando faltar menos de 24h para o prazo.
+
+**Por quê:**
+- **Webhook em vez de consultar a API a cada 15 min:** a Hubla tem evento próprio para o pedido, então
+  o aviso chega na hora e não precisa de chave de API nova.
+- **Prazo = pago em + dias de garantia (padrão 7, editável na Configuração):** o evento não traz prazo
+  (só `refund.isAutoAccepted`). Se o primeiro pedido real mostrar outro prazo, basta mudar o número.
+- **Tabela própria, sem mexer na venda:** a venda de mês fechado não pode mudar (trava). O selo
+  "reembolso solicitado" sai da tabela de pedidos. A comissão continua seguindo só o status da venda
+  (aceito ou reembolsado → `reembolso`, como antes): sai do mês aberto, e em mês fechado vira estorno.
+- **"Marcar como revertido" por função do banco** (`vendas_reembolso_reverter`): ela confere quem
+  pode (admin, chefe ou o vendedor dono) e grava quem foi pelo login, sem o navegador informar.
+- **Push genérico em `lib/notificacoes.ts`:** Vendas não pode importar de Escala. O registro
+  `notificacoes_enviadas` (chave única) evita aviso repetido quando a Hubla reenvia o evento.

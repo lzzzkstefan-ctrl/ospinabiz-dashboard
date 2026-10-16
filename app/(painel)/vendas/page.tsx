@@ -23,6 +23,7 @@ import {
   type LinhaViral,
 } from "@/modulos/vendas/tela";
 import { COR_VIRAL } from "@/modulos/vendas/cores";
+import { contarPendentes } from "@/modulos/vendas/reembolsos";
 import Link from "next/link";
 import { Suspense } from "react";
 import { formatBRLServidor } from "./_lockin/formato";
@@ -62,7 +63,8 @@ async function Conteudo({ searchParams }: Props) {
   const mes = lerMes(um(sp.mes), mesAtual);
   const ver: VerLista = sp.ver === "reembolso" || sp.ver === "tabela" ? sp.ver : "pago";
 
-  const vendedores = (await listarVendedores()).filter((v) => v.ativo);
+  const [todosVendedores, reembolsosPendentes] = await Promise.all([listarVendedores(), contarPendentes()]);
+  const vendedores = todosVendedores.filter((v) => v.ativo);
   const eu = vendedores.find((v) => v.usuario_id === usuario.id) ?? null;
   if (!chefe && !eu) return <p className="text-[13.5px] text-ink-dim">Seu login ainda não está ligado a um vendedor. Fale com o chefe de Vendas.</p>;
 
@@ -95,8 +97,17 @@ async function Conteudo({ searchParams }: Props) {
             </Link>
           );
         })}
+        <Link
+          href="/vendas/reembolsos"
+          className={cn(
+            "ml-auto self-center text-[12.5px] underline-offset-4 hover:underline",
+            reembolsosPendentes ? "font-semibold text-amber-300" : "text-ink-dim",
+          )}
+        >
+          Reembolsos{reembolsosPendentes ? ` (${reembolsosPendentes} pendente${reembolsosPendentes > 1 ? "s" : ""})` : ""}
+        </Link>
         {chefe && (
-          <Link href={`/vendas/config?mes=${mes}`} className="ml-auto self-center text-[12.5px] text-ink-dim underline-offset-4 hover:underline">
+          <Link href={`/vendas/config?mes=${mes}`} className="self-center text-[12.5px] text-ink-dim underline-offset-4 hover:underline">
             Configuração
           </Link>
         )}

@@ -83,7 +83,14 @@ export async function carregarVendas(vendedorId: number | null, inicio: string, 
     if (error) throw new Error(`Erro ao carregar clientes: ${error.message}`);
     for (const c of data) nomes.set(c.venda_id as number, c.nome as string | null);
   }
-  return brutas.map((v) => ({ ...v, cliente: clienteCurto(nomes.get(v.id), v.final_lead) }));
+  // selo "reembolso solicitado": pedido pendente na Hubla (só das vendas já liberadas acima)
+  const pedidos = new Set<number>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const { data, error } = await db.from("vendas_reembolsos").select("venda_id").eq("status", "pendente").in("venda_id", ids.slice(i, i + 500));
+    if (error) throw new Error(`Erro ao carregar reembolsos: ${error.message}`);
+    for (const r of data) pedidos.add(r.venda_id as number);
+  }
+  return brutas.map((v) => ({ ...v, cliente: clienteCurto(nomes.get(v.id), v.final_lead), reembolso_pedido: pedidos.has(v.id) }));
 }
 
 export type MesVendedor = { observacoes: string; codigo: string | null };

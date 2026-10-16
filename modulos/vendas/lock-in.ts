@@ -65,6 +65,8 @@ export type VendaLI = {
   teste?: boolean;
   /** cadastrada pelo vendedor e ainda não confirmada: não conta em nada */
   aguardando_confirmacao?: boolean;
+  /** o cliente pediu reembolso na Hubla e o pedido está pendente (selo "reembolso solicitado") */
+  reembolso_pedido?: boolean;
   snap_liquido: number | string | null;
   snap_comissao_6: number | string | null;
   snap_comissao_7: number | string | null;

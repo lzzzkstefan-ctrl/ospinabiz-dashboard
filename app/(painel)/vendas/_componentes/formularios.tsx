@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { adicionarIdViral, atribuirVenda, corrigirVenda, criarCusto, fecharMes, salvarMes, salvarMeta, salvarTicket, valorDoCusto } from "../acoes";
+import { adicionarIdViral, atribuirVenda, corrigirVenda, criarCusto, fecharMes, salvarMes, salvarMeta, salvarPrazoReembolso, salvarTicket, valorDoCusto } from "../acoes";
 
 // Formulários da aba Vendas (os que mostram mensagem de resultado ou precisam do navegador).
 
@@ -170,6 +170,20 @@ export function FormIdViral() {
         <Input name="descricao" maxLength={120} placeholder="ex.: oferta R$ 53,90" className="w-56" />
       </Campo>
       <Salvar texto="Adicionar" />
+      <Aviso estado={estado} />
+    </form>
+  );
+}
+
+/** Dias de garantia da Hubla (prazo dos pedidos de reembolso). */
+export function FormPrazoReembolso({ dias }: { dias: number }) {
+  const [estado, acao] = useActionState<EstadoForm, FormData>(salvarPrazoReembolso, {});
+  return (
+    <form action={acao} className="flex flex-wrap items-end gap-3">
+      <Campo rotulo="Dias de garantia">
+        <Input name="dias" type="number" min={1} max={60} defaultValue={dias} className="w-24" />
+      </Campo>
+      <Salvar />
       <Aviso estado={estado} />
     </form>
   );

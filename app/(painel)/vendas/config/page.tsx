@@ -10,7 +10,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { alternarCusto, alternarIdViral, alternarTicket, reprocessar, reprocessarTodos } from "../acoes";
-import { FormIdViral, FormMes, FormMeta, FormNovoCusto, FormTicket, FormValorCusto } from "../_componentes/formularios";
+import { diasDeGarantia } from "@/modulos/vendas/reembolsos";
+import { FormIdViral, FormMes, FormPrazoReembolso, FormMeta, FormNovoCusto, FormTicket, FormValorCusto } from "../_componentes/formularios";
 
 type Props = { searchParams: Promise<{ mes?: string | string[] }> };
 
@@ -49,7 +50,7 @@ async function ConteudoConfig({ searchParams }: Props) {
   const mesAtual = mesDe(diaSP(new Date())!);
   const mes = lerMes(sp.mes, mesAtual);
 
-  const [margem, tickets, custos, eventos, plataformas, equipe, viral] = await Promise.all([
+  const [margem, tickets, custos, eventos, plataformas, equipe, viral, garantia] = await Promise.all([
     margemDoMes(mes),
     listarTickets(),
     listarCustos(),
@@ -57,6 +58,7 @@ async function ConteudoConfig({ searchParams }: Props) {
     listarPlataformas(),
     geralEquipe(mes),
     listarIdsViral(),
+    diasDeGarantia(),
   ]);
   const doMes = custosDoMes(
     mes,
@@ -165,6 +167,15 @@ async function ConteudoConfig({ searchParams }: Props) {
           <p className="mb-2 text-[11px] uppercase tracking-wide text-ink-faint">Novo ID (oferta nova do Viral em outro produto, por exemplo)</p>
           <FormIdViral />
         </div>
+      </Secao>
+
+      <Secao titulo="Reembolsos">
+        <p className="text-[12.5px] text-ink-dim">
+          A Hubla não manda o prazo no pedido de reembolso. O prazo na tela{" "}
+          <Link href="/vendas/reembolsos" className="underline-offset-4 hover:underline">Reembolsos</Link> é a data do pagamento + estes dias (a garantia
+          do produto). Pedido feito depois disso aparece sem prazo.
+        </p>
+        <FormPrazoReembolso dias={garantia} />
       </Secao>
 
       <Secao titulo={`Eventos da Hubla com erro · ${eventos.length}`}>

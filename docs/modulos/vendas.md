@@ -18,6 +18,8 @@ Venda aprovada na Hubla
   - `utm_term` = código de um vendedor ativo (`davi`, `vyenna`) → atribuída na hora.
   - Sem código ou código desconhecido → **A revisar** (só o admin vê e atribui).
   - Se já chegou reembolso dessa fatura antes, a venda já nasce **reembolso**.
+- **Pedido de reembolso** (`refund_request.created` / `.canceled` / `.rejected`): vai para
+  `vendas_reembolsos` (ver "Reembolsos" no fim). Não muda a venda.
 - **Reembolso** (`invoice.refunded`, `refund_request.accepted`): marca a venda. Se ela ainda não
   existe, o evento fica como `reembolso_antes_da_venda` e vale quando o pagamento chegar.
 - **Chargeback:** a Hubla não tem tratamento automático aqui; o admin marca na venda.
@@ -231,3 +233,36 @@ Decisão e porquês em `docs/decisoes.md`.
   - Tudo sai de funções do banco que devolvem só números (`vendas_viral_resumo`, `vendas_viral_conversao`).
 - **Meta da equipe e tabela "Por vendedor":** só GCS.
 - **Funil:** venda do Viral ligada ao lead marca `funil_leads.downsell = 'viral'`.
+
+## Reembolsos (16/10/2026, migration `vendas_reembolsos`)
+
+Alerta de pedido de reembolso da Hubla. Decisão e porquês em `docs/decisoes.md`.
+
+- **Eventos a marcar no webhook da Hubla** (mesma regra/URL das vendas): *Solicitação de Reembolso
+  criada*, *aceita*, *cancelada* e *rejeitada*, além de *Pagamento da fatura realizado* e *Fatura
+  reembolsada*, que já estavam marcados.
+- **Tabela `vendas_reembolsos`:** um pedido por `refund.id`, ligado à venda pela fatura.
+  - Guarda cliente (nome e telefone), produto (GCS ou Protocolo Viral), valor (total da fatura),
+    vendedor (o da venda; sem venda, o do `utm_term`), pago em, pedido em, prazo e status.
+  - Status: `pendente`, `revertido` ou `reembolsado`. `revertido` vem da tela (quem e quando) ou da
+    Hubla (cliente cancelou ou o pedido foi rejeitado).
+  - Quem lê: admin, chefe e o vendedor dono. Só o servidor grava, além da função
+    `vendas_reembolso_reverter`.
+- **Prazo:** pago em + `vendas_config.reembolso_prazo_dias` (padrão 7, Configuração de vendas →
+  Reembolsos). A Hubla não manda o prazo no evento. Pedido feito depois da garantia fica sem prazo.
+- **Comissão:** não muda nada no pedido. Quando a Hubla aceita ou reembolsa, a venda vira `reembolso`
+  como antes: sai do mês aberto, e em mês fechado a trava gera o estorno.
+- **Push** (`modulos/vendas/reembolsos.ts`, envio em `lib/notificacoes.ts`):
+  - vai para os admins do sistema, os chefes de Vendas e o vendedor dono;
+  - texto: "Reembolso solicitado: Nome, R$ valor, produto. Prazo: X"; ao tocar, abre
+    `/vendas/reembolsos?id=<pedido>`;
+  - lembretes (pg_cron a cada 15 min → `/api/vendas/reembolsos`): pendente há 24h, e falta menos de
+    24h para o prazo (só se o pedido chegou com mais de 24h de folga);
+  - chave única em `notificacoes_enviadas`: o mesmo aviso nunca sai duas vezes.
+- **Tela `/vendas/reembolsos`** (link "Reembolsos" no topo de Vendas, com o número de pendentes):
+  - pendentes do mais urgente para o menos urgente, com contagem regressiva;
+  - botões de WhatsApp, "Copiar ID do pedido" (ID da fatura na Hubla) e "Marcar como revertido";
+  - histórico do mês com a taxa de reversão por vendedor e por produto (revertidos ÷ revertidos +
+    reembolsados).
+  - O telefone aparece mascarado; o número inteiro vai só no link do WhatsApp.
+- **Selo** "reembolso solicitado" na venda paga com pedido pendente (lista, tabela e detalhe).

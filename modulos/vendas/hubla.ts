@@ -2,7 +2,12 @@
 // módulo usa. Sem banco e sem regra de negócio: só tradução do formato.
 // Campos conferidos com docs/modulos/vendas-referencia.md (seção 6).
 
-export type TipoEvento = "pagamento" | "reembolso" | "outro";
+/** pedido_reembolso = cliente pediu (refund_request.created); pedido_reembolso_fim = desistiu ou foi
+ * recusado (refund_request.canceled / .rejected). "reembolso" = efetuado (fatura reembolsada ou pedido aceito). */
+export type TipoEvento = "pagamento" | "reembolso" | "pedido_reembolso" | "pedido_reembolso_fim" | "outro";
+
+/** Pedido de reembolso (event.refund dos eventos refund_request.*). */
+export type PedidoReembolso = { id: string; status: string | null; autoAceite: boolean | null; criadoEm: string | null; motivo: string | null };
 
 /** nome = "<produto> - <oferta>"; produto = nome do produto (o que aparece como bump).
  * produtoId/ofertaId = IDs da Hubla (o Viral é reconhecido por eles, nunca pelo nome). */
@@ -32,10 +37,14 @@ export type FaturaHubla = {
   nome: string | null;
   telefone: string | null;
   email: string | null;
+  /** só nos eventos refund_request.* */
+  pedido: PedidoReembolso | null;
 };
 
 const PAGAMENTO = new Set(["invoice.payment_succeeded"]);
 const REEMBOLSO = new Set(["invoice.refunded", "refund_request.accepted"]);
+const PEDIDO_REEMBOLSO = new Set(["refund_request.created"]);
+const PEDIDO_REEMBOLSO_FIM = new Set(["refund_request.canceled", "refund_request.rejected"]);
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
@@ -83,12 +92,23 @@ export function lerFatura(payload: unknown): FaturaHubla {
   // recebedor da operação = o que tem o mesmo id do vendedor da fatura (o outro é a plataforma)
   const recebedor = lista(fatura.receivers).map(obj).find((r) => texto(r.id) !== null && r.id === fatura.sellerId);
   const pago = lista(fatura.statusAt).map(obj).find((s) => s.status === "paid");
-  const pagador = obj(fatura.payer);
+  // nos eventos de pedido de reembolso o comprador vem em event.user (a fatura traz só o payerId)
+  const pagador = Object.keys(obj(fatura.payer)).length ? obj(fatura.payer) : obj(evento.user);
   const nome = [texto(pagador.firstName), texto(pagador.lastName)].filter(Boolean).join(" ") || null;
+  const refund = obj(evento.refund);
+  const auto = refund.isAutoAccepted;
 
   return {
     tipoBruto,
-    tipo: PAGAMENTO.has(tipoBruto) ? "pagamento" : REEMBOLSO.has(tipoBruto) ? "reembolso" : "outro",
+    tipo: PAGAMENTO.has(tipoBruto)
+      ? "pagamento"
+      : REEMBOLSO.has(tipoBruto)
+        ? "reembolso"
+        : PEDIDO_REEMBOLSO.has(tipoBruto)
+          ? "pedido_reembolso"
+          : PEDIDO_REEMBOLSO_FIM.has(tipoBruto)
+            ? "pedido_reembolso_fim"
+            : "outro",
     idFatura: texto(fatura.id),
     utmTerm: texto(utm.term) ?? texto(utmPrimeira.term),
     utmContent: texto(utm.content) ?? texto(utmPrimeira.content),
@@ -103,5 +123,15 @@ export function lerFatura(payload: unknown): FaturaHubla {
     nome,
     telefone: texto(pagador.phone),
     email: texto(pagador.email),
+    pedido: texto(refund.id)
+      ? {
+          id: texto(refund.id)!,
+          status: texto(refund.status),
+          // a doc da Hubla diz string, os exemplos mandam boolean: aceita os dois
+          autoAceite: auto === true || auto === "true" ? true : auto === false || auto === "false" ? false : null,
+          criadoEm: texto(refund.createdAt),
+          motivo: texto(refund.description),
+        }
+      : null,
   };
 }

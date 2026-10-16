@@ -9,9 +9,12 @@
 // reembolso/chargeback e venda nova, registra em vendas_alteracoes e gera o estorno.
 // Protocolo Viral (16/10/2026): produto ou oferta com ID em vendas_produtos_hubla → linha 'viral',
 // sem ticket, valor = total pago na fatura; a comissão do Viral o banco calcula ao gravar.
+// Pedido de reembolso (16/10/2026): refund_request.created/.canceled/.rejected vão para
+// vendas_reembolsos (reembolsos.ts, com push); aceito/reembolsado também fecha o pedido aberto.
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerFatura, type FaturaHubla } from "./hubla";
+import { pedidoEfetuado, processarPedido } from "./reembolsos";
 import { diaSP, finalDoLead, montarVendaNova, vendedorDoUtm, type IdHubla, type Ticket } from "./regras";
 
 type Db = ReturnType<typeof createAdminClient>;
@@ -22,7 +25,7 @@ export async function processarEvento(eventoId: number): Promise<void> {
 
   const { data: evento, error } = await db
     .from("hubla_eventos")
-    .select("id, payload, tentativas")
+    .select("id, payload, tentativas, recebido_em")
     .eq("id", eventoId)
     .single();
   if (error || !evento) return;
@@ -31,7 +34,7 @@ export async function processarEvento(eventoId: number): Promise<void> {
 
   try {
     const fatura = lerFatura(evento.payload);
-    const fim = await decidir(db, eventoId, fatura);
+    const fim = await decidir(db, eventoId, fatura, evento.recebido_em);
     await db
       .from("hubla_eventos")
       .update({
@@ -53,10 +56,16 @@ export async function processarEvento(eventoId: number): Promise<void> {
   }
 }
 
-async function decidir(db: Db, eventoId: number, f: FaturaHubla): Promise<Conclusao> {
+async function decidir(db: Db, eventoId: number, f: FaturaHubla, recebidoEm: string): Promise<Conclusao> {
   if (f.tipo === "outro") return { resultado: "ignorado" };
   if (!f.idFatura) throw new Error("evento sem id da fatura");
-  return f.tipo === "reembolso" ? reembolso(db, f.idFatura) : pagamento(db, eventoId, f);
+  if (f.tipo === "pedido_reembolso" || f.tipo === "pedido_reembolso_fim") return processarPedido(db, f, recebidoEm);
+  if (f.tipo === "reembolso") {
+    const fim = await reembolso(db, f.idFatura);
+    await pedidoEfetuado(db, f, recebidoEm);
+    return fim;
+  }
+  return pagamento(db, eventoId, f);
 }
 
 async function reembolso(db: Db, idFatura: string): Promise<Conclusao> {
