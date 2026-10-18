@@ -439,3 +439,19 @@ bruto e no líquido, no ticket médio, na rosca, no "Resumo por ticket" (linha p
 - **Push de venda novo:** não existia aviso de venda (nem do GCS). O formato é o que o Davi pediu, e
   vai para as mesmas pessoas do aviso de reembolso, porque mostra comissão.
 
+## 2026-10-18: Compromissos previstos no Check-in
+
+Quem já sabe que vai se ausentar ou atrasar cadastra o compromisso, e a equipe recebe o push. O período
+avisado sai do horário escalado: não conta como atraso nem como "não entrou".
+
+**Por quê:**
+- **Tirar a faixa do horário escalado (e não marcar "justificado" depois):** uma regra só serve para o
+  card, a tabela e o aviso "sem check-in". Avisou "chega às 11h": o atraso conta a partir das 11h,
+  com a mesma tolerância de 10 min.
+- **Cancelar em vez de apagar:** fica o histórico de quem avisou e de quem cancelou.
+- **Aviso para todos por padrão:** os outros avisos do Check-in são só do admin por padrão, mas este
+  existe justamente para a equipe saber. Cada um pode desligar em "Quais avisos eu quero".
+- **"Dia inteiro fora" de todos = descoberto, sem o push de operação descoberta:** igual ao sábado
+  sem escala, como o Davi pediu. Ausência parcial continua gerando o aviso, porque nesse caso a
+  operação fica sem ninguém de verdade.
+

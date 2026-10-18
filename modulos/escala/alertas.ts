@@ -8,7 +8,21 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enviarPush, type Aviso } from "@/lib/integracoes/webpush";
-import { decidirDescoberta, diaDaSemana, emBrasilia, horaCurta, hhmm, minutos, NOME_MOTIVO, padraoVale, type MotivoPausa, type Padrao } from "./regras";
+import {
+  COLUNAS_COMPROMISSO,
+  decidirDescoberta,
+  diaDaSemana,
+  emBrasilia,
+  faixaFora,
+  horaCurta,
+  hhmm,
+  minutos,
+  NOME_MOTIVO,
+  padraoVale,
+  type Compromisso,
+  type MotivoPausa,
+  type Padrao,
+} from "./regras";
 
 export const TIPOS_AVISO = [
   { id: "operacao_descoberta", nome: "Operação descoberta (ninguém online no horário de atendimento, em dia com horário fixo)" },
@@ -18,6 +32,7 @@ export const TIPOS_AVISO = [
   { id: "pausa_fim", nome: "Alguém voltou da pausa" },
   { id: "entrada", nome: "Alguém entrou na operação" },
   { id: "saida", nome: "Alguém saiu da operação" },
+  { id: "compromisso", nome: "Compromisso previsto da equipe (cadastro, mudança, cancelamento e lembrete da véspera às 20h)" },
 ] as const;
 export type TipoAviso = (typeof TIPOS_AVISO)[number]["id"];
 
@@ -26,10 +41,11 @@ export const TOLERANCIA_SEM_CHECKIN_MIN = 15;
 
 type Db = ReturnType<typeof createAdminClient>;
 
-/** Preferência de alguém para um tipo (sem linha: admin recebe tudo, os outros nada). */
+/** Preferência de alguém para um tipo (sem escolha: admin recebe tudo, os outros nada; compromisso
+ * previsto é aviso para a equipe, então sem escolha todos recebem). */
 export function querReceber(pref: Partial<Record<TipoAviso, boolean>> | null, papel: string | null, tipo: TipoAviso): boolean {
   if (pref && typeof pref[tipo] === "boolean") return pref[tipo]!;
-  return papel === "admin";
+  return tipo === "compromisso" || papel === "admin";
 }
 
 /**
@@ -136,7 +152,7 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
   const db = createAdminClient();
   const agora = emBrasilia(agoraIso);
   const hoje = agora.dia;
-  const [cfgFunil, cfgEscala, abertos, pausas, equipe, padroes, entradasHoje, estado, feriado] = await Promise.all([
+  const [cfgFunil, cfgEscala, abertos, pausas, equipe, padroes, entradasHoje, estado, feriado, compromissos] = await Promise.all([
     db.from("funil_config").select("atendimento_inicio, atendimento_fim").maybeSingle(),
     db.from("escala_config").select("pausa_longa_min").maybeSingle(),
     db.from("escala_checkins").select("id, equipe_id, inicio").is("fim", null),
@@ -147,7 +163,11 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
     db.from("escala_checkins").select("equipe_id, inicio").gte("inicio", new Date(Date.parse(`${hoje}T03:00:00Z`)).toISOString()),
     db.from("escala_alerta_estado").select("descoberta_desde").maybeSingle(),
     db.from("feriados").select("roda").eq("data", hoje).maybeSingle(),
+    db.from("compromissos").select(COLUNAS_COMPROMISSO).eq("data", hoje).eq("cancelado", false).returns<Compromisso[]>(),
   ]);
+  // compromisso previsto: o período avisado não conta para "não entrou"; "dia inteiro fora" não cobre o dia
+  const foraHoje = (id: number) => (compromissos.data ?? []).filter((c) => Number(c.pessoa) === id).map(faixaFora);
+  const foraDiaInteiro = new Set((compromissos.data ?? []).filter((c) => c.tipo === "dia_inteiro").map((c) => Number(c.pessoa)));
   // feriado em que a operação não roda: folga, nada de descoberta nem "não entrou"
   const folga = feriado.data?.roda === false;
   const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
@@ -182,7 +202,8 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
   const emPausa = new Set((pausas.data ?? []).map((p) => Number(p.checkin_id)));
   const online = (abertos.data ?? []).filter((c) => !emPausa.has(Number(c.id)));
   const descobertaDesde = estado.data?.descoberta_desde ? String(estado.data.descoberta_desde) : null;
-  const diaComFixo = !folga && ((padroes.data ?? []) as Padrao[]).some((p) => padraoVale(p, hoje));
+  // igual ao sábado sem escala: se todos os escalados avisaram "dia inteiro fora", não avisa descoberta
+  const diaComFixo = !folga && ((padroes.data ?? []) as Padrao[]).some((p) => padraoVale(p, hoje) && !foraDiaInteiro.has(Number(p.equipe_id)));
   const decisao = decidirDescoberta({ agoraMin: agora.minuto, inicio: hhmm(ini), fim: hhmm(fim), diaComFixo, online: online.length, jaDescobertaDesde: descobertaDesde });
   const descoberta = decisao;
   if (decisao === "descobriu") {
@@ -223,7 +244,12 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
   }
   for (const [id, p] of primeiroFixo) {
     if (folga || !ativos.has(id) || entrouHoje.has(id)) continue;
-    const limiteMin = minutos(p.inicio) + TOLERANCIA_SEM_CHECKIN_MIN;
+    // início devido: o primeiro minuto do horário fixo que não foi avisado (ex.: "chega às 11h" → 11h)
+    const fora = foraHoje(id).sort((a, b) => a[0] - b[0]);
+    let inicioDevido = minutos(p.inicio);
+    for (const [a, b] of fora) if (a <= inicioDevido && b > inicioDevido) inicioDevido = b;
+    if (inicioDevido >= minutos(p.fim)) continue; // avisou que fica fora o horário todo
+    const limiteMin = inicioDevido + TOLERANCIA_SEM_CHECKIN_MIN;
     if (agora.minuto < limiteMin || agora.minuto >= minutos(p.fim)) continue;
     const nome = nomeDe.get(id) ?? "Alguém";
     semCheckin += await avisar(db, "sem_checkin", `${id}:${hoje}`, {

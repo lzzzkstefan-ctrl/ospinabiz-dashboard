@@ -117,6 +117,8 @@ export function montarDia(
   plantoes: Plantao[],
   nomeDe: Map<number, string>,
   operacao: { inicio: string; fim: string },
+  /** quem avisou "Dia inteiro fora" neste dia: continua no card, mas não cobre */
+  foraDoDia: Set<number> = new Set(),
 ): DiaEscala {
   const nome = (id: number) => nomeDe.get(id) ?? "?";
   const entradas: Entrada[] = [
@@ -132,10 +134,11 @@ export function montarDia(
   const ini = minutos(operacao.inicio);
   const fim = minutos(operacao.fim);
   const faixa = (e: Entrada): [number, number] => [minutos(e.inicio), minutos(e.fim)];
-  const descoberto = buracos(ini, fim, entradas.map(faixa)).map(([a, b]) => ({ inicio: hhmm(a), fim: hhmm(b) }));
-  const semNormal = buracos(ini, fim, entradas.filter((e) => e.tipo === "normal").map(faixa));
-  const situacao = !entradas.length ? "descoberto" : semNormal.length ? "parcial" : "coberto";
-  return { dia, diaSemana: diaDaSemana(dia), entradas, pendentes, descoberto, situacao, temRaspagem: entradas.some((e) => e.tipo === "raspagem") };
+  const cobrem = entradas.filter((e) => !foraDoDia.has(e.equipeId));
+  const descoberto = buracos(ini, fim, cobrem.map(faixa)).map(([a, b]) => ({ inicio: hhmm(a), fim: hhmm(b) }));
+  const semNormal = buracos(ini, fim, cobrem.filter((e) => e.tipo === "normal").map(faixa));
+  const situacao = !cobrem.length ? "descoberto" : semNormal.length ? "parcial" : "coberto";
+  return { dia, diaSemana: diaDaSemana(dia), entradas, pendentes, descoberto, situacao, temRaspagem: cobrem.some((e) => e.tipo === "raspagem") };
 }
 
 // ---------------------------------------------------------------------------
@@ -165,8 +168,9 @@ export type Presenca = {
   minutosPausa: number;
   /** minutos entre o início escalado e o primeiro check-in (só quando positivo) */
   atrasoMin: number | null;
-  /** "antes" = dia anterior ao primeiro check-in registrado (o check-in ainda não existia): mostra "—" */
-  situacao: "ok" | "atrasou" | "faltou" | "extra" | "em_andamento" | "a_fazer" | "antes";
+  /** "antes" = dia anterior ao primeiro check-in registrado (o check-in ainda não existia): mostra "—";
+   * "previsto" = tinha horário fixo, mas um compromisso previsto cobriu tudo e não entrou (não é falta) */
+  situacao: "ok" | "atrasou" | "faltou" | "extra" | "em_andamento" | "a_fazer" | "antes" | "previsto";
 };
 
 /** Corta [inicio, fim] (fim vazio = agora) no dia `dia` de Brasília: minutos do dia, ou null se não toca. */
@@ -189,6 +193,8 @@ export function presencas(
   nomeDe: Map<number, string>,
   agoraIso: string,
   primeiroDia: string | null,
+  /** compromissos previstos (não cancelados): o período avisado sai do horário escalado */
+  compromissos: Compromisso[] = [],
 ): Presenca[] {
   const agora = emBrasilia(agoraIso);
   const r: Presenca[] = [];
@@ -211,7 +217,10 @@ export function presencas(
     }
     const pessoas = new Set<number>([...d.entradas.map((e) => e.equipeId), ...doDia.keys()]);
     for (const id of pessoas) {
-      const escaladoFaixas = unir(d.entradas.filter((e) => e.equipeId === id).map((e) => [minutos(e.inicio), minutos(e.fim)] as [number, number]));
+      const fixoFaixas = unir(d.entradas.filter((e) => e.equipeId === id).map((e) => [minutos(e.inicio), minutos(e.fim)] as [number, number]));
+      // o que foi avisado antes (atraso, saída mais cedo, ausência, dia inteiro) não conta como devido
+      const fora = compromissos.filter((c) => c.pessoa === id && c.data === d.dia && !c.cancelado).map(faixaFora);
+      const escaladoFaixas = fixoFaixas.flatMap(([a, b]) => buracos(a, b, fora));
       const feito = (doDia.get(id) ?? []).sort((a, b) => a.inicio.localeCompare(b.inicio));
       const minutosEscalados = escaladoFaixas.reduce((s, [a, b]) => s + (b - a), 0);
       const minutosPausa = feito.reduce((s, f) => s + f.pausas.reduce((t, p) => t + p.minutos, 0), 0);
@@ -221,7 +230,7 @@ export function presencas(
       const jaComecou = d.dia < agora.dia || (d.dia === agora.dia && primeiroEscalado !== null && agora.minuto >= primeiroEscalado);
       const antesDoCheckin = !primeiroDia || d.dia < primeiroDia;
       let situacao: Presenca["situacao"];
-      if (!escaladoFaixas.length) situacao = "extra";
+      if (!escaladoFaixas.length) situacao = !fixoFaixas.length ? "extra" : feito.length ? (feito.some((f) => f.aberto) ? "em_andamento" : "ok") : "previsto";
       else if (!feito.length) situacao = !jaComecou ? "a_fazer" : antesDoCheckin ? "antes" : "faltou";
       else if (feito.some((f) => f.aberto)) situacao = "em_andamento";
       else situacao = atraso !== null && atraso > TOLERANCIA_ATRASO_MIN ? "atrasou" : "ok";
@@ -268,3 +277,65 @@ export function decidirDescoberta(o: { agoraMin: number; inicio: string; fim: st
   return noHorario && o.online > 0 ? "cobriu" : "limpar";
 }
 
+
+// ---------------------------------------------------------------------------
+// Compromissos previstos (18/10/2026): quem já sabe que vai se ausentar ou atrasar avisa antes.
+// O período avisado sai do horário escalado (não conta atraso nem "não entrou").
+// ---------------------------------------------------------------------------
+export type TipoCompromisso = "atraso_entrada" | "saida_cedo" | "ausencia" | "dia_inteiro";
+export const TIPOS_COMPROMISSO: { id: TipoCompromisso; nome: string }[] = [
+  { id: "atraso_entrada", nome: "Atraso na entrada" },
+  { id: "saida_cedo", nome: "Saída mais cedo" },
+  { id: "ausencia", nome: "Ausência no meio do turno" },
+  { id: "dia_inteiro", nome: "Dia inteiro fora" },
+];
+export type Compromisso = {
+  id: number;
+  pessoa: number;
+  data: string;
+  inicio: string | null;
+  fim: string | null;
+  dia_inteiro: boolean;
+  tipo: TipoCompromisso;
+  motivo: string | null;
+  criado_por: string | null;
+  criado_em: string;
+  cancelado: boolean;
+};
+export const COLUNAS_COMPROMISSO = "id, pessoa, data, inicio, fim, dia_inteiro, tipo, motivo, criado_por, criado_em, cancelado";
+
+/** Minutos do dia que o compromisso tira do horário: atraso = até a hora que chega; saída mais cedo =
+ * da hora que sai em diante; ausência = de/até; dia inteiro = tudo. */
+export function faixaFora(c: Pick<Compromisso, "tipo" | "inicio" | "fim">): [number, number] {
+  if (c.tipo === "dia_inteiro" || !c.inicio || !c.fim) return [0, 24 * 60];
+  if (c.tipo === "atraso_entrada") return [0, minutos(c.fim)];
+  if (c.tipo === "saida_cedo") return [minutos(c.inicio), 24 * 60];
+  return [minutos(c.inicio), minutos(c.fim)];
+}
+
+/** Card do dia: "fora 14h–16h", "chega às 11h", "sai às 18h", "fora o dia inteiro". */
+export function textoCurtoCompromisso(c: Pick<Compromisso, "tipo" | "inicio" | "fim">): string {
+  if (c.tipo === "dia_inteiro" || !c.inicio || !c.fim) return "fora o dia inteiro";
+  if (c.tipo === "atraso_entrada") return `chega às ${horaCurta(c.fim)}`;
+  if (c.tipo === "saida_cedo") return `sai às ${horaCurta(c.inicio)}`;
+  return `fora ${horaCurta(c.inicio)}–${horaCurta(c.fim)}`;
+}
+
+/** Aviso: "fora das 14h às 16h", "chega às 11h (atraso na entrada)", "sai às 18h (saída mais cedo)". */
+export function textoLongoCompromisso(c: Pick<Compromisso, "tipo" | "inicio" | "fim">): string {
+  if (c.tipo === "dia_inteiro" || !c.inicio || !c.fim) return "fora o dia inteiro";
+  if (c.tipo === "atraso_entrada") return `chega às ${horaCurta(c.fim)} (atraso na entrada)`;
+  if (c.tipo === "saida_cedo") return `sai às ${horaCurta(c.inicio)} (saída mais cedo)`;
+  return `fora das ${horaCurta(c.inicio)} às ${horaCurta(c.fim)}`;
+}
+
+const SEMANA_CURTA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+/** "Qua 21/10" */
+export const diaCurto = (dia: string) => `${SEMANA_CURTA[diaDaSemana(dia)]} ${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
+/** "Hoje", "Amanhã" ou "Qua 21/10" */
+export const rotuloDoDia = (dia: string, hoje: string) => (dia === hoje ? "Hoje" : dia === somarDias(hoje, 1) ? "Amanhã" : diaCurto(dia));
+
+/** "📅 Vyenna · Qua 21/10 · fora das 14h às 16h · consulta" */
+export function linhaDoCompromisso(c: Pick<Compromisso, "data" | "tipo" | "inicio" | "fim" | "motivo">, nome: string): string {
+  return ["📅 " + nome, diaCurto(c.data), textoLongoCompromisso(c), ...(c.motivo ? [c.motivo] : [])].join(" · ");
+}

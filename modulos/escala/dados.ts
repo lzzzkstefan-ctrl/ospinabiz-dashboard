@@ -3,7 +3,22 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { escaladosNoDia, hojePergunta, textoPergunta, type TipoFeriado } from "./feriados";
-import { diasDaSemana, emBrasilia, instante, montarDia, presencas, somarDias, type Checkin, type DiaEscala, type MotivoPausa, type Padrao, type Pausa, type Presenca } from "./regras";
+import {
+  COLUNAS_COMPROMISSO,
+  diasDaSemana,
+  emBrasilia,
+  instante,
+  montarDia,
+  presencas,
+  somarDias,
+  type Checkin,
+  type Compromisso,
+  type DiaEscala,
+  type MotivoPausa,
+  type Padrao,
+  type Pausa,
+  type Presenca,
+} from "./regras";
 
 export type Pessoa = { id: number; nome: string; temLogin: boolean };
 /** Quem está na operação agora; `pausa` preenchida = em pausa (desde, motivo, minutos até agora). */
@@ -33,6 +48,8 @@ export type Semana = {
   pausaLongaMin: number;
   /** feriados da semana, por dia ("AAAA-MM-DD") */
   feriados: Record<string, FeriadoDoDia>;
+  /** compromissos previstos da semana (não cancelados), para o card do dia */
+  compromissos: Compromisso[];
 };
 
 /**
@@ -77,7 +94,7 @@ export async function carregarSemana(domingo: string, usuarioId: string, admin =
   const sabado = somarDias(domingo, 6);
   const comeco = instante(domingo, "00:00");
   const fimDaSemana = instante(somarDias(sabado, 1), "00:00");
-  const [equipe, config, padroes, checkins, pausas, primeiro, limite, feriados] = await Promise.all([
+  const [equipe, config, padroes, checkins, pausas, primeiro, limite, feriados, compromissos] = await Promise.all([
     supabase.from("equipe").select("id, nome, usuario_id, ativo, teste, teste_visivel").order("nome"),
     supabase.from("funil_config").select("atendimento_inicio, atendimento_fim").maybeSingle(),
     supabase.from("escala_padrao").select("id, dia_semana, equipe_id, inicio, fim, tipo, desde, ate").lte("desde", sabado).or(`ate.is.null,ate.gte.${domingo}`),
@@ -88,8 +105,9 @@ export async function carregarSemana(domingo: string, usuarioId: string, admin =
     supabase.from("escala_checkins").select("inicio").order("inicio").limit(1).maybeSingle(),
     pausaLonga(),
     supabase.from("feriados").select("id, data, nome, tipo, fonte, roda, teste").gte("data", domingo).lte("data", sabado),
+    supabase.from("compromissos").select(COLUNAS_COMPROMISSO).gte("data", domingo).lte("data", sabado).eq("cancelado", false).returns<Compromisso[]>(),
   ]);
-  for (const r of [equipe, padroes, checkins, pausas]) {
+  for (const r of [equipe, padroes, checkins, pausas, compromissos]) {
     if (r.error) throw new Error(`Erro ao carregar o check-in: ${r.error.message}`);
   }
   const nomeDe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
@@ -97,7 +115,10 @@ export async function carregarSemana(domingo: string, usuarioId: string, admin =
     inicio: String(config.data?.atendimento_inicio ?? "09:00").slice(0, 5),
     fim: String(config.data?.atendimento_fim ?? "22:00").slice(0, 5),
   };
-  const dias = diasDaSemana(domingo).map((d) => montarDia(d, (padroes.data ?? []) as Padrao[], [], nomeDe, operacao));
+  const daSemana = (compromissos.data ?? []).map((c) => ({ ...c, pessoa: Number(c.pessoa), inicio: c.inicio?.slice(0, 5) ?? null, fim: c.fim?.slice(0, 5) ?? null }));
+  // "Dia inteiro fora": a pessoa continua no card, mas não cobre o dia (sem mais ninguém, descoberto)
+  const foraDoDia = (dia: string) => new Set(daSemana.filter((c) => c.data === dia && c.tipo === "dia_inteiro").map((c) => c.pessoa));
+  const dias = diasDaSemana(domingo).map((d) => montarDia(d, (padroes.data ?? []) as Padrao[], [], nomeDe, operacao, foraDoDia(d)));
   const primeiroDia = primeiro.data?.inicio ? emBrasilia(String(primeiro.data.inicio)).dia : null;
   // pessoa de teste: fora dos horários fixos e dos cards/online dos outros (ela vê os próprios)
   const testes = new Set((equipe.data ?? []).filter((p) => p.teste).map((p) => Number(p.id)));
@@ -108,10 +129,11 @@ export async function carregarSemana(domingo: string, usuarioId: string, admin =
     operacao,
     pessoas: (equipe.data ?? []).filter((p) => p.ativo && !p.teste).map((p) => ({ id: Number(p.id), nome: String(p.nome), temLogin: !!p.usuario_id })),
     dias,
-    presencas: presencas(dias, (checkins.data ?? []) as Checkin[], (pausas.data ?? []) as Pausa[], nomeDe, new Date().toISOString(), primeiroDia).filter((p) => visivel(p.equipeId)),
+    presencas: presencas(dias, (checkins.data ?? []) as Checkin[], (pausas.data ?? []) as Pausa[], nomeDe, new Date().toISOString(), primeiroDia, daSemana).filter((p) => visivel(p.equipeId)),
     agora: await onlineAgora(nomeDe, ocultosPara(equipe.data ?? [], admin), eu),
     eu,
     pausaLongaMin: limite,
+    compromissos: daSemana.filter((c) => visivel(c.pessoa)),
     feriados: Object.fromEntries(
       (feriados.data ?? []).map((f) => [
         String(f.data),
@@ -168,4 +190,20 @@ export async function perguntaFeriado(usuarioId: string): Promise<{ id: number; 
     }
   }
   return null;
+}
+
+/** Seção "Compromissos previstos": de hoje em diante e os anteriores (últimos 60 dias), sem os cancelados. */
+export async function carregarCompromissos(hoje: string): Promise<{ proximos: Compromisso[]; anteriores: Compromisso[] }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("compromissos")
+    .select(COLUNAS_COMPROMISSO)
+    .eq("cancelado", false)
+    .gte("data", somarDias(hoje, -60))
+    .order("data")
+    .order("inicio", { nullsFirst: true })
+    .returns<Compromisso[]>();
+  if (error) throw new Error(`Erro ao carregar os compromissos: ${error.message}`);
+  const lista = (data ?? []).map((c) => ({ ...c, pessoa: Number(c.pessoa), inicio: c.inicio?.slice(0, 5) ?? null, fim: c.fim?.slice(0, 5) ?? null }));
+  return { proximos: lista.filter((c) => c.data >= hoje), anteriores: lista.filter((c) => c.data < hoje).reverse() };
 }

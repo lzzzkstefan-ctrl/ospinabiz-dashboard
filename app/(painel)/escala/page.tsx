@@ -2,11 +2,12 @@ import { PainelOperacao } from "@/components/painel-operacao";
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { createClient } from "@/lib/supabase/server";
 import { querReceber, TIPOS_AVISO } from "@/modulos/escala/alertas";
-import { carregarSemana } from "@/modulos/escala/dados";
+import { carregarCompromissos, carregarSemana } from "@/modulos/escala/dados";
 import { horaCurta, inicioDaSemana, TOLERANCIA_ATRASO_MIN } from "@/modulos/escala/regras";
 import { hojeSP } from "@/modulos/funil/calculo";
 import Link from "next/link";
 import { Suspense } from "react";
+import { CompromissosPrevistos } from "./_componentes/compromissos";
 import { DiasDaSemana } from "./_componentes/dias";
 import { FormFeriado, FormPadrao, FormPausaLonga } from "./_componentes/formularios";
 import { AtivarNotificacoes, FormPreferencias } from "./_componentes/notificacoes";
@@ -41,10 +42,13 @@ async function Conteudo({ searchParams }: Props) {
   const editar = admin && params.editar === "1";
   const novoFeriado = admin && params.adicionar === "feriado";
   const supabase = await createClient();
-  const [s, prefs] = await Promise.all([
+  const [s, prefs, compromissos] = await Promise.all([
     carregarSemana(inicioDaSemana(hoje), usuario.id, admin),
     supabase.from("notificacoes_preferencias").select("*").eq("usuario_id", usuario.id).maybeSingle(),
+    carregarCompromissos(hoje),
   ]);
+  // pessoa de teste fica fora da lista dos outros (ela vê os próprios)
+  const visivelCompromisso = (c: { pessoa: number }) => c.pessoa === s.eu || s.pessoas.some((p) => p.id === c.pessoa);
   const marcados = Object.fromEntries(TIPOS_AVISO.map((t) => [t.id, querReceber(prefs.data, usuario.papel, t.id)]));
   // horário fixo de todos aparece para todos; entrada/saída e atraso dos outros, só para o admin
   const presencas = admin ? s.presencas : s.presencas.filter((p) => p.equipeId === s.eu);
@@ -100,12 +104,33 @@ async function Conteudo({ searchParams }: Props) {
           </div>
         )}
 
-        <DiasDaSemana feriados={s.feriados} dias={s.dias} presencas={presencas} hoje={hoje} admin={admin} editar={editar} pausaLongaMin={s.pausaLongaMin} />
+        <DiasDaSemana
+          feriados={s.feriados}
+          dias={s.dias}
+          presencas={presencas}
+          hoje={hoje}
+          admin={admin}
+          editar={editar}
+          pausaLongaMin={s.pausaLongaMin}
+          compromissos={s.compromissos}
+          nomes={new Map(s.pessoas.map((p) => [p.id, p.nome]))}
+        />
         <p className="m-0 text-[11.5px] text-ink-faint">
           Operação das {horaCurta(s.operacao.inicio)} às {horaCurta(s.operacao.fim)}. Atraso = entrou mais de {TOLERANCIA_ATRASO_MIN} min depois do horário fixo. Quem
           esquece de sair sai sozinho no fim do horário fixo (saída automática). Pausa não conta como tempo online; acima de {s.pausaLongaMin} min fica em vermelho.
+          Compromisso previsto (📅): o período avisado não conta como atraso nem como &quot;não entrou&quot;.
         </p>
       </section>
+
+      <CompromissosPrevistos
+        proximos={compromissos.proximos.filter(visivelCompromisso)}
+        anteriores={compromissos.anteriores.filter(visivelCompromisso)}
+        pessoas={s.pessoas.map((p) => ({ id: p.id, nome: p.nome }))}
+        eu={s.eu}
+        usuarioId={usuario.id}
+        admin={admin}
+        hoje={hoje}
+      />
 
       <section className="glass-lite glass-static grid gap-6 p-4 lg:grid-cols-2">
         <div>

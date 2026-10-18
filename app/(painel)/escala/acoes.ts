@@ -8,7 +8,8 @@ import type { EstadoForm } from "@/components/formulario";
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { createClient } from "@/lib/supabase/server";
 import { hojeSP } from "@/modulos/funil/calculo";
-import { inicioDaSemana, instante, somarDias } from "@/modulos/escala/regras";
+import { inicioDaSemana, instante, somarDias, TIPOS_COMPROMISSO, type TipoCompromisso } from "@/modulos/escala/regras";
+import { avisarCompromisso, type AcaoCompromisso } from "@/modulos/escala/compromissos";
 import { avisarEntradaSaida, avisarPausa, avisoDeTeste, verificarAlertas } from "@/modulos/escala/alertas";
 import { enviarMensagensDaDecisao, verificarFeriados, type EnvioFeriado } from "@/modulos/escala/feriados";
 import { refresh } from "next/cache";
@@ -364,6 +365,7 @@ export async function salvarPreferencias(_anterior: EstadoForm, form: FormData):
     sem_checkin: marcado("sem_checkin"),
     entrada: marcado("entrada"),
     saida: marcado("saida"),
+    compromisso: marcado("compromisso"),
   };
   const supabase = await createClient();
   // já tem escolhas salvas: atualiza (com a data); primeira vez: cria (a data o banco põe sozinho;
@@ -380,4 +382,76 @@ export async function salvarPreferencias(_anterior: EstadoForm, form: FormData):
   }
   refresh();
   return { ok: "Salvo." };
+}
+
+// ---------------------------------------------------------------------------
+// Compromissos previstos (18/10/2026): cada um cadastra os seus (o admin, de qualquer pessoa); quem
+// cadastrou ou o admin edita e cancela. O banco confere de novo (RLS). Depois, push para a equipe.
+// ---------------------------------------------------------------------------
+
+function depoisDoCompromisso(id: number, acao: AcaoCompromisso, quem: string) {
+  after(async () => {
+    try {
+      await avisarCompromisso(id, acao, quem);
+    } catch (e) {
+      console.error("[compromissos] aviso não saiu:", e instanceof Error ? e.message : e);
+    }
+  });
+}
+
+/** Cadastrar (sem id) ou editar (com id) um compromisso previsto. */
+export async function salvarCompromisso(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (!usuario) return { erro: "Entre de novo." };
+  const admin = usuario.papel === "admin";
+  const id = Number(form.get("id") ?? 0);
+  const data = String(form.get("data") ?? "");
+  const tipo = String(form.get("tipo") ?? "") as TipoCompromisso;
+  const diaInteiro = form.get("horario") === "dia_inteiro" || tipo === "dia_inteiro";
+  const inicio = String(form.get("inicio") ?? "");
+  const fim = String(form.get("fim") ?? "");
+  const motivo = String(form.get("motivo") ?? "").trim().slice(0, 80);
+  if (!diaOk(data)) return { erro: "Escolha a data." };
+  if (data < hojeSP()) return { erro: "A data tem que ser hoje ou um dia futuro." };
+  if (!TIPOS_COMPROMISSO.some((t) => t.id === tipo)) return { erro: "Escolha o tipo." };
+  if (!diaInteiro && (!horaOk(inicio) || !horaOk(fim))) return { erro: "Preencha o horário (de / até) ou marque dia inteiro." };
+  if (!diaInteiro && inicio >= fim) return { erro: "O horário de “até” tem que ser depois do “de”." };
+
+  const supabase = await createClient();
+  // pessoa: o admin escolhe; os outros, sempre a própria (o banco confere de novo)
+  let pessoa = Number(form.get("pessoa") ?? 0);
+  if (!admin || !pessoa) {
+    const { data: eu } = await supabase.from("equipe").select("id").eq("usuario_id", usuario.id).maybeSingle();
+    if (!eu) return { erro: "Seu login não está ligado a ninguém da equipe. Fale com o admin." };
+    pessoa = Number(eu.id);
+  }
+  const campos = {
+    pessoa,
+    data,
+    tipo: diaInteiro ? "dia_inteiro" : tipo,
+    dia_inteiro: diaInteiro,
+    inicio: diaInteiro ? null : inicio,
+    fim: diaInteiro ? null : fim,
+    motivo: motivo || null,
+  };
+  const r = id
+    ? await supabase.from("compromissos").update(campos).eq("id", id).select("id").maybeSingle()
+    : await supabase.from("compromissos").insert(campos).select("id").single();
+  if (r.error) return { erro: mensagem(r.error) };
+  if (!r.data) return { erro: "Você não pode editar este compromisso (ou ele já passou)." };
+  depoisDoCompromisso(Number(r.data.id), id ? "editado" : "novo", usuario.id);
+  refresh();
+  return { ok: id ? "Compromisso alterado. A equipe foi avisada." : "Compromisso cadastrado. A equipe foi avisada." };
+}
+
+/** Cancelar (não apaga: fica cancelado). */
+export async function cancelarCompromisso(form: FormData): Promise<void> {
+  const usuario = await usuarioLogado();
+  if (!usuario) return;
+  const id = Number(form.get("id"));
+  if (!Number.isInteger(id) || id <= 0) return;
+  const supabase = await createClient();
+  const { data } = await supabase.from("compromissos").update({ cancelado: true }).eq("id", id).eq("cancelado", false).select("id").maybeSingle();
+  if (data) depoisDoCompromisso(id, "cancelado", usuario.id);
+  refresh();
 }

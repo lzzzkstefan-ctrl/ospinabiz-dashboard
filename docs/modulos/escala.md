@@ -185,3 +185,29 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
 - **Feriado de teste** (`teste = true`, só pelo banco): pop-up e push só para quem criou; mensagem
   só para quem decidiu. Testado em 13/10 com um feriado de teste para 14/10 (apagado depois).
 
+
+## Compromissos previstos (18/10/2026, migration `escala_compromissos`)
+
+- **Seção "Compromissos previstos"** logo abaixo de "Esta semana" (`_componentes/compromissos.tsx`,
+  âncora `/escala#compromissos`). "+ Adicionar compromisso" para todo logado: pessoa (o próprio; o
+  admin escolhe), data (hoje ou futuro), horário (de/até ou dia inteiro), tipo (Atraso na entrada ·
+  Saída mais cedo · Ausência no meio do turno · Dia inteiro fora) e motivo opcional (até 80).
+  Lista de hoje em diante agrupada por dia ("Hoje", "Amanhã", "Qua 21/10"), bolinha na cor da pessoa;
+  os que passaram ficam em "Ver anteriores" (60 dias). Cancelados somem (nada é apagado).
+- **Tabela `compromissos`:** pessoa, data, inicio, fim, dia_inteiro, tipo, motivo, criado_por,
+  criado_em, cancelado (+ cancelado_por/em e atualizado_por/em, preenchidos pelo gatilho
+  `compromisso_registro`). RLS: todos os logados leem; cada um cria os seus e edita/cancela os que
+  cadastrou; o admin (Davi, Rodrigo) cria para qualquer um e edita/cancela todos; só de hoje em diante.
+- **Faixa avisada** (`faixaFora` em regras.ts): atraso = até a hora que chega ("até"); saída mais
+  cedo = da hora que sai ("de") em diante; ausência = de/até; dia inteiro = tudo. Essa faixa sai do
+  horário escalado em `presencas`: atraso conta a partir do primeiro minuto devido (avisou "até 11h",
+  só é atraso depois de 11h10) e o avisado não é "não entrou" (situação `previsto`). O aviso push
+  "sem check-in" usa o mesmo início devido.
+- **Card do dia:** "📅 fora 14h–16h · consulta" em amarelo embaixo do horário fixo. "Dia inteiro
+  fora" de todos os escalados: o dia fica descoberto ("todos fora · descoberto") e, como no sábado
+  sem escala, não sai o aviso de operação descoberta.
+- **Avisos** (`modulos/escala/compromissos.ts`, tipo `compromisso`): cadastrar, editar ou cancelar →
+  push para a equipe menos quem fez ("📅 Vyenna · Qua 21/10 · fora das 14h às 16h · consulta");
+  20h → lembrete com os compromissos de amanhã (pg_cron dos alertas, a cada 2 min, chave
+  `vespera:<dia>`). Preferência "compromisso": sem escolha salva, **todos** recebem. Só push: o
+  WhatsApp de avisos (template da Meta) ainda não está configurado.

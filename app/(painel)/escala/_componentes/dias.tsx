@@ -4,17 +4,16 @@
 // Admin: "corrigir" em cada entrada; no modo editar, "tirar" em cada horário fixo.
 // Feriado: etiqueta no topo; "não vai rodar" troca as pessoas por "Folga · feriado" (nada de não
 // entrou, atraso nem descoberto); sem decisão: "Aguardando decisão do Rodrigo".
+// Compromisso previsto (18/10/2026): em amarelo embaixo do horário fixo ("📅 fora 14h–16h · consulta");
+// o período avisado não vira atraso nem "não entrou"; todos fora o dia inteiro = descoberto.
 
 import { Gaveta } from "@/components/formulario";
 import { cn } from "@/lib/utils";
 import type { FeriadoDoDia } from "@/modulos/escala/dados";
-import { horaCurta, horas, NOME_DIA, NOME_MOTIVO, TOLERANCIA_ATRASO_MIN, type DiaEscala, type Presenca } from "@/modulos/escala/regras";
+import { horaCurta, horas, NOME_DIA, NOME_MOTIVO, textoCurtoCompromisso, TOLERANCIA_ATRASO_MIN, type Compromisso, type DiaEscala, type Presenca } from "@/modulos/escala/regras";
 import { apagarFeriado, encerrarPadrao } from "../acoes";
+import { corDaPessoa } from "./cores";
 import { FormCorrigir } from "./formularios";
-
-/** Cor fixa por pessoa (pelo id da equipe), das cores de etiqueta do tema. */
-const CORES = ["--tag-azul", "--tag-verde", "--tag-roxo", "--tag-laranja", "--tag-vermelho"];
-const corDaPessoa = (equipeId: number) => CORES[(Math.max(1, equipeId) - 1) % CORES.length];
 const dataCurta = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
 export function DiasDaSemana({
@@ -25,14 +24,20 @@ export function DiasDaSemana({
   editar,
   pausaLongaMin,
   feriados,
+  compromissos = [],
+  nomes,
 }: {
   feriados: Record<string, FeriadoDoDia>;
+  /** compromissos previstos da semana (não cancelados) */
+  compromissos?: Compromisso[];
   dias: DiaEscala[];
   presencas: Presenca[];
   hoje: string;
   admin: boolean;
   editar: boolean;
   pausaLongaMin: number;
+  /** nome de quem só aparece pelo compromisso (sem horário fixo nem entrada no dia) */
+  nomes?: Map<number, string>;
 }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7">
@@ -42,14 +47,16 @@ export function DiasDaSemana({
         const folga = feriado?.roda === false;
         const descoberto = d.situacao === "descoberto" && !folga;
         const doDia = presencas.filter((p) => p.dia === d.dia);
-        // pessoas do dia: quem tem horário fixo e quem entrou mesmo sem horário fixo
-        const ids = [...new Set([...d.entradas.map((e) => e.equipeId), ...doDia.map((p) => p.equipeId)])];
+        const avisos = compromissos.filter((c) => c.data === d.dia);
+        // pessoas do dia: quem tem horário fixo, quem entrou mesmo sem horário fixo e quem avisou compromisso
+        const ids = [...new Set([...d.entradas.map((e) => e.equipeId), ...doDia.map((p) => p.equipeId), ...avisos.map((c) => c.pessoa)])];
         const pessoas = ids
           .map((id) => ({
             id,
-            nome: d.entradas.find((e) => e.equipeId === id)?.nome ?? doDia.find((p) => p.equipeId === id)?.nome ?? "?",
+            nome: d.entradas.find((e) => e.equipeId === id)?.nome ?? doDia.find((p) => p.equipeId === id)?.nome ?? nomes?.get(id) ?? "?",
             fixos: d.entradas.filter((e) => e.equipeId === id),
             presenca: doDia.find((p) => p.equipeId === id) ?? null,
+            avisos: avisos.filter((c) => c.pessoa === id),
           }))
           .sort((a, b) => (a.fixos[0]?.inicio ?? "99").localeCompare(b.fixos[0]?.inicio ?? "99") || a.nome.localeCompare(b.nome));
         return (
@@ -67,7 +74,9 @@ export function DiasDaSemana({
               <span className="text-[12px] tabular-nums text-ink-dim">{ehHoje ? "hoje · " : ""}{dataCurta(d.dia)}</span>
             </div>
             {feriado && <EtiquetaFeriado feriado={feriado} passou={d.dia < hoje} admin={admin} editar={editar} />}
-            {descoberto && <p className="m-0 text-[12px] font-semibold text-[rgb(var(--tag-vermelho))]">ninguém fixo · descoberto</p>}
+            {descoberto && (
+              <p className="m-0 text-[12px] font-semibold text-[rgb(var(--tag-vermelho))]">{d.entradas.length ? "todos fora · descoberto" : "ninguém fixo · descoberto"}</p>
+            )}
             {folga ? (
               <p className="m-0 text-[12.5px] font-semibold text-[rgb(var(--tag-rosa))]">Folga · feriado</p>
             ) : (
@@ -104,14 +113,14 @@ function EtiquetaFeriado({ feriado: f, passou, admin, editar }: { feriado: Feria
 }
 
 function Pessoa({
-  pessoa: { id, nome, fixos, presenca },
+  pessoa: { id, nome, fixos, presenca, avisos },
   dia,
   hoje,
   admin,
   editar,
   pausaLongaMin,
 }: {
-  pessoa: { id: number; nome: string; fixos: DiaEscala["entradas"]; presenca: Presenca | null };
+  pessoa: { id: number; nome: string; fixos: DiaEscala["entradas"]; presenca: Presenca | null; avisos: Compromisso[] };
   dia: string;
   hoje: string;
   admin: boolean;
@@ -144,6 +153,12 @@ function Pessoa({
       ) : (
         <span className="text-ink-faint">sem horário fixo</span>
       )}
+      {avisos.map((c) => (
+        <span key={c.id} className="text-[11.5px] font-medium tabular-nums text-[rgb(var(--tag-amarelo))]">
+          📅 {textoCurtoCompromisso(c)}
+          {c.motivo ? ` · ${c.motivo}` : ""}
+        </span>
+      ))}
       {/* o que aconteceu de verdade */}
       {presenca?.feito.map((f) => (
         <div key={f.checkinId} className="flex flex-col">
