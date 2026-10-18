@@ -152,14 +152,14 @@ export function TicketTag({ ticket, solto }: { ticket: TicketLI; solto?: boolean
 }
 
 /** Venda do Protocolo Viral: "Viral R$ 48,90" (preço da oferta). */
-export function ViralTag({ preco, solto }: { preco: number | null; solto?: boolean }) {
+export function ViralTag({ preco, solto, rotulo = "Viral" }: { preco: number | null; solto?: boolean; rotulo?: string }) {
   return (
     <span
       className={cn("inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink", !solto && "rounded-full border px-2 py-0.5")}
       style={solto ? undefined : { borderColor: `${COR_VIRAL}80`, background: `${COR_VIRAL}1f` }}
     >
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: COR_VIRAL }} aria-hidden />
-      Viral{preco != null ? ` ${formatBRL(preco)}` : ""}
+      {rotulo}{preco != null ? ` ${formatBRL(preco)}` : ""}
     </span>
   );
 }
@@ -221,22 +221,26 @@ const C = 2 * Math.PI * R;
 const RESPIRO = 2;
 const PRODUTO = { id: "sem-ticket-produto", nome: "sem comissão (produto)", cor: COR_PRODUTO };
 const SEM_TICKET = { id: "sem-ticket", nome: "sem comissão definida", cor: COR_REVISAR };
+const VIRAL = { id: "viral", nome: "Protocolo Viral", cor: COR_VIRAL };
 
-/** Rosca das vendas pagas por ticket. Centro: total pago, ou o ticket sob o mouse. */
+/** Rosca das vendas pagas por ticket (o Protocolo Viral é uma fatia própria). Centro: total pago, ou o ticket sob o mouse. */
 export function Rosca({
   linhas: porTicket,
   total,
+  viral = 0,
   semTicket = 0,
   semTicketProduto = 0,
 }: {
   linhas: LinhaTicket[];
   total: number;
+  viral?: number;
   semTicket?: number;
   semTicketProduto?: number;
 }) {
   const [foco, setFoco] = useState<string | null>(null);
   const linhas = [
     ...porTicket.map((l) => ({ ticket: { id: String(l.ticket.id), nome: l.ticket.nome, cor: l.ticket.cor }, qtd: l.qtd })),
+    ...(viral ? [{ ticket: VIRAL, qtd: viral }] : []),
     ...(semTicketProduto ? [{ ticket: PRODUTO, qtd: semTicketProduto }] : []),
     ...(semTicket ? [{ ticket: SEM_TICKET, qtd: semTicket }] : []),
   ];

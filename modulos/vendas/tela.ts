@@ -233,7 +233,7 @@ export async function faixasSugeridas(ano: number): Promise<Map<string, Faixa | 
     todas<Venda>((de, ate) =>
       db
         .from("vendas")
-        .select("id, status, ticket_id, snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, data")
+        .select("id, status, ticket_id, snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, data, linha, viral_liquido")
         .gte("data", `${ano}-01-01`)
         .lt("data", `${ano + 1}-01-01`)
         .eq("aguardando_confirmacao", false)
@@ -254,7 +254,9 @@ export async function faixasSugeridas(ano: number): Promise<Map<string, Faixa | 
   for (let m = 1; m <= 12; m++) {
     const chave = `${ano}-${String(m).padStart(2, "0")}`;
     const linha = (meses.data ?? []).find((x) => String(x.mes).startsWith(chave));
-    const liquido = resumir(vendas.filter((v) => v.data.startsWith(chave)), ts).liquido;
+    // receita da operação = líquido do GCS + do Protocolo Viral (igual a margemDoMes)
+    const doMes = resumir(vendas.filter((v) => v.data.startsWith(chave)), ts);
+    const liquido = doMes.liquido + doMes.viralLiquido;
     const totalCustos = custosDoMes(chave, custos.data ?? [], valoresNum).reduce((s, c) => s + (c.valor ?? 0), 0);
     const margem = calcularMargem(
       liquido,

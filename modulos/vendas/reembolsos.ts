@@ -129,7 +129,7 @@ async function montarPedido(db: Db, f: FaturaHubla, recebidoEm: string) {
 // ---------------------------------------------------------------------------
 
 /** Admins do sistema, chefes de Vendas e a pessoa do vendedor dono. */
-async function destinatarios(db: Db, vendedorId: number | null): Promise<string[]> {
+export async function destinatarios(db: Db, vendedorId: number | null): Promise<string[]> {
   const [{ data: usuarios, error }, dono] = await Promise.all([
     db.auth.admin.listUsers({ perPage: 200 }),
     vendedorId ? db.from("equipe").select("usuario_id").eq("id", vendedorId).maybeSingle() : Promise.resolve({ data: null }),

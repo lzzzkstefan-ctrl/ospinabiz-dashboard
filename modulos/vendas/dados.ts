@@ -220,7 +220,8 @@ export async function margemDoMes(mes: string): Promise<MargemDoMes> {
   };
 
   return {
-    ...calcularMargem(resumo.liquido, entradas, totalCustos),
+    // receita da operação = líquido do GCS + líquido do Protocolo Viral (18/10/2026)
+    ...calcularMargem(resumo.liquido + resumo.viralLiquido, entradas, totalCustos),
     entradas,
     custos: doMes,
     custosSemValor: doMes.filter((c) => c.valor === null).map((c) => c.nome),

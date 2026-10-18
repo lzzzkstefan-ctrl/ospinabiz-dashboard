@@ -266,14 +266,14 @@ async function GeralSemVendas({ papel, eu, nomes, mes }: { papel: PapelVendas; e
     completa ? viralGeral(mes) : null,
     completa ? viralConversao(mes) : null,
   ]);
-  // ticket médio DELE (bruto de ticket ÷ vendas pagas com ticket). O da equipe não aparece:
+  // ticket médio DELE ((bruto de ticket + Viral) ÷ vendas pagas com ticket e do Viral). O da equipe não aparece:
   // com a quantidade da equipe, revelaria o faturamento do outro.
   const r = resumirLI(minhas, tickets);
-  const comTicket = r.qtd - r.semTicket - r.semTicketProduto;
+  const comTicket = r.qtd - r.semTicket - r.semTicketProduto + r.viral.qtd;
   return (
     <>
       <MesNav mes={mes} />
-      <Meta mes={mes} pagas={equipe.pagas} meta={equipe.meta} ticketMedio={comTicket ? Math.round(r.bruto / comTicket) : null} />
+      <Meta mes={mes} pagas={equipe.pagas} meta={equipe.meta} ticketMedio={comTicket ? Math.round((r.bruto + r.viral.bruto) / comTicket) : null} />
       {linhas && <ResumoPorVendedor linhas={linhas} nomes={nomes} faixa={margem} />}
       {linhas && viral && conversao && <GcsEViral gcs={linhas} viral={viral} conversao={conversao} nomes={nomes} faixa={margem} />}
       {!completa && (
@@ -319,7 +319,7 @@ function Meta({ mes, pagas, meta, ticketMedio }: { mes: string; pagas: number; m
       {ticketMedio !== undefined && (
         <div className={cartao}>
           <span className="text-[24px] font-semibold tabular-nums text-white">{ticketMedio === null ? "—" : formatBRLServidor(ticketMedio)}</span>
-          <span className="text-xs text-ink-dim">seu ticket médio (bruto de ticket)</span>
+          <span className="text-xs text-ink-dim">seu ticket médio (GCS + Viral)</span>
         </div>
       )}
     </section>

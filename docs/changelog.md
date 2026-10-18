@@ -2,6 +2,10 @@
 
 Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à mão.
 
+## 18/10/2026
+
+- Protocolo Viral entra no total de vendas, bruto, líquido, rosca e Resumo por ticket (linha rosa); push de venda com a comissão
+
 ## 16/10/2026
 
 - Pedido de reembolso da Hubla avisa na hora por push (admins, chefes e o vendedor), com lembretes de 24h e de prazo; tela Reembolsos com contagem regressiva, WhatsApp, copiar ID, marcar como revertido e taxa de reversão; selo na venda

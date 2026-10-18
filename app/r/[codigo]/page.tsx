@@ -33,11 +33,11 @@ async function Conteudo({ params }: { params: Promise<{ codigo: string }> }) {
   const margem = dados.margem;
   const [ano] = dados.mes.split("-");
   const totais = [
-    { lbl: "faturamento bruto", num: formatBRLServidor(r.bruto) },
-    { lbl: "vendas aprovadas", num: String(r.qtd) },
-    { lbl: margem ? `comissão (${margem}%)` : "comissão (% a definir)", num: margem ? formatBRLServidor(r.comissao[margem]) : "—" },
+    { lbl: "faturamento bruto", num: formatBRLServidor(r.total.bruto) },
+    { lbl: "vendas aprovadas", num: String(r.total.qtd) },
+    { lbl: margem ? `comissão (${margem}%)` : "comissão (% a definir)", num: margem ? formatBRLServidor(r.total.comissao[margem]) : "—" },
     ...(r.viral.qtd
-      ? [{ lbl: `Protocolo Viral (${r.viral.qtd} venda${r.viral.qtd > 1 ? "s" : ""})`, num: margem ? formatBRLServidor(r.viral.comissao[margem]) : "—" }]
+      ? [{ lbl: `dos quais Protocolo Viral (${r.viral.qtd} venda${r.viral.qtd > 1 ? "s" : ""})`, num: margem ? formatBRLServidor(r.viral.comissao[margem]) : "—" }]
       : []),
     { lbl: "reembolsos", num: String(r.reembolsos) },
     { lbl: "chargebacks", num: String(r.chargebacks) },
@@ -60,7 +60,7 @@ async function Conteudo({ params }: { params: Promise<{ codigo: string }> }) {
         ))}
       </section>
       <p className="mb-5 text-[12px] text-ink-faint">
-        Vendas aprovadas = pagas no mês do Protocolo Game Changer; o Protocolo Viral (downsell) tem comissão própria, à parte
+        Vendas aprovadas = pagas no mês do Protocolo Game Changer e do Protocolo Viral (downsell), cada uma com a comissão na mesma regra
         {r.semTicketProduto > 0 && ` (inclui ${r.semTicketProduto} sem comissão, listadas no fim)`}. Reembolso e chargeback não contam venda nem comissão.
       </p>
       <ListaPublica vendas={dados.publicas} nomeArquivo={`vendas-${dados.mes}.csv`} plataformas={dados.plataformas} />

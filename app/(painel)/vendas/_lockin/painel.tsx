@@ -227,10 +227,10 @@ export function PainelVendas({
       {/* totais */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { lbl: "total de vendas", num: String(resumo.qtd) },
-          { lbl: "bruto de ticket (base da comissão)", num: formatBRL(resumo.bruto) },
-          { lbl: "líquido de ticket (base da comissão)", num: formatBRL(resumo.liquido) },
-          { lbl: `comissão (${margem}%)`, num: formatBRL(resumo.comissao[margem]), destaque: true },
+          { lbl: "total de vendas", num: String(resumo.total.qtd) },
+          { lbl: "faturamento bruto (base da comissão)", num: formatBRL(resumo.total.bruto) },
+          { lbl: "líquido (base da comissão)", num: formatBRL(resumo.total.liquido) },
+          { lbl: `comissão (${margem}%)`, num: formatBRL(resumo.total.comissao[margem]), destaque: true },
         ].map((c) => (
           <div key={c.lbl} className={cn(cartao, c.destaque && "border-accent/40")}>
             <span className="block text-[22px] font-semibold leading-none tabular-nums text-white sm:text-[24px]">{c.num}</span>
@@ -281,7 +281,7 @@ export function PainelVendas({
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <div className="glass-lite glass-static p-4">
           <h3 className={titulo}>Vendas pagas por ticket</h3>
-          <Rosca linhas={resumo.porTicket} total={resumo.qtd} semTicket={resumo.semTicket} semTicketProduto={resumo.semTicketProduto} />
+          <Rosca linhas={resumo.porTicket} total={resumo.total.qtd} viral={resumo.viral.qtd} semTicket={resumo.semTicket} semTicketProduto={resumo.semTicketProduto} />
         </div>
         <div className="glass-lite glass-static overflow-x-auto p-4">
           <h3 className={titulo}>Resumo por ticket</h3>
@@ -307,6 +307,17 @@ export function PainelVendas({
                   <td className="whitespace-nowrap py-1.5 text-right text-white">{formatBRL(l.comissao[margem])}</td>
                 </tr>
               ))}
+              {resumo.viral.qtd > 0 && (
+                <tr className="border-t border-line-soft text-ink">
+                  <td className="py-1.5 pr-3">
+                    <ViralTag preco={null} rotulo="Protocolo Viral" solto />
+                  </td>
+                  <td className="py-1.5 pr-3 text-right">{resumo.viral.qtd}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(resumo.viral.bruto)}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(resumo.viral.liquido)}</td>
+                  <td className="whitespace-nowrap py-1.5 text-right text-white">{formatBRL(resumo.viral.comissao[margem])}</td>
+                </tr>
+              )}
               {resumo.semTicketProduto > 0 && (
                 <tr className="border-t border-line-soft text-ink-dim">
                   <td className="py-1.5 pr-3">
@@ -329,7 +340,7 @@ export function PainelVendas({
                   <td className="py-1.5 text-right">—</td>
                 </tr>
               )}
-              {resumo.qtd === 0 && (
+              {resumo.total.qtd === 0 && (
                 <tr>
                   <td colSpan={5} className="py-3 text-[13px] italic text-ink-faint">
                     Sem vendas pagas neste período.
@@ -337,14 +348,14 @@ export function PainelVendas({
                 </tr>
               )}
             </tbody>
-            {resumo.porTicket.length + (resumo.semTicket > 0 ? 1 : 0) + (resumo.semTicketProduto > 0 ? 1 : 0) > 1 && (
+            {resumo.porTicket.length + (resumo.viral.qtd > 0 ? 1 : 0) + (resumo.semTicket > 0 ? 1 : 0) + (resumo.semTicketProduto > 0 ? 1 : 0) > 1 && (
               <tfoot>
                 <tr className="border-t border-line text-white">
                   <td className="py-1.5 pr-3 font-medium">Total</td>
-                  <td className="py-1.5 pr-3 text-right">{resumo.qtd}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(resumo.bruto)}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(resumo.liquido)}</td>
-                  <td className="whitespace-nowrap py-1.5 text-right">{formatBRL(resumo.comissao[margem])}</td>
+                  <td className="py-1.5 pr-3 text-right">{resumo.total.qtd}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(resumo.total.bruto)}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(resumo.total.liquido)}</td>
+                  <td className="whitespace-nowrap py-1.5 text-right">{formatBRL(resumo.total.comissao[margem])}</td>
                 </tr>
               </tfoot>
             )}
@@ -360,7 +371,7 @@ export function PainelVendas({
                 className={cn("rounded-xl border px-1.5 py-2 text-center transition-colors", margem === m ? "border-accent bg-accent/15" : "border-line-soft hover:border-accent")}
               >
                 <span className="block text-[11.5px] text-ink-dim">{m}%</span>
-                <span className="block text-[12.5px] font-medium tabular-nums text-white">{formatBRL(resumo.comissao[m])}</span>
+                <span className="block text-[12.5px] font-medium tabular-nums text-white">{formatBRL(resumo.total.comissao[m])}</span>
               </button>
             ))}
           </div>
@@ -518,7 +529,7 @@ function BlocoViral({ resumo, margem }: { resumo: ReturnType<typeof resumirLI>; 
           Protocolo Viral
         </h3>
         <span className="text-[12px] text-ink-faint">
-          downsell · fora do total de vendas e da base da comissão do GCS
+          downsell · já somado no total de vendas, na rosca e no resumo por ticket
           {r.reembolsos + r.chargebacks > 0 ? ` · ${r.reembolsos + r.chargebacks} reembolso/chargeback` : ""}
         </span>
       </div>
@@ -536,7 +547,7 @@ function BlocoViral({ resumo, margem }: { resumo: ReturnType<typeof resumirLI>; 
         ))}
       </div>
       <p className="m-0 text-[11.5px] text-ink-faint">
-        Mesma regra do GCS: líquido da venda (o que a Hubla repassa, sem juros do parcelamento) {formatBRL(r.liquido)} × {margem}%.
+        Faturamento = o que o cliente pagou (com order bump); no resumo por ticket entra o preço da oferta. Comissão na mesma regra do GCS: líquido da venda (o que a Hubla repassa, sem juros do parcelamento) {formatBRL(r.liquido)} × {margem}%.
         {r.semLiquido > 0 && (
           <span className="text-accent-3">
             {" "}
@@ -558,9 +569,6 @@ function BlocoViral({ resumo, margem }: { resumo: ReturnType<typeof resumirLI>; 
           ))}
         </div>
       )}
-      <p className="m-0 text-[12.5px] text-ink-dim">
-        Comissão total do período (GCS + Viral a {margem}%): <span className="font-semibold text-white">{formatBRL(comissaoTotal(resumo, margem))}</span>
-      </p>
     </section>
   );
 }

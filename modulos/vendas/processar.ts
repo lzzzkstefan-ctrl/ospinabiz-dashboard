@@ -11,9 +11,11 @@
 // sem ticket, valor = total pago na fatura; a comissão do Viral o banco calcula ao gravar.
 // Pedido de reembolso (16/10/2026): refund_request.created/.canceled/.rejected vão para
 // vendas_reembolsos (reembolsos.ts, com push); aceito/reembolsado também fecha o pedido aberto.
+// Venda nova paga (18/10/2026): push "💰 Venda R$ … · produto · vendedor · comissão R$ …" (aviso-venda.ts).
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerFatura, type FaturaHubla } from "./hubla";
+import { avisarVenda } from "./aviso-venda";
 import { pedidoEfetuado, processarPedido } from "./reembolsos";
 import { diaSP, finalDoLead, montarVendaNova, vendedorDoUtm, type IdHubla, type Ticket } from "./regras";
 
@@ -154,6 +156,7 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
       .insert({ venda_id: venda.id, para_vendedor_id: vendedorId, forma: "utm" });
     if (erroHist) throw new Error(`erro ao gravar o histórico: ${erroHist.message}`);
   }
+  if (!jaReembolsada) await avisarVenda(db, venda.id);
   return { resultado: jaReembolsada ? "venda_criada_ja_reembolsada" : "venda_criada", vendaId: venda.id };
 }
 

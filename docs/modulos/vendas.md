@@ -223,8 +223,18 @@ Decisão e porquês em `docs/decisoes.md`.
 - **Tela do vendedor:**
   - bloco "Protocolo Viral" com vendas, faturamento, ticket médio, comissão na faixa e vendas por oferta;
   - filtro "Protocolo Viral" e etiqueta "Viral R$ X" na lista;
-  - o Viral não entra no total de vendas nem no bruto/líquido de ticket do GCS;
-  - a comissão total (GCS + Viral) aparece no fechamento, no "Copiar resumo" e na mensagem.
+  - desde 18/10/2026 o Viral **entra** nos cards (total de vendas, bruto, líquido, comissão), na rosca
+    "Vendas pagas por ticket" (fatia rosa "Protocolo Viral"), no "Resumo por ticket" (linha própria),
+    em "Comissão em cada margem", no "Copiar resumo", na mensagem do fechamento, no link público e no
+    ticket médio do vendedor (`resumo.total` em `lock-in.ts`). Bruto do Viral = preço da oferta de
+    cada venda (`viral_preco`, sem order bump nem juros); líquido = `viral_liquido`. O bloco
+    "Protocolo Viral" continua com o faturamento (valor pago, com bump) e as vendas por oferta;
+  - `resumo.qtd/bruto/liquido/comissao` continuam só do GCS (fechamento congelado, meta, "difere").
+- **Margem do mês:** o líquido da operação soma o do Viral (`margemDoMes` e `faixasSugeridas`).
+- **Push de venda** (18/10/2026, `aviso-venda.ts`, migration `vendas_aviso_venda`): cada venda paga
+  criada pelo webhook manda "💰 Venda R$ 48,90 · Protocolo Viral · Davi · comissão R$ 4,48" (GCS:
+  "Protocolo Game Changer") para admins, chefes e o vendedor dono. Comissão na faixa do fechamento,
+  senão na sugerida pela margem, senão 10% (o padrão da tela). Chave `venda:<id>`: reenvio não repete.
 - **Geral (chefe e gerente):**
   - tabela GCS x Viral por vendedor (quantidade, faturamento, ticket médio e comissão na faixa sugerida);
   - conversão do downsell: leads que receberam a etiqueta 🪞DOWNSELL VIRAL no mês x quantos deles

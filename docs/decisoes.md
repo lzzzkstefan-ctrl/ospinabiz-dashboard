@@ -421,3 +421,21 @@ se o pedido continuar pendente 24h depois e outro quando faltar menos de 24h par
   pode (admin, chefe ou o vendedor dono) e grava quem foi pelo login, sem o navegador informar.
 - **Push genérico em `lib/notificacoes.ts`:** Vendas não pode importar de Escala. O registro
   `notificacoes_enviadas` (chave única) evita aviso repetido quando a Hubla reenvia o evento.
+
+## 2026-10-18: Protocolo Viral dentro das contas da tela de Vendas, e push de venda
+
+Até aqui o Viral ficava num bloco à parte. A pedido do Davi, ele passa a contar no total de vendas, no
+bruto e no líquido, no ticket médio, na rosca, no "Resumo por ticket" (linha própria, cor rosa), no
+"Copiar resumo" e na mensagem do fechamento. A comissão já era a mesma regra do GCS e não mudou.
+
+**Por quê:**
+- **Um total novo (`resumo.total`), sem mudar o do GCS:** o fechamento congela `qtd` (GCS com ticket) e
+  guarda o Viral nas colunas `viral_*`. Mudar o significado de `qtd` faria fechamentos antigos
+  aparecerem como "difere". A tela mostra o total; o fechamento continua igual.
+- **Bruto do Viral = preço da oferta:** é o equivalente do "bruto de ticket" do GCS, que também deixa
+  o order bump e os juros de fora. O bump continua na receita (bloco do Viral e "Receita na Hubla").
+- **Margem com o líquido do Viral:** o anúncio que traz o lead do Viral já está nos custos; deixar a
+  receita dele de fora baixava a margem.
+- **Push de venda novo:** não existia aviso de venda (nem do GCS). O formato é o que o Davi pediu, e
+  vai para as mesmas pessoas do aviso de reembolso, porque mostra comissão.
+
