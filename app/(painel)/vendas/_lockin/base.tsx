@@ -138,7 +138,7 @@ export function ConfirmButton({
 }
 
 /** Etiqueta do ticket: bolinha na cor do ticket + nome em texto neutro. */
-export function TicketTag({ ticket, solto }: { ticket: TicketLI; solto?: boolean }) {
+export function TicketTag({ ticket, solto, selo }: { ticket: TicketLI; solto?: boolean; selo?: boolean }) {
   return (
     <span
       className={cn("inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink", !solto && "rounded-full border px-2 py-0.5")}
@@ -146,15 +146,22 @@ export function TicketTag({ ticket, solto }: { ticket: TicketLI; solto?: boolean
     >
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: ticket.cor }} aria-hidden />
       {ticket.nome}
+      {selo && <SeloGcs cor={ticket.cor} />}
       {ticket.provisorio && <span className="text-[10.5px] text-ink-faint">provisório</span>}
     </span>
   );
 }
 
-/** Selo pequeno que diferencia o Viral dos tickets do GCS. */
-export function SeloViral() {
-  return <span className="text-[10.5px] font-medium uppercase tracking-wide" style={{ color: COR_VIRAL }}>· Viral</span>;
+/** Selo pequeno ao lado do valor: "· Viral" (rosa) ou "· GCS" (na cor do ticket). */
+function Selo({ texto, cor }: { texto: string; cor: string }) {
+  return (
+    <span className="text-[10.5px] font-medium uppercase tracking-wide" style={{ color: cor }}>
+      · {texto}
+    </span>
+  );
 }
+export const SeloViral = () => <Selo texto="Viral" cor={COR_VIRAL} />;
+export const SeloGcs = ({ cor }: { cor: string }) => <Selo texto="GCS" cor={cor} />;
 
 /** Venda do Protocolo Viral: "R$ 48,90 · Viral" (preço da oferta), no formato da etiqueta de ticket. */
 export function ViralTag({ preco, solto }: { preco: number | null; solto?: boolean }) {
@@ -244,10 +251,10 @@ export function Rosca({
 }) {
   const [foco, setFoco] = useState<string | null>(null);
   const linhas = [
-    ...porTicket.map((l) => ({ ticket: { id: String(l.ticket.id), nome: l.ticket.nome, cor: l.ticket.cor }, qtd: l.qtd, viral: false })),
-    ...viral.map((l) => ({ ticket: { id: `viral-${l.preco}`, nome: rotuloValor(l.preco), cor: COR_VIRAL }, qtd: l.qtd, viral: true })),
-    ...(semTicketProduto ? [{ ticket: PRODUTO, qtd: semTicketProduto, viral: false }] : []),
-    ...(semTicket ? [{ ticket: SEM_TICKET, qtd: semTicket, viral: false }] : []),
+    ...porTicket.map((l) => ({ ticket: { id: String(l.ticket.id), nome: l.ticket.nome, cor: l.ticket.cor }, qtd: l.qtd, viral: false, gcs: true })),
+    ...viral.map((l) => ({ ticket: { id: `viral-${l.preco}`, nome: rotuloValor(l.preco), cor: COR_VIRAL }, qtd: l.qtd, viral: true, gcs: false })),
+    ...(semTicketProduto ? [{ ticket: PRODUTO, qtd: semTicketProduto, viral: false, gcs: false }] : []),
+    ...(semTicket ? [{ ticket: SEM_TICKET, qtd: semTicket, viral: false, gcs: false }] : []),
   ];
   const focada = linhas.find((l) => l.ticket.id === foco);
   if (total === 0) return <p className="m-0 py-6 text-center text-[13px] italic text-ink-faint">Nenhuma venda paga neste período.</p>;
@@ -280,13 +287,13 @@ export function Rosca({
               onMouseEnter={() => setFoco(l.ticket.id)}
               onMouseLeave={() => setFoco(null)}
             >
-              <title>{`${l.ticket.nome}${l.viral ? " · Viral" : ""}: ${l.qtd} venda${l.qtd > 1 ? "s" : ""} (${Math.round((l.qtd / total) * 100)}%)`}</title>
+              <title>{`${l.ticket.nome}${l.viral ? " · Viral" : l.gcs ? " · GCS" : ""}: ${l.qtd} venda${l.qtd > 1 ? "s" : ""} (${Math.round((l.qtd / total) * 100)}%)`}</title>
             </circle>
           ))}
         </svg>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-[26px] font-semibold leading-none tabular-nums text-white">{focada ? focada.qtd : total}</span>
-          <span className="mt-1 text-[11px] text-ink-dim">{focada ? `${focada.ticket.nome}${focada.viral ? " · Viral" : ""}` : "vendas pagas"}</span>
+          <span className="mt-1 text-[11px] text-ink-dim">{focada ? `${focada.ticket.nome}${focada.viral ? " · Viral" : focada.gcs ? " · GCS" : ""}` : "vendas pagas"}</span>
         </div>
       </div>
       <ul className="m-0 flex w-full list-none flex-col gap-1.5 p-0 text-[13px]">
@@ -300,6 +307,7 @@ export function Rosca({
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: l.ticket.cor }} aria-hidden />
             <span className="text-ink-dim">
               {l.ticket.nome} {l.viral && <SeloViral />}
+              {l.gcs && <SeloGcs cor={l.ticket.cor} />}
             </span>
             <span className="ml-auto tabular-nums text-white">{l.qtd}</span>
             <span className="w-9 text-right tabular-nums text-ink-faint">{Math.round((l.qtd / total) * 100)}%</span>

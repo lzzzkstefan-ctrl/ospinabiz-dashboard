@@ -1,4 +1,4 @@
-// Push de venda paga (18/10/2026): "💰 Venda R$ 338 · comissão R$ 32,11 · 3ª do dia"; no Viral,
+// Push de venda paga (18/10/2026): "💰 Venda R$ 338 · GCS · comissão R$ 32,11 · 3ª do dia"; no Viral,
 // "💰 Venda R$ 48,90 · Viral · comissão R$ 4,48 · 4ª do dia". Valor = o do ticket (GCS) ou o preço
 // da oferta (Viral); "Nª do dia" conta as vendas pagas do dia da equipe toda (GCS + Viral, sem teste).
 // Sai uma vez por venda criada pelo webhook da Hubla (chave venda:<id> em notificacoes_enviadas),
@@ -40,13 +40,13 @@ export function comissaoDaVenda(v: VendaAviso, faixa: Faixa): number | null {
   return c == null ? null : centavos(c);
 }
 
-/** "💰 Venda R$ 48,90 · Viral · comissão R$ 4,48 · 4ª do dia" (GCS sem o "· Viral") */
+/** "💰 Venda R$ 48,90 · Viral · comissão R$ 4,48 · 4ª do dia" (GCS: "· GCS") */
 export function textoAvisoVenda(v: VendaAviso, faixa: Faixa, doDia: number): string {
   const valor = v.linha === "viral" ? (v.viral_preco ?? v.valor_pago) : (v.snap_bruto ?? v.valor_pago);
   const comissao = comissaoDaVenda(v, faixa);
   return [
     `💰 Venda ${valor == null ? "sem valor" : rotuloValor(centavos(valor))}`,
-    ...(v.linha === "viral" ? ["Viral"] : []),
+    v.linha === "viral" ? "Viral" : "GCS",
     comissao === null ? "comissão a calcular" : `comissão ${reais(comissao)}`,
     `${doDia}ª do dia`,
   ].join(" · ");

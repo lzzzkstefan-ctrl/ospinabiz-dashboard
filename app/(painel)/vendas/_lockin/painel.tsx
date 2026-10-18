@@ -299,7 +299,7 @@ export function PainelVendas({
               {resumo.porTicket.map((l) => (
                 <tr key={l.ticket.id} className="border-t border-line-soft text-ink">
                   <td className="py-1.5 pr-3">
-                    <TicketTag ticket={l.ticket} solto />
+                    <TicketTag ticket={l.ticket} solto selo />
                   </td>
                   <td className="py-1.5 pr-3 text-right">{l.qtd}</td>
                   <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(l.bruto)}</td>
@@ -593,7 +593,7 @@ function Grade({ vendas, ticketDe, onAbrir, vazio }: { vendas: VendaLI[]; ticket
               <span className="shrink-0 text-[11px] tabular-nums text-ink-faint">{dataBR(v.data).slice(0, 5)}</span>
             </span>
             <span className="flex flex-wrap gap-1.5">
-              {v.linha === "viral" ? <ViralTag preco={precoViral(v)} /> : t ? <TicketTag ticket={t} /> : <SemComissaoTag oferta={ofertaDe(v)} produto={v.principal_produto} />}
+              {v.linha === "viral" ? <ViralTag preco={precoViral(v)} /> : t ? <TicketTag ticket={t} selo /> : <SemComissaoTag oferta={ofertaDe(v)} produto={v.principal_produto} />}
               <PlataformaTag plataforma={v.plataforma} />
               <StatusTag status={v.status} />
               <ReembolsoPedidoTag venda={v} />
