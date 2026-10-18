@@ -109,7 +109,10 @@ export function comissaoVenda(v: VendaLI, t: TicketLI | undefined, m: Faixa): nu
 // ---------- resumo ----------
 export type LinhaTicket = { ticket: TicketLI; qtd: number; bruto: number; liquido: number; comissao: Record<Faixa, number> };
 
-/** Protocolo Viral no período (centavos). porPreco: preço da oferta → vendas pagas. */
+/** Uma linha do Viral por preço de oferta (o "ticket" do Viral), como as linhas de ticket do GCS. */
+export type LinhaViral = { preco: number; qtd: number; bruto: number; liquido: number; comissao: Record<Faixa, number> };
+
+/** Protocolo Viral no período (centavos). porPreco: uma linha por preço de oferta, do maior para o menor. */
 export type ResumoViral = {
   qtd: number;
   faturamento: number;
@@ -123,7 +126,7 @@ export type ResumoViral = {
   semLiquido: number;
   reembolsos: number;
   chargebacks: number;
-  porPreco: { preco: number; qtd: number }[];
+  porPreco: LinhaViral[];
 };
 
 export type ResumoLI = {
@@ -150,7 +153,7 @@ export const comissaoTotal = (r: ResumoLI, m: Faixa) => r.comissao[m] + r.viral.
 
 export function resumirViral(vendas: VendaLI[]): ResumoViral {
   const r: ResumoViral = { qtd: 0, faturamento: 0, bruto: 0, liquido: 0, comissao: zero(), semLiquido: 0, reembolsos: 0, chargebacks: 0, porPreco: [] };
-  const precos = new Map<number, number>();
+  const precos = new Map<number, LinhaViral>();
   for (const v of vendas) {
     if (v.linha !== "viral" || v.aguardando_confirmacao) continue;
     if (v.status === "reembolso") r.reembolsos++;
@@ -158,17 +161,24 @@ export function resumirViral(vendas: VendaLI[]): ResumoViral {
     if (v.status !== "pago") continue;
     r.qtd++;
     r.faturamento += centavos(v.valor_pago);
+    const preco = centavos(v.viral_preco ?? v.valor_pago);
+    const l = precos.get(preco) ?? { preco, qtd: 0, bruto: 0, liquido: 0, comissao: zero() };
+    l.qtd++;
+    l.bruto += preco;
+    r.bruto += preco;
     if (v.viral_liquido == null) r.semLiquido++;
     else {
       const liq = centavos(v.viral_liquido);
       r.liquido += liq;
-      for (const m of FAIXAS) r.comissao[m] += comissaoDe(liq, m);
+      l.liquido += liq;
+      for (const m of FAIXAS) {
+        r.comissao[m] += comissaoDe(liq, m);
+        l.comissao[m] += comissaoDe(liq, m);
+      }
     }
-    const preco = centavos(v.viral_preco ?? v.valor_pago);
-    r.bruto += preco;
-    precos.set(preco, (precos.get(preco) ?? 0) + 1);
+    precos.set(preco, l);
   }
-  r.porPreco = [...precos.entries()].map(([preco, qtd]) => ({ preco, qtd })).sort((a, b) => a.preco - b.preco);
+  r.porPreco = [...precos.values()].sort((a, b) => b.preco - a.preco);
   return r;
 }
 
@@ -197,7 +207,8 @@ export function resumirLI(vendas: VendaLI[], tickets: TicketLI[]): ResumoLI {
     for (const m of FAIXAS) l.comissao[m] += comissaoVenda(v, t, m) ?? 0;
     linhas.set(t.id, l);
   }
-  const porTicket = [...tickets].sort((a, b) => a.ordem - b.ordem).filter((t) => linhas.has(t.id)).map((t) => linhas.get(t.id)!);
+  // do maior para o menor ticket (338, 278, 238, 158); depois deles vêm as linhas do Viral
+  const porTicket = [...tickets].sort((a, b) => centavos(b.valor_bruto) - centavos(a.valor_bruto) || a.ordem - b.ordem).filter((t) => linhas.has(t.id)).map((t) => linhas.get(t.id)!);
   const r: ResumoLI = {
     qtd: semTicket + semTicketProduto,
     bruto: 0,
@@ -240,6 +251,12 @@ export const nomeDoMesNumero = (m: number) => MESES[m - 1];
 /** 123456 → "R$ 1.234,56" (espaço comum, bom para colar no WhatsApp) */
 export const brl = (c: number) => `R$ ${(c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+/** 33800 → "R$ 338"; 4890 → "R$ 48,90" (o rótulo dos tickets e das ofertas do Viral na tela) */
+export function rotuloValor(c: number) {
+  const resto = c % 100;
+  return `R$ ${Math.floor(c / 100).toLocaleString("pt-BR")}${resto ? `,${String(resto).padStart(2, "0")}` : ""}`;
+}
+
 /** 28800 → "R$288"; 16890 → "R$168,90" */
 function precoCurto(c: number) {
   const resto = c % 100;
@@ -263,7 +280,7 @@ export function textoResumo(r: ResumoLI, margem: Faixa): string {
     "Vendas:",
     ...[
       ...r.porTicket.map((l) => ({ qtd: l.qtd, ordem: l.ticket.ordem, txt: rotuloTicket(l.ticket) })),
-      ...(r.viral.qtd ? [{ qtd: r.viral.qtd, ordem: 997, txt: `Protocolo Viral (${brl(r.viral.bruto)})` }] : []),
+      ...r.viral.porPreco.map((l) => ({ qtd: l.qtd, ordem: 997, txt: `${precoCurto(l.preco)} Viral` })),
       ...(r.semTicketProduto ? [{ qtd: r.semTicketProduto, ordem: 998, txt: "sem comissão (produto)" }] : []),
       ...(r.semTicket ? [{ qtd: r.semTicket, ordem: 999, txt: "sem comissão definida" }] : []),
     ]

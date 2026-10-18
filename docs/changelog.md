@@ -4,6 +4,7 @@ Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à
 
 ## 18/10/2026
 
+- Viral aparece pelo valor do ticket (R$ 48,90 · Viral, uma linha por preço, rosa); push de toda venda: valor, comissão e Nª do dia
 - Protocolo Viral entra no total de vendas, bruto, líquido, rosca e Resumo por ticket (linha rosa); push de venda com a comissão
 
 ## 16/10/2026

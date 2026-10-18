@@ -281,7 +281,7 @@ export function PainelVendas({
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <div className="glass-lite glass-static p-4">
           <h3 className={titulo}>Vendas pagas por ticket</h3>
-          <Rosca linhas={resumo.porTicket} total={resumo.total.qtd} viral={resumo.viral.qtd} semTicket={resumo.semTicket} semTicketProduto={resumo.semTicketProduto} />
+          <Rosca linhas={resumo.porTicket} total={resumo.total.qtd} viral={resumo.viral.porPreco} semTicket={resumo.semTicket} semTicketProduto={resumo.semTicketProduto} />
         </div>
         <div className="glass-lite glass-static overflow-x-auto p-4">
           <h3 className={titulo}>Resumo por ticket</h3>
@@ -307,17 +307,17 @@ export function PainelVendas({
                   <td className="whitespace-nowrap py-1.5 text-right text-white">{formatBRL(l.comissao[margem])}</td>
                 </tr>
               ))}
-              {resumo.viral.qtd > 0 && (
-                <tr className="border-t border-line-soft text-ink">
+              {resumo.viral.porPreco.map((l) => (
+                <tr key={`viral-${l.preco}`} className="border-t border-line-soft text-ink">
                   <td className="py-1.5 pr-3">
-                    <ViralTag preco={null} rotulo="Protocolo Viral" solto />
+                    <ViralTag preco={l.preco} solto />
                   </td>
-                  <td className="py-1.5 pr-3 text-right">{resumo.viral.qtd}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(resumo.viral.bruto)}</td>
-                  <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(resumo.viral.liquido)}</td>
-                  <td className="whitespace-nowrap py-1.5 text-right text-white">{formatBRL(resumo.viral.comissao[margem])}</td>
+                  <td className="py-1.5 pr-3 text-right">{l.qtd}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(l.bruto)}</td>
+                  <td className="whitespace-nowrap py-1.5 pr-3 text-right">{formatBRL(l.liquido)}</td>
+                  <td className="whitespace-nowrap py-1.5 text-right text-white">{formatBRL(l.comissao[margem])}</td>
                 </tr>
-              )}
+              ))}
               {resumo.semTicketProduto > 0 && (
                 <tr className="border-t border-line-soft text-ink-dim">
                   <td className="py-1.5 pr-3">
@@ -348,7 +348,7 @@ export function PainelVendas({
                 </tr>
               )}
             </tbody>
-            {resumo.porTicket.length + (resumo.viral.qtd > 0 ? 1 : 0) + (resumo.semTicket > 0 ? 1 : 0) + (resumo.semTicketProduto > 0 ? 1 : 0) > 1 && (
+            {resumo.porTicket.length + resumo.viral.porPreco.length + (resumo.semTicket > 0 ? 1 : 0) + (resumo.semTicketProduto > 0 ? 1 : 0) > 1 && (
               <tfoot>
                 <tr className="border-t border-line text-white">
                   <td className="py-1.5 pr-3 font-medium">Total</td>
