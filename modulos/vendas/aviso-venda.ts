@@ -2,7 +2,8 @@
 // "💰 Venda R$ 48,90 · Viral · comissão R$ 4,48 · 4ª do dia". Valor = o do ticket (GCS) ou o preço
 // da oferta (Viral); "Nª do dia" conta as vendas pagas do dia da equipe toda (GCS + Viral, sem teste).
 // Sai uma vez por venda criada pelo webhook da Hubla (chave venda:<id> em notificacoes_enviadas),
-// para os admins, os chefes de Vendas e o vendedor dono (os mesmos do aviso de reembolso).
+// SÓ para o vendedor dono (20/10/2026): Davi recebe só as dele, Vyenna só as dela; venda do Rodrigo (sem
+// utm) não avisa ninguém, e admin/chefe não recebem venda de outra pessoa (destinatarios em reembolsos.ts).
 // Comissão na faixa do fechamento do mês; sem fechamento, a sugerida pela margem; sem ela, 10%
 // (o mesmo padrão da tela). GCS: a cópia guardada na venda; Viral: líquido × % (comissaoDe).
 

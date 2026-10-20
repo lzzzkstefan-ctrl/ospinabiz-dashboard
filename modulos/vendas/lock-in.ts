@@ -83,6 +83,8 @@ export type VendaLI = {
   /** Viral: líquido da venda (base da comissão, sem juros); null = sem o valor da Hubla */
   viral_liquido: number | string | null;
   cliente: string;
+  /** venda do dono das vendas sem utm (o Rodrigo, 20/10/2026): conta em tudo, menos na comissão */
+  sem_comissao?: boolean;
 };
 
 export { COR_NEUTRA } from "./cores";
@@ -99,11 +101,18 @@ export function liquidoVenda(v: VendaLI, t: TicketLI | undefined): number | null
   return t ? centavos(t.valor_liquido) : null;
 }
 export function comissaoVenda(v: VendaLI, t: TicketLI | undefined, m: Faixa): number | null {
+  if (v.sem_comissao) return t || v.snap_bruto != null ? 0 : null;
   if (v.snap_bruto != null) {
     const c = v[`snap_comissao_${m}`];
     return c == null ? null : centavos(c);
   }
   return t ? centavos(t[`comissao_${m}`]) : null;
+}
+
+/** Viral: líquido × % (null = ainda sem o líquido da Hubla); venda sem comissão = 0. */
+export function comissaoViralVenda(v: VendaLI, m: Faixa): number | null {
+  if (v.viral_liquido == null) return null;
+  return v.sem_comissao ? 0 : comissaoDe(centavos(v.viral_liquido), m);
 }
 
 // ---------- resumo ----------
@@ -172,8 +181,8 @@ export function resumirViral(vendas: VendaLI[]): ResumoViral {
       r.liquido += liq;
       l.liquido += liq;
       for (const m of FAIXAS) {
-        r.comissao[m] += comissaoDe(liq, m);
-        l.comissao[m] += comissaoDe(liq, m);
+        r.comissao[m] += comissaoViralVenda(v, m) ?? 0;
+        l.comissao[m] += comissaoViralVenda(v, m) ?? 0;
       }
     }
     precos.set(preco, l);

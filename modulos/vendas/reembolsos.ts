@@ -3,14 +3,14 @@
 // - verificarLembretes: pg_cron a cada 15 min (lembrete de 24h pendente e de prazo < 24h);
 // - carregarReembolsos / contarPendentes: leitura da tela (RLS do usuário logado).
 // Funções puras (prazo, lembretes, taxa de reversão) em reembolsos-regras.ts.
-// Push: admins do sistema, chefes de Vendas e o vendedor dono da venda. Cada aviso tem chave única
+// Push: SÓ o vendedor dono da venda (20/10/2026; venda do Rodrigo/sem utm: ninguém). Cada aviso tem chave única
 // (notificacoes_enviadas): reprocessar o mesmo evento nunca avisa duas vezes.
 
 import { avisarPessoas } from "@/lib/notificacoes";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { FaturaHubla } from "./hubla";
-import { ofertaViral, vendedorDoUtm, type IdHubla } from "./regras";
+import { donoDaVenda, ofertaViral, quemRecebeAvisoDeVenda, type IdHubla } from "./regras";
 import { COLUNAS_REEMBOLSO, corpoDoAviso, lembretesDevidos, prazoDoPedido, type LinhaReembolso, type Reembolso } from "./reembolsos-regras";
 
 type Db = ReturnType<typeof createAdminClient>;
@@ -95,7 +95,7 @@ async function montarPedido(db: Db, f: FaturaHubla, recebidoEm: string) {
     db.from("vendas").select("id, vendedor_id, linha, pago_em, status").eq("id_fatura", f.idFatura!).maybeSingle(),
     db.from("vendedores").select("equipe_id, utm_term, ativo"),
     db.from("vendas_produtos_hubla").select("hubla_id, tipo").eq("ativo", true),
-    db.from("vendas_config").select("reembolso_prazo_dias").maybeSingle(),
+    db.from("vendas_config").select("reembolso_prazo_dias, dono_sem_utm").maybeSingle(),
   ]);
   for (const r of [venda, vendedores, idsViral, config]) if (r.error) throw new Error(`erro ao ler dados do pedido: ${r.error.message}`);
 
@@ -103,12 +103,13 @@ async function montarPedido(db: Db, f: FaturaHubla, recebidoEm: string) {
   const viral = ofertaViral([...f.principais, ...f.ofertasBump], (idsViral.data ?? []) as IdHubla[]);
   const pagoEm = f.pagoEm ?? v?.pago_em ?? null;
   const pedidoEm = f.pedido?.criadoEm ?? recebidoEm;
-  const dias = Number((config.data as { reembolso_prazo_dias?: number } | null)?.reembolso_prazo_dias ?? 7);
+  const cfg = config.data as { reembolso_prazo_dias?: number; dono_sem_utm?: number | null } | null;
+  const dias = Number(cfg?.reembolso_prazo_dias ?? 7);
   const linha = {
     refund_id: f.pedido!.id,
     id_fatura: f.idFatura!,
     venda_id: v?.id ?? null,
-    vendedor_id: v?.vendedor_id ?? vendedorDoUtm(f.utmTerm, vendedores.data ?? []),
+    vendedor_id: v?.vendedor_id ?? donoDaVenda(f.utmTerm, vendedores.data ?? [], cfg?.dono_sem_utm == null ? null : Number(cfg.dono_sem_utm))?.vendedorId ?? null,
     utm_term: f.utmTerm,
     linha: v?.linha ?? (viral ? "viral" : "gcs"),
     produto: (viral ?? f.principais[0])?.nome ?? f.itens[0] ?? null,
@@ -128,22 +129,23 @@ async function montarPedido(db: Db, f: FaturaHubla, recebidoEm: string) {
 // Avisos
 // ---------------------------------------------------------------------------
 
-/** Admins do sistema, chefes de Vendas e a pessoa do vendedor dono. */
+/** Push de venda e de reembolso: só o vendedor dono (regra em quemRecebeAvisoDeVenda). */
 export async function destinatarios(db: Db, vendedorId: number | null): Promise<string[]> {
-  const [{ data: usuarios, error }, dono] = await Promise.all([
-    db.auth.admin.listUsers({ perPage: 200 }),
-    vendedorId ? db.from("equipe").select("usuario_id").eq("id", vendedorId).maybeSingle() : Promise.resolve({ data: null }),
+  if (!vendedorId) return [];
+  const [vendedores, pessoa, config] = await Promise.all([
+    db.from("vendedores").select("equipe_id"),
+    db.from("equipe").select("usuario_id").eq("id", vendedorId).maybeSingle(),
+    db.from("vendas_config").select("dono_sem_utm").maybeSingle(),
   ]);
-  if (error) throw new Error(`erro ao ler usuários: ${error.message}`);
-  const ids = (usuarios?.users ?? [])
-    .filter((u) => {
-      const m = (u.app_metadata ?? {}) as { papel?: string; vendas?: string };
-      return m.papel === "admin" || m.vendas === "chefe";
-    })
-    .map((u) => u.id);
-  const doDono = (dono.data as { usuario_id: string | null } | null)?.usuario_id;
-  if (doDono) ids.push(doDono);
-  return ids;
+  for (const r of [vendedores, pessoa, config]) if (r.error) throw new Error(`erro ao ler quem recebe o aviso: ${r.error.message}`);
+  const dono = (config.data as { dono_sem_utm: number | null } | null)?.dono_sem_utm;
+  const usuario = (pessoa.data as { usuario_id: string | null } | null)?.usuario_id ?? null;
+  return quemRecebeAvisoDeVenda(
+    vendedorId,
+    (vendedores.data ?? []).map((v) => Number(v.equipe_id)),
+    dono == null ? null : Number(dono),
+    () => usuario,
+  );
 }
 
 const urlDoPedido = (id: number) => `/vendas/reembolsos?id=${id}`;

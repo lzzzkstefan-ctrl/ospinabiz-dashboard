@@ -9,6 +9,7 @@ import {
   brutoVenda,
   comissaoTotal,
   comissaoVenda,
+  comissaoViralVenda,
   liquidoVenda,
   resumirLI,
   textoResumo,
@@ -18,7 +19,7 @@ import {
   type TicketLI,
   type VendaLI,
 } from "@/modulos/vendas/lock-in";
-import { centavos, comissaoDe, FAIXAS, somarMes, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
+import { centavos, FAIXAS, somarMes, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
 import { cn } from "@/lib/utils";
 import { ArrowDown, ArrowUp, Check, Copy, Plus, Upload } from "lucide-react";
 import Link from "next/link";
@@ -635,7 +636,7 @@ function TabelaVendas({
         t,
         bruto: v.valor_pago == null ? null : centavos(v.valor_pago),
         liquido: liq,
-        comissao: v.status !== "pago" ? 0 : liq === null ? null : comissaoDe(liq, margem),
+        comissao: v.status !== "pago" ? 0 : comissaoViralVenda(v, margem),
       };
     }
     return {
@@ -751,7 +752,7 @@ function DetalheVenda({
           <ViralTag preco={precoViral(v)} />
           <span>valor pago {v.valor_pago == null ? "—" : formatBRL(centavos(v.valor_pago))}</span>
           <span className={v.status === "pago" ? "text-white" : "line-through"}>
-            {v.viral_liquido == null ? "sem o valor líquido da Hubla ainda" : `líquido ${formatBRL(centavos(v.viral_liquido))} · comissão ${margem}% ${formatBRL(comissaoDe(centavos(v.viral_liquido), margem))}`}
+            {v.viral_liquido == null ? "sem o valor líquido da Hubla ainda" : `líquido ${formatBRL(centavos(v.viral_liquido))} · ${v.sem_comissao ? "sem comissão (venda sem utm)" : `comissão ${margem}% ${formatBRL(comissaoViralVenda(v, margem) ?? 0)}`}`}
           </span>
         </div>
       )}
@@ -777,7 +778,7 @@ function DetalheVenda({
           <span>bruto de ticket {formatBRL(brutoVenda(v, t) ?? 0)}</span>
           <span>líquido de ticket {formatBRL(liquidoVenda(v, t) ?? 0)}</span>
           <span className={v.status === "pago" ? "text-white" : "line-through"}>
-            comissão {margem}% {formatBRL(comissaoVenda(v, t, margem) ?? 0)}
+            {v.sem_comissao ? "sem comissão (venda sem utm)" : `comissão ${margem}% ${formatBRL(comissaoVenda(v, t, margem) ?? 0)}`}
           </span>
         </div>
       )}

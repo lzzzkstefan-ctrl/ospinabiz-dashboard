@@ -22,7 +22,7 @@ export type Venda = {
   id_fatura: string;
   vendedor_id: number | null;
   sem_vendedor: boolean;
-  forma_atribuicao: "utm" | "manual" | null;
+  forma_atribuicao: "utm" | "manual" | "sem_utm" | null;
   atribuida_em: string | null;
   utm_term: string | null;
   ticket_id: number | null;
@@ -110,6 +110,32 @@ export function vendedorDoUtm(utmTerm: string | null, vendedores: { equipe_id: n
   const t = normalizarTerm(utmTerm);
   if (!t) return null;
   return vendedores.find((v) => v.ativo && normalizarTerm(v.utm_term) === t)?.equipe_id ?? null;
+}
+
+/**
+ * Dono de uma venda nova (20/10/2026): o vendedor do código do link; sem código, código vazio ou
+ * desconhecido → o dono das vendas sem utm (vendas_config.dono_sem_utm, hoje o Rodrigo: sem comissão).
+ * Sem esse dono configurado → null ("A atribuir", como antes).
+ */
+export function donoDaVenda(
+  utmTerm: string | null,
+  vendedores: { equipe_id: number; utm_term: string; ativo: boolean }[],
+  donoSemUtm: number | null,
+): { vendedorId: number; forma: "utm" | "sem_utm" } | null {
+  const vendedor = vendedorDoUtm(utmTerm, vendedores);
+  if (vendedor) return { vendedorId: vendedor, forma: "utm" };
+  return donoSemUtm ? { vendedorId: donoSemUtm, forma: "sem_utm" } : null;
+}
+
+/**
+ * Quem recebe o push de venda e de reembolso (20/10/2026): SÓ o vendedor dono da venda, se ele está
+ * em vendedores (tem link) e não é o dono das vendas sem utm. Admin e chefe de Vendas não recebem venda
+ * de outra pessoa; venda do Rodrigo (sem utm) ou sem dono: ninguém.
+ */
+export function quemRecebeAvisoDeVenda(vendedorId: number | null, vendedores: number[], donoSemUtm: number | null, usuarioDe: (equipeId: number) => string | null): string[] {
+  if (!vendedorId || vendedorId === donoSemUtm || !vendedores.includes(vendedorId)) return [];
+  const usuario = usuarioDe(vendedorId);
+  return usuario ? [usuario] : [];
 }
 
 /** 4 últimos dígitos do lead: do utm_content "lead_<telefone>" ou, sem ele, do telefone do comprador. */

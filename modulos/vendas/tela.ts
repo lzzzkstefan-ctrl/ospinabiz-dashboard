@@ -64,6 +64,23 @@ function clienteCurto(nome: string | null | undefined, final: string | null): st
   return final ? `${n} -${final}` : n;
 }
 
+/**
+ * Dono das vendas sem utm_term (vendas_config.dono_sem_utm, hoje o Rodrigo; 20/10/2026). Não está em
+ * vendedores: sem aba nem fechamento, e as vendas dele nunca têm comissão. Lido com a chave secreta
+ * (a config é só do admin), mas daqui sai só o id e o nome.
+ */
+export async function donoSemUtm(): Promise<{ id: number; nome: string } | null> {
+  const db = createAdminClient();
+  const { data } = await db.from("vendas_config").select("dono_sem_utm, equipe:dono_sem_utm(nome)").maybeSingle();
+  const linha = data as { dono_sem_utm: number | null; equipe: { nome: string } | null } | null;
+  return linha?.dono_sem_utm ? { id: Number(linha.dono_sem_utm), nome: linha.equipe?.nome ?? "Sem utm" } : null;
+}
+
+/** Zera a comissão das linhas agregadas do dono das vendas sem utm (Geral e Viral). */
+function semComissaoDoDono<T extends { vendedorId: number | null; comissao: Record<Faixa, number> }>(linhas: T[], dono: number | null): T[] {
+  return linhas.map((l) => (dono !== null && l.vendedorId === dono ? { ...l, comissao: { 6: 0, 7: 0, 8: 0, 9: 0, 10: 0 } } : l));
+}
+
 /** vendedorId: um vendedor, ou null = todas que a pessoa pode ver (visão Geral do admin). */
 export async function carregarVendas(vendedorId: number | null, inicio: string, fim: string): Promise<VendaLI[]> {
   const supabase = await createClient();
@@ -90,7 +107,13 @@ export async function carregarVendas(vendedorId: number | null, inicio: string, 
     if (error) throw new Error(`Erro ao carregar reembolsos: ${error.message}`);
     for (const r of data) pedidos.add(r.venda_id as number);
   }
-  return brutas.map((v) => ({ ...v, cliente: clienteCurto(nomes.get(v.id), v.final_lead), reembolso_pedido: pedidos.has(v.id) }));
+  const dono = (await donoSemUtm())?.id ?? null;
+  return brutas.map((v) => ({
+    ...v,
+    cliente: clienteCurto(nomes.get(v.id), v.final_lead),
+    reembolso_pedido: pedidos.has(v.id),
+    sem_comissao: dono !== null && v.vendedor_id === dono,
+  }));
 }
 
 export type MesVendedor = { observacoes: string; codigo: string | null };
@@ -403,9 +426,9 @@ export async function geralCompleta(mes: string): Promise<LinhaGeral[]> {
   const supabase = await createClient();
   const [a, m] = mes.split("-").map(Number);
   const fim = new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10);
-  const { data, error } = await supabase.rpc("vendas_geral_completa", { p_inicio: `${mes}-01`, p_fim: fim });
+  const [{ data, error }, dono] = await Promise.all([supabase.rpc("vendas_geral_completa", { p_inicio: `${mes}-01`, p_fim: fim }), donoSemUtm()]);
   if (error) throw new Error(`Erro ao carregar a Geral: ${error.message}`);
-  return (data as Record<string, unknown>[]).map((r) => ({
+  const linhas = (data as Record<string, unknown>[]).map((r) => ({
     vendedorId: r.vendedor_id === null ? null : Number(r.vendedor_id),
     pagas: Number(r.pagas),
     reembolsos: Number(r.reembolsos),
@@ -418,6 +441,7 @@ export async function geralCompleta(mes: string): Promise<LinhaGeral[]> {
     recebidoReal: centavos(r.recebido_real as number),
     comTicket: Number(r.com_ticket ?? 0),
   }));
+  return semComissaoDoDono(linhas, dono?.id ?? null);
 }
 
 // ---------------------------------------------------------------------------
@@ -446,9 +470,9 @@ function fimDoMes(mes: string): string {
 /** Viral do mês por vendedor e por preço da oferta, em centavos. */
 export async function viralGeral(mes: string): Promise<LinhaViral[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("vendas_viral_resumo", { p_inicio: `${mes}-01`, p_fim: fimDoMes(mes) });
+  const [{ data, error }, dono] = await Promise.all([supabase.rpc("vendas_viral_resumo", { p_inicio: `${mes}-01`, p_fim: fimDoMes(mes) }), donoSemUtm()]);
   if (error) throw new Error(`Erro ao carregar o Protocolo Viral: ${error.message}`);
-  return (data as Record<string, unknown>[]).map((r) => ({
+  const linhas = (data as Record<string, unknown>[]).map((r) => ({
     vendedorId: r.vendedor_id === null ? null : Number(r.vendedor_id),
     preco: r.preco === null ? null : centavos(r.preco as number),
     pagas: Number(r.pagas),
@@ -460,6 +484,7 @@ export async function viralGeral(mes: string): Promise<LinhaViral[]> {
     comissao: { 6: centavos(r.comissao_6 as number), 7: centavos(r.comissao_7 as number), 8: centavos(r.comissao_8 as number), 9: centavos(r.comissao_9 as number), 10: centavos(r.comissao_10 as number) },
     semLiquido: Number(r.sem_liquido),
   }));
+  return semComissaoDoDono(linhas, dono?.id ?? null);
 }
 
 /** Conversão do downsell no mês: leads que receberam a etiqueta do Viral x quantos compraram. */

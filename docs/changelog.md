@@ -2,6 +2,10 @@
 
 Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à mão.
 
+## 20/10/2026
+
+- Venda da Hubla sem utm_term (ou com código desconhecido) vai para o Rodrigo, sem comissão; o push de venda e de reembolso agora chega só para o vendedor dono (Davi as dele, Vyenna as dela, Rodrigo nenhum).
+
 ## 18/10/2026
 
 - Quem vai se atrasar ou ficar fora avisa no Check-in: a equipe recebe o push, o card do dia mostra o 📅 e o período avisado não conta como atraso nem não entrou

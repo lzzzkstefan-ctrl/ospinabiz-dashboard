@@ -12,12 +12,14 @@
 // Pedido de reembolso (16/10/2026): refund_request.created/.canceled/.rejected vão para
 // vendas_reembolsos (reembolsos.ts, com push); aceito/reembolsado também fecha o pedido aberto.
 // Venda nova paga (18/10/2026): push "💰 Venda R$ … · produto · vendedor · comissão R$ …" (aviso-venda.ts).
+// Sem utm_term (20/10/2026): sem código, vazio ou desconhecido → vendas_config.dono_sem_utm (o Rodrigo,
+// sem comissão e sem push); forma 'sem_utm'.
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerFatura, type FaturaHubla } from "./hubla";
 import { avisarVenda } from "./aviso-venda";
 import { pedidoEfetuado, processarPedido } from "./reembolsos";
-import { diaSP, finalDoLead, montarVendaNova, vendedorDoUtm, type IdHubla, type Ticket } from "./regras";
+import { diaSP, donoDaVenda, finalDoLead, montarVendaNova, type IdHubla, type Ticket } from "./regras";
 
 type Db = ReturnType<typeof createAdminClient>;
 type Conclusao = { resultado: string; vendaId?: number | null };
@@ -98,7 +100,7 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
     return { resultado: "repetido", vendaId: existente.data.id };
   }
 
-  const [vendedores, tickets, idsViral, reembolsoAntes] = await Promise.all([
+  const [vendedores, tickets, idsViral, reembolsoAntes, config] = await Promise.all([
     db.from("vendedores").select("equipe_id, utm_term, ativo"),
     db.from("tickets").select("*"),
     db.from("vendas_produtos_hubla").select("hubla_id, tipo").eq("ativo", true),
@@ -109,13 +111,16 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
       .eq("resultado", "reembolso_antes_da_venda")
       .neq("id", eventoId)
       .limit(1),
+    db.from("vendas_config").select("dono_sem_utm").maybeSingle(),
   ]);
   if (vendedores.error) throw new Error(`erro ao ler vendedores: ${vendedores.error.message}`);
   if (tickets.error) throw new Error(`erro ao ler tickets: ${tickets.error.message}`);
   if (idsViral.error) throw new Error(`erro ao ler os IDs do Viral: ${idsViral.error.message}`);
   if (reembolsoAntes.error) throw new Error(`erro ao ler eventos: ${reembolsoAntes.error.message}`);
+  if (config.error) throw new Error(`erro ao ler a configuração: ${config.error.message}`);
 
-  const vendedorId = vendedorDoUtm(f.utmTerm, vendedores.data);
+  const dono = donoDaVenda(f.utmTerm, vendedores.data, config.data?.dono_sem_utm == null ? null : Number(config.data.dono_sem_utm));
+  const vendedorId = dono?.vendedorId ?? null;
   const produto = montarVendaNova(f, tickets.data as Ticket[], idsViral.data as IdHubla[]);
   const jaReembolsada = reembolsoAntes.data.length > 0;
   const agora = new Date().toISOString();
@@ -125,7 +130,7 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
     .insert({
       id_fatura: idFatura,
       vendedor_id: vendedorId,
-      forma_atribuicao: vendedorId ? "utm" : null,
+      forma_atribuicao: dono?.forma ?? null,
       atribuida_em: vendedorId ? agora : null,
       utm_term: f.utmTerm,
       ...produto,
@@ -153,7 +158,7 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
   if (vendedorId) {
     const { error: erroHist } = await db
       .from("vendas_atribuicoes")
-      .insert({ venda_id: venda.id, para_vendedor_id: vendedorId, forma: "utm" });
+      .insert({ venda_id: venda.id, para_vendedor_id: vendedorId, forma: dono!.forma });
     if (erroHist) throw new Error(`erro ao gravar o histórico: ${erroHist.message}`);
   }
   if (!jaReembolsada) await avisarVenda(db, venda.id);

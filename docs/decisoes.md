@@ -455,3 +455,21 @@ avisado sai do horário escalado: não conta como atraso nem como "não entrou".
   sem escala, como o Davi pediu. Ausência parcial continua gerando o aviso, porque nesse caso a
   operação fica sem ninguém de verdade.
 
+## 2026-10-20: Venda sem utm_term vai para o Rodrigo, e push de venda só para o dono
+
+Venda da Hubla sem código de vendedor no link (ou com código desconhecido) passa a ser do Rodrigo,
+sem comissão para ninguém. Os pushes de venda e de pedido de reembolso vão só para o vendedor dono:
+Davi recebe só as dele, Vyenna só as dela, e o Rodrigo nenhum.
+
+**Por quê:**
+- **Dono em `vendas_config.dono_sem_utm`, e não um vendedor com `utm_term`:** venda sem link quase
+  sempre é do Rodrigo (que vende direto), mas ele não recebe comissão. Fora de `vendedores`, ele não
+  ganha aba, fechamento, estorno nem link de prestação de contas, e o mês dele nunca trava. A pessoa
+  fica no banco: trocar de dono (ou voltar ao "A revisar", deixando vazio) não exige código novo.
+- **Comissão zerada na leitura, não no banco:** as vendas dele continuam contando na meta, na margem
+  e na receita. Só a comissão precisa sumir, e isso já acontece de graça no fechamento (ele não tem
+  fechamento). Nas telas, a comissão dele sai zerada.
+- **Push só para o dono:** cada um quer ver as próprias vendas, sem o barulho das dos outros. Os admins
+  continuam vendo tudo na tela. Efeito colateral aceito: pedido de reembolso de venda do Rodrigo não
+  avisa ninguém (aparece só na tela Reembolsos).
+

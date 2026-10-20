@@ -16,7 +16,8 @@ Venda aprovada na Hubla
 
 - **Pagamento** (`invoice.payment_succeeded`): cria UMA venda por fatura (`id_fatura` único).
   - `utm_term` = código de um vendedor ativo (`davi`, `vyenna`) → atribuída na hora.
-  - Sem código ou código desconhecido → **A revisar** (só o admin vê e atribui).
+  - Sem código, código vazio ou desconhecido → **Rodrigo** (`vendas_config.dono_sem_utm`, forma
+    `sem_utm`; ver "Venda sem utm_term"). Sem esse dono configurado → **A revisar**, como antes.
   - Se já chegou reembolso dessa fatura antes, a venda já nasce **reembolso**.
 - **Pedido de reembolso** (`refund_request.created` / `.canceled` / `.rejected`): vai para
   `vendas_reembolsos` (ver "Reembolsos" no fim). Não muda a venda.
@@ -237,7 +238,7 @@ Decisão e porquês em `docs/decisoes.md`.
 - **Margem do mês:** o líquido da operação soma o do Viral (`margemDoMes` e `faixasSugeridas`).
 - **Push de venda** (18/10/2026, `aviso-venda.ts`, migration `vendas_aviso_venda`): cada venda paga
   criada pelo webhook manda "💰 Venda R$ 338 · GCS · comissão R$ 32,11 · 3ª do dia" (Viral: "💰 Venda
-  R$ 48,90 · Viral · comissão R$ 4,48 · 2ª do dia") para admins, chefes e o vendedor dono; o corpo
+  R$ 48,90 · Viral · comissão R$ 4,48 · 2ª do dia") **só para o vendedor dono** (desde 20/10/2026); o corpo
   traz o vendedor e a faixa. Valor = ticket (GCS) ou preço da oferta (Viral). "Nª do dia" = vendas
   pagas do dia da equipe toda (GCS + Viral, sem teste). Principal é produto: comissão R$ 0,00. Comissão na faixa do fechamento,
   senão na sugerida pela margem, senão 10% (o padrão da tela). Chave `venda:<id>`: reenvio não repete.
@@ -269,7 +270,7 @@ Alerta de pedido de reembolso da Hubla. Decisão e porquês em `docs/decisoes.md
 - **Comissão:** não muda nada no pedido. Quando a Hubla aceita ou reembolsa, a venda vira `reembolso`
   como antes: sai do mês aberto, e em mês fechado a trava gera o estorno.
 - **Push** (`modulos/vendas/reembolsos.ts`, envio em `lib/notificacoes.ts`):
-  - vai para os admins do sistema, os chefes de Vendas e o vendedor dono;
+  - vai **só para o vendedor dono** da venda (desde 20/10/2026; venda do Rodrigo/sem utm: ninguém);
   - texto: "Reembolso solicitado: Nome, R$ valor, produto. Prazo: X"; ao tocar, abre
     `/vendas/reembolsos?id=<pedido>`;
   - lembretes (pg_cron a cada 15 min → `/api/vendas/reembolsos`): pendente há 24h, e falta menos de
@@ -282,3 +283,22 @@ Alerta de pedido de reembolso da Hubla. Decisão e porquês em `docs/decisoes.md
     reembolsados).
   - O telefone aparece mascarado; o número inteiro vai só no link do WhatsApp.
 - **Selo** "reembolso solicitado" na venda paga com pedido pendente (lista, tabela e detalhe).
+
+## Venda sem utm_term (20/10/2026, migration `vendas_dono_sem_utm`)
+
+- **Atribuição:** venda da Hubla sem `utm_term`, com ele vazio ou com código que não é de nenhum
+  vendedor ativo vai para a pessoa em `vendas_config.dono_sem_utm` (hoje o **Rodrigo**), com
+  `forma_atribuicao = 'sem_utm'` e linha em `vendas_atribuicoes`. O pedido de reembolso sem venda
+  usa a mesma regra (`donoDaVenda` em `regras.ts`).
+- **Sem comissão:** o Rodrigo não está em `vendedores`: não tem aba, link, fechamento nem estorno.
+  As vendas dele contam na meta, na margem, na receita e nos totais da Geral, mas a comissão sai
+  zerada (`sem_comissao` em `carregarVendas`; linhas dele zeradas em `geralCompleta`/`viralGeral`).
+  Na Geral e em Reembolsos ele aparece pelo nome.
+- **Mudar de dono à mão:** o chefe pode passar uma venda do Rodrigo para um vendedor (ou o contrário)
+  na edição da venda; vira `manual`. Mês fechado continua com a trava de sempre.
+- **Push de venda e de reembolso** (`quemRecebeAvisoDeVenda` em `regras.ts`): só o vendedor dono, se
+  ele está em `vendedores`. Davi recebe só as dele, Vyenna só as dela. O Rodrigo não recebe nenhum,
+  nem das dele, e admin/chefe não recebem venda de outra pessoa. Check-in não mudou.
+- **Reprocessamento de 20/10/2026:** as vendas de outubro (mês aberto, sem fechamento) que estavam
+  sem vendedor foram passadas para o Rodrigo (forma `sem_utm`, registradas em `vendas_alteracoes`
+  em nome do Davi).

@@ -1,4 +1,4 @@
-// Aviso push para pessoas escolhidas pelo módulo (ex.: reembolso → admins, chefes e o vendedor).
+// Aviso push para pessoas escolhidas pelo módulo (ex.: venda e reembolso → só o vendedor dono).
 // Mesmo registro do Check-in (notificacoes_enviadas, chave única por acontecimento: o mesmo aviso
 // nunca sai duas vezes) e mesmas inscrições (push_inscricoes). Quem recebe é o módulo que decide;
 // aqui só registra, manda e anota o resultado. Roda no servidor com a chave secreta.

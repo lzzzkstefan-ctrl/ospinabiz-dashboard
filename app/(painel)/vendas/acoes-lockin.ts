@@ -11,7 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { analisarCsv, comissaoTotal, resumirLI, slugDe, type LinhaImportacao, type Plataforma } from "@/modulos/vendas/lock-in";
 import { FAIXAS, MES_NAO_ACABOU, mesJaAcabou, VIRAL_SEM_LIQUIDO, type Faixa, type StatusVenda } from "@/modulos/vendas/regras";
-import { carregarVendas, listarTicketsLI } from "@/modulos/vendas/tela";
+import { carregarVendas, donoSemUtm, listarTicketsLI } from "@/modulos/vendas/tela";
 import { refresh } from "next/cache";
 import { randomBytes, randomUUID } from "node:crypto";
 
@@ -35,10 +35,11 @@ async function minhaEquipeId(usuarioId: string): Promise<number | null> {
   return data ? Number(data.id) : null;
 }
 
+/** Vendedor com link, ou o dono das vendas sem utm (Rodrigo: o chefe pode passar uma venda para ele). */
 async function vendedorExiste(id: number): Promise<boolean> {
   const supabase = await createClient();
   const { data } = await supabase.from("vendedores").select("equipe_id").eq("equipe_id", id).maybeSingle();
-  return !!data;
+  return !!data || (await donoSemUtm())?.id === id;
 }
 
 /** A plataforma existe (e, para venda nova, está ativa)? */

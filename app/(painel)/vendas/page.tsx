@@ -5,6 +5,7 @@ import { resumirLI, resumoAnual } from "@/modulos/vendas/lock-in";
 import { diaSP, FAIXAS, lerMes, mesDe, nomeDoMes, somarMes, type Faixa } from "@/modulos/vendas/regras";
 import {
   carregarVendas,
+  donoSemUtm,
   faixasSugeridas,
   geralCompleta,
   geralEquipe,
@@ -63,7 +64,7 @@ async function Conteudo({ searchParams }: Props) {
   const mes = lerMes(um(sp.mes), mesAtual);
   const ver: VerLista = sp.ver === "reembolso" || sp.ver === "tabela" ? sp.ver : "pago";
 
-  const [todosVendedores, reembolsosPendentes] = await Promise.all([listarVendedores(), contarPendentes()]);
+  const [todosVendedores, reembolsosPendentes, dono] = await Promise.all([listarVendedores(), contarPendentes(), donoSemUtm()]);
   const vendedores = todosVendedores.filter((v) => v.ativo);
   const eu = vendedores.find((v) => v.usuario_id === usuario.id) ?? null;
   if (!chefe && !eu) return <p className="text-[13.5px] text-ink-dim">Seu login ainda não está ligado a um vendedor. Fale com o chefe de Vendas.</p>;
@@ -76,7 +77,9 @@ async function Conteudo({ searchParams }: Props) {
   // abas: o vendedor não recebe nem o nome dos outros
   const abas = (chefe ? vendedores : [eu!]).map((v) => ({ id: v.equipe_id, nome: v.nome }));
   // nomes para a Geral completa (chefe e gerente veem os totais de cada vendedor, sem as vendas)
+  // + o dono das vendas sem utm (Rodrigo): aparece pelo nome, sem aba nem comissão
   const nomes = new Map(vendedores.map((v) => [v.equipe_id, v.nome]));
+  if (dono) nomes.set(dono.id, dono.nome);
 
   return (
     <>
@@ -143,7 +146,8 @@ async function Conteudo({ searchParams }: Props) {
           papel={papel}
           vendedor={geral ? null : { id: escolhido!.equipe_id, nome: escolhido!.nome }}
           proprio={!geral && escolhido!.equipe_id === eu?.equipe_id}
-          opcoes={abas}
+          // o chefe também pode passar uma venda para o dono das vendas sem utm (e vê o nome dele na lista)
+          opcoes={chefe && dono ? [...abas, dono] : abas}
           nomes={nomes}
           mes={mes}
           mesAtual={mesAtual}
@@ -382,6 +386,7 @@ function ResumoPorVendedor({ linhas: brutas, nomes, faixa }: { linhas: LinhaGera
         no fechamento, na tela dele. Receita na Hubla = valor real das faturas pagas, com order bumps e já sem a taxa da Hubla (vendas de teste e
         pendentes ficam fora){semValor > 0 ? ` (${semValor} venda(s) do mês ainda sem esse valor)` : ""}; bruto e líquido de ticket = base da comissão (sem bumps), sempre pela
         tabela de tickets. Recebido real = parte do ticket no valor que entrou de verdade (com juros do parcelamento), só informação, desde outubro/2026.
+        Venda sem utm_term vai para o Rodrigo e não gera comissão (desde 20/10/2026).
       </p>
     </section>
   );

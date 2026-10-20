@@ -4,6 +4,7 @@ import { listarVendedores } from "@/modulos/vendas/dados";
 import { carregarReembolsos } from "@/modulos/vendas/reembolsos";
 import { dataCurta, nomeDaLinha, taxasDeReversao, type Reembolso, type TaxaReversao } from "@/modulos/vendas/reembolsos-regras";
 import { diaSP, lerMes, mesDe, nomeDoMes, somarMes } from "@/modulos/vendas/regras";
+import { donoSemUtm } from "@/modulos/vendas/tela";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -52,8 +53,9 @@ async function Conteudo({ searchParams }: Props) {
   const destaque = Number(um(sp.id)) || null;
   const todos = usuario.papel === "admin" || usuario.vendas === "chefe";
 
-  const [tela, vendedores] = await Promise.all([carregarReembolsos(mes), listarVendedores()]);
+  const [tela, vendedores, dono] = await Promise.all([carregarReembolsos(mes), listarVendedores(), donoSemUtm()]);
   const nomes: Record<number, string> = Object.fromEntries(vendedores.map((v) => [v.equipe_id, v.nome]));
+  if (dono) nomes[dono.id] = dono.nome; // vendas sem utm (Rodrigo)
   const nomeVendedor = (r: Reembolso) => (r.vendedor_id ? (nomes[r.vendedor_id] ?? "vendedor") : "sem vendedor");
 
   return (
