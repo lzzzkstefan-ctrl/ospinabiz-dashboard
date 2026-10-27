@@ -16,6 +16,42 @@ export function metaConfigurada(): boolean {
 
 const GRAPH = "https://graph.facebook.com/v25.0";
 
+/** Um dia de custo da Meta (pricing analytics da WABA). `inicio` em segundos (UTC). */
+export type PontoCustoMeta = { inicio: number; tipo: string; categoria: string; mensagens: number; custo: number };
+
+/**
+ * Custo por dia das mensagens de uma conta do WhatsApp (WABA), na moeda da conta.
+ * Token: usuário do sistema com a permissão whatsapp_business_management e a WABA como ativo
+ * (META_CUSTO_TOKEN; passado por quem chama, nunca guardado aqui). Lança erro se a Meta recusar.
+ */
+export async function custoDaWaba(token: string, wabaId: string, inicio: number, fim: number): Promise<{ moeda: string | null; pontos: PontoCustoMeta[] }> {
+  const campos =
+    `currency,pricing_analytics.start(${inicio}).end(${fim}).granularity(DAILY)` + `.dimensions(["PRICING_CATEGORY","PRICING_TYPE"])`;
+  const r = await fetch(`${GRAPH}/${encodeURIComponent(wabaId)}?fields=${encodeURIComponent(campos)}`, {
+    headers: { authorization: `Bearer ${token}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  });
+  type Ponto = { start: number; volume?: number; cost?: number; pricing_type?: string; pricing_category?: string };
+  const corpo = (await r.json().catch(() => ({}))) as {
+    currency?: string;
+    pricing_analytics?: { data?: { data_points?: Ponto[] }[] };
+    error?: { message?: string; code?: number };
+  };
+  if (!r.ok) throw new Error(`Meta ${r.status}${corpo.error?.code ? ` (${corpo.error.code})` : ""}: ${corpo.error?.message ?? "sem detalhe"}`.slice(0, 300));
+  const pontos = (corpo.pricing_analytics?.data ?? []).flatMap((d) => d.data_points ?? []);
+  return {
+    moeda: corpo.currency ?? null,
+    pontos: pontos.map((p) => ({
+      inicio: p.start,
+      tipo: p.pricing_type ?? "?",
+      categoria: p.pricing_category ?? "?",
+      mensagens: p.volume ?? 0,
+      custo: p.cost ?? 0,
+    })),
+  };
+}
+
 /** Template de aviso livre (um parâmetro {{1}} com o texto), usado pelas mensagens automáticas da equipe. */
 export function avisoWhatsAppConfigurado(): boolean {
   return Boolean(process.env.META_PHONE_NUMBER_ID && process.env.META_ACCESS_TOKEN && process.env.META_TEMPLATE_AVISO_NAME);

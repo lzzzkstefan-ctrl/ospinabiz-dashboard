@@ -297,3 +297,63 @@ números e os leads são distribuídos por **atendente** na Data Crazy.
   (inclusive o resumo do Início). "Chegaram e ainda não começaram" tira o lead cujo número (o da 1ª conversa)
   está banido.
 - Embaixo das Filas, uma linha discreta "N conversas abertas em números banidos" leva ao filtro "Número banido".
+
+## Custo de mensagens (27/10/2026, migration funil_custo_mensagens)
+
+Pedido do Davi: quanto custam as mensagens do WhatsApp API oficial, por etapa, por lead e por venda.
+Tela `/funil/custo` (só admin; link no topo do Funil). Configuração em `/funil/config#custo`.
+
+**Regra de cobrança (como o Davi passou; configurável):**
+- A Meta cobra cada mensagem **enviada** pela empresa e **entregue** (status RECEIVED ou READ na Data Crazy;
+  SENT = ainda não entregue; ERROR = não cobra). Mensagem recebida do lead é grátis.
+- **Franquia:** as primeiras 1.000 entregues de cada número no mês saem de graça, contadas na ordem de envio
+  (mês em UTC, como a Meta). Depois, tudo é cobrado. A tela mostra em que dia/hora a franquia de cada número acabou.
+- **Janela grátis de anúncio:** só para lead que chegou por anúncio Click-to-WhatsApp e teve a 1ª resposta em
+  até 24 h: as mensagens dentro da janela (padrão 72 h, a regra da Meta que conhecemos) saem de graça. Os leads
+  de hoje chegam por link/redirecionador, então não têm janela.
+- Preço padrão R$ 0,035 por mensagem cobrada. Custo = cobradas × preço.
+
+**O que a API da Data Crazy entrega (conferido em 27/10/2026, só leitura):**
+- `GET /conversations/{id}/messages`: por mensagem, `received` (direção), `createdAt`, `status`
+  (SENT/RECEIVED/READ/ERROR), `attachments[].type` (AUDIO, VIDEO, IMAGE, DOCUMENT), `buttons`/`header`
+  (template ou botões), `attendant` (pessoa no CRM) e `senderName` (nome do fluxo de automação, ex.:
+  "🦕 PARTE 1 TOPO"). Sem `attendant` e sem `senderName` = enviada pelo app do WhatsApp no celular
+  (coexistência). O texto nunca é lido nem guardado.
+- Os 9 números são WhatsApp Cloud API (`provider = WHATSAPP_CLOUD_API`); cada instância traz o id da WABA
+  (`config.wabaId`, guardado em `funil_numeros.waba_id`). O token da instância nunca é lido.
+- **Origem do lead:** a conversa tem `sourceReferral` (`ctwaId` = anúncio Click-to-WhatsApp). Em 500 conversas
+  conferidas, todas vieram vazias (leads de link). Conversa com `ctwaId` = origem `ctwa`; senão `link`. O lead
+  é `ctwa` se alguma conversa dele for.
+- Limite: 1 chamada por conversa (100 mensagens por página), 60/min. A sincronização lê até 150 conversas por
+  rodada, as mais recentes primeiro, só as que mandaram algo desde a última leitura
+  (`funil_conversas.mensagens_lidas_ate`). Começa em 01/10/2026 (`INICIO_DO_CUSTO`).
+
+**Etapa no momento do envio:** a última etiqueta colocada até o envio cujo `funil_etapas.grupo_custo` não é
+vazio (o histórico de etiquetas já era guardado em `funil_eventos`). Depois da compra (`funil_leads.comprou_em`
+= 1ª etiqueta de Aluno ou pagamento na Hubla, o que vier primeiro), "Comprou". Sem etiqueta ainda, "Antes da
+1ª etapa". Grupos: Perguntas iniciais (ordem 1 e Interação frustrado), Parte 1 (ordem 2 e frustrado), Parte 2
+(ordens 3–4 e frustrado), Sem dinheiro/downsell (objeção e downsell), Pagamento (ordens 5–7), Comprou (Aluno).
+Etiqueta "fora do funil" não muda a etapa. O grupo de cada etapa fica no banco (`grupo_custo`).
+
+**Onde fica:** `funil_mensagens_enviadas` (só metadados), `funil_custo_config`, `funil_meta_custo_dia`. O cálculo
+de etapa/compra/cobrança é a função `funil_custo_recalcular` (no fim de cada sincronização, do 1º dia do mês de
+3 dias atrás em diante; só grava o que mudou). Visões `funil_custo_resumo`, `funil_custo_franquia` e
+`funil_custo_dia_utc` para a tela. Contas da tela em `modulos/funil/custo-calculo.ts`.
+
+**Tela:**
+- Por etapa: mensagens, leads, mensagens por lead, custo por lead e total.
+- Custo por lead que entrou (custo do período ÷ leads que entraram), custo por lead que comprou (custo das
+  mensagens até a compra ÷ compradores do período) e **custo por venda** (custo do período ÷ vendas pagas, GCS e
+  Viral separados). Mensagens até a compra: média e mediana (só compradores que entraram a partir de 01/10).
+- Grátis × cobrado, automação × atendente × celular, % do faturamento (valor pago das vendas do período).
+- Por origem (link × Click-to-WhatsApp): leads, mensagens, custo, compras e custo por compra.
+- Franquia por número e estimado × real (Meta) por dia em UTC.
+- Filtros: período, vendedor (dono do lead) e produto (vale para vendas, faturamento e compradores).
+- Número interno (teste) fica fora das contas por lead, mas entra na comparação com a Meta (ela cobra).
+
+**Custo real da Meta (opcional):** `META_CUSTO_TOKEN` (`.env.local` e Vercel). Lê `pricing_analytics` de cada WABA
+(`GET /{waba}?fields=currency,pricing_analytics...granularity(DAILY)`), no máximo a cada 3 h, 35 dias para trás.
+Sem o token a tela mostra só o estimado. Como criar: Meta Business Suite da empresa dona dos números →
+Configurações do negócio → Usuários do sistema → Adicionar (Admin) → Atribuir ativos → Contas do WhatsApp (as
+da operação, controle total) → Gerar token, com o app da empresa, permissão **whatsapp_business_management**,
+validade "Nunca". O token antigo do monitor (`META_ACCESS_TOKEN`) é de outra conta e não serve.

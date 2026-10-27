@@ -127,3 +127,36 @@ export async function apagarNumeroInterno(form: FormData): Promise<void> {
   if (!error) sincronizarDepois();
   refresh();
 }
+
+/** Custo de mensagens: preço por mensagem cobrada, franquia mensal por número, moeda e janela grátis de anúncio. */
+export async function salvarCustoMensagens(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return SO_ADMIN;
+  const preco = Number(String(form.get("preco") ?? "").replace(",", "."));
+  const franquia = Number(String(form.get("franquia") ?? ""));
+  const moeda = String(form.get("moeda") ?? "").trim().toUpperCase();
+  const janela = Number(String(form.get("janela") ?? ""));
+  if (!Number.isFinite(preco) || preco < 0 || preco >= 100) return { erro: "Preço por mensagem: número entre 0 e 100 (ex.: 0,035)." };
+  if (!Number.isInteger(franquia) || franquia < 0 || franquia > 1_000_000) return { erro: "Franquia: número inteiro (ex.: 1000)." };
+  if (!/^[A-Z]{3}$/.test(moeda)) return { erro: "Moeda: código de 3 letras (ex.: BRL)." };
+  if (!Number.isInteger(janela) || janela < 0 || janela > 720) return { erro: "Janela grátis de anúncio: horas inteiras entre 0 e 720." };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("funil_custo_config")
+    .update({
+      preco_mensagem: Math.round(preco * 10_000) / 10_000,
+      franquia_mensal: franquia,
+      moeda,
+      janela_gratis_horas: janela,
+      atualizado_por: usuario.id,
+      atualizado_em: new Date().toISOString(),
+    })
+    .eq("id", true);
+  if (error) return { erro: "Não deu para salvar." };
+  // franquia e janela mudam a cobrança: recalcula na próxima sincronização, que roda agora
+  after(async () => {
+    await sincronizarFunil();
+  });
+  refresh();
+  return { ok: "Salvo. O custo é recalculado na sincronização que começou agora." };
+}

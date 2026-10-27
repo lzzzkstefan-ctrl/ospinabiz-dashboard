@@ -1,12 +1,13 @@
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { hojeSP } from "@/modulos/funil/calculo";
+import { configDoCusto } from "@/modulos/funil/custo";
 import { configDoFunil, mudancasDoFunil } from "@/modulos/funil/dados";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { apagarMudanca, apagarNumeroInterno } from "../acoes";
-import { FormConfigFunil, FormEtiquetaChegada, FormMudanca, FormNumeroInterno } from "../_componentes/formularios";
+import { FormConfigFunil, FormCustoMensagens, FormEtiquetaChegada, FormMudanca, FormNumeroInterno } from "../_componentes/formularios";
 
 // Configuração do Funil (só admin): quando um lead conta como "esperando resposta", o histórico
 // de mudanças no funil (as marcas nos gráficos) e os números internos (teste), que ficam fora.
@@ -32,7 +33,7 @@ async function Conteudo() {
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") notFound();
   const supabase = await createClient();
-  const [cfg, mudancas, etapas, internos, etiquetas, chegada] = await Promise.all([
+  const [cfg, mudancas, etapas, internos, etiquetas, chegada, custo] = await Promise.all([
     configDoFunil(),
     mudancasDoFunil(),
     supabase.from("funil_etapas").select("id, nome, ordem").eq("tipo", "etapa").eq("ativa", true).order("ordem"),
@@ -40,6 +41,7 @@ async function Conteudo() {
     supabase.from("funil_numeros_internos").select("id, nome, chave, criado_em").order("criado_em"),
     supabase.from("funil_etiquetas").select("dc_id, nome").eq("existe", true).order("nome"),
     supabase.from("funil_config").select("etiqueta_chegada_dc_id, etiqueta_chegada_desde").maybeSingle(),
+    configDoCusto(),
   ]);
   // "desde" na tela em horário de Brasília (AAAA-MM-DDTHH:MM)
   const desdeSP = chegada.data?.etiqueta_chegada_desde
@@ -69,6 +71,18 @@ async function Conteudo() {
           atual={chegada.data?.etiqueta_chegada_dc_id ? String(chegada.data.etiqueta_chegada_dc_id) : null}
           desde={desdeSP}
         />
+      </section>
+
+      <section id="custo" className="flex scroll-mt-28 flex-col gap-3">
+        <h2 className="mb-1 border-b border-line-soft pb-2.5 text-[19px]">Custo de mensagens</h2>
+        <p className="text-[12.5px] text-ink-dim">
+          A Meta cobra cada mensagem enviada e entregue. As primeiras mensagens de cada número no mês (franquia) saem de graça; depois, todas são cobradas. Lead que chega
+          por anúncio Click-to-WhatsApp tem uma janela grátis (se a resposta sair em até 24 h); lead de link não tem. Mudar estes valores recalcula o custo do mês.{" "}
+          <Link href="/funil/custo" className="underline-offset-4 hover:underline">
+            Ver o custo
+          </Link>
+        </p>
+        <FormCustoMensagens preco={custo.preco} franquia={custo.franquia} moeda={custo.moeda} janela={custo.janelaGratisHoras} />
       </section>
 
       <section className="flex flex-col gap-3">

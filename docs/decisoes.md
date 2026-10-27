@@ -473,3 +473,23 @@ Davi recebe só as dele, Vyenna só as dela, e o Rodrigo nenhum.
   continuam vendo tudo na tela. Efeito colateral aceito: pedido de reembolso de venda do Rodrigo não
   avisa ninguém (aparece só na tela Reembolsos).
 
+
+## 2026-10-27: Custo de mensagens calculado no banco, a partir das mensagens da Data Crazy
+
+O Funil ganhou a tela "Custo de mensagens". Cada mensagem enviada (só metadados) é guardada e a etapa, a compra
+e a cobrança (franquia, grátis de anúncio ou cobrada) são calculadas por uma função no banco.
+
+**Por quê:**
+- **Guardar a mensagem e não só a contagem:** a etapa no momento do envio depende do histórico de etiquetas,
+  que às vezes chega depois. Com cada mensagem guardada dá para recalcular sem chamar a API de novo.
+- **Sem o texto:** o custo não precisa dele, e conversa de cliente não deve ficar no nosso banco.
+- **Cálculo no banco (SQL), não no código:** a franquia conta na ordem de envio desde o 1º dia do mês, por
+  número (janela sobre ~20 mil linhas por mês). No banco isso é uma consulta; no código seriam dezenas de
+  leituras de 1.000 linhas a cada 15 min.
+- **Recalcula do 1º dia do mês, só grava o que mudou:** mudar preço não precisa recalcular (é só multiplicação
+  na tela); mudar franquia ou janela recalcula na próxima sincronização.
+- **Custo da Meta como conferência, não como base:** a Meta só dá o custo por dia da conta inteira, sem
+  dizer de qual lead ou etapa. As contas por etapa/lead/venda usam o estimado; o real serve para conferir.
+- **Regra de cobrança como o Davi passou:** até meados de 2026, a regra pública da Meta era outra (mensagem
+  de atendimento dentro da janela de 24 h grátis; só template cobrado). Se a comparação com o real mostrar
+  diferença grande, a regra é ajustada.

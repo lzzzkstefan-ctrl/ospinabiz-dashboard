@@ -7,16 +7,22 @@
 //      (dia do lead = 1ª conversa dele; contato novo sem etiqueta também conta, ver "Donos")
 //   4. histórico dos pendentes (1 chamada por lead), até o prazo; o resto fica para a próxima
 //   5. compra e downsell, cruzando com as vendas da Hubla (só banco, sem API)
+//   6. mensagens enviadas (custo do WhatsApp): metadados, etapa no envio e grátis/cobrada; custo real da Meta
 // Usa a chave secreta (roda só no servidor). Grava uma linha em funil_sincronizacoes.
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DataCrazy, PrazoEsgotado, type DcConversa, type DcEventoHistorico, type DcLead, type DcMensagem } from "@/lib/integracoes/datacrazy";
+import { custoDaWaba } from "@/lib/integracoes/meta";
 import {
+  INICIO_DO_CUSTO,
   chaveTelefone,
   decidirCompra,
   diaSP,
   downsellDosItens,
+  entregaDaMensagem,
   inicioDaJanela,
+  origemDaMensagem,
+  tipoDaMensagem,
   mesmasEtiquetas,
   nomeDaEtiqueta,
   soDigitos,
@@ -62,7 +68,10 @@ export async function sincronizarFunil(): Promise<ResultadoSincronizacao> {
     await gravarConversas(db, todas, donos, config, internos);
     contagem.historicos = await lerHistoricos(db, dc, config);
     await lerPrimeirasRespostas(db, dc, todas, donos, config);
+    await lerMensagensEnviadas(db, dc, todas);
     await atualizarCompras(db, janela);
+    await recalcularCusto(db);
+    await lerCustoDaMeta(db);
 
     contagem.pendentes = await contar(db.from("funil_leads").select("dc_id", { count: "exact", head: true }).eq("historico_pendente", true));
 
@@ -174,7 +183,7 @@ async function sincronizarConfiguracao(db: Db, dc: DataCrazy): Promise<Config> {
   if (instancias.length) {
     await ok(
       db.from("funil_numeros").upsert(
-        instancias.map((i) => ({ dc_id: i.id, nome: i.name.trim(), visto_em: agora })),
+        instancias.map((i) => ({ dc_id: i.id, nome: i.name.trim(), waba_id: i.config?.wabaId ?? null, visto_em: agora })),
         { onConflict: "dc_id" },
       ),
     );
@@ -595,11 +604,13 @@ async function gravarConversas(db: Db, todas: DcConversa[], donos: Donos, config
     statuses: string[];
     fila_desde: string | null;
     interno: boolean;
+    criada_em: string | null;
+    origem: string;
   };
   const atuais = await lerTudo<Atual>((de, ate) =>
     db
       .from("funil_conversas")
-      .select("dc_id, lead_dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, contato_rotulo, finalizada, statuses, fila_desde, interno")
+      .select("dc_id, lead_dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, contato_rotulo, finalizada, statuses, fila_desde, interno, criada_em, origem")
       .order("dc_id")
       .range(de, ate),
   );
@@ -627,6 +638,8 @@ async function gravarConversas(db: Db, todas: DcConversa[], donos: Donos, config
     const filaDesde = finalizada ? null : (c.currentThread?.createdAt ?? c.createdAt);
     const interno = ehInterno(internos, c.contact?.phoneNumber, c.contact?.contactId);
     const rotulo = rotuloDoContato(c.contact?.name, c.contact?.phoneNumber);
+    // id do anúncio Click-to-WhatsApp = veio de anúncio; sem ele, chegou por link/redirecionador
+    const origem = c.sourceReferral?.ctwaId ? "ctwa" : "link";
     if (
       antes &&
       !mudou &&
@@ -639,6 +652,8 @@ async function gravarConversas(db: Db, todas: DcConversa[], donos: Donos, config
       mesmoInstante(antes.fila_desde, filaDesde) &&
       antes.interno === interno &&
       antes.contato_rotulo === rotulo &&
+      antes.origem === origem &&
+      mesmoInstante(antes.criada_em, c.createdAt) &&
       mesmasEtiquetas(antes.etiquetas_atuais, etiquetas)
     ) continue;
 
@@ -659,6 +674,8 @@ async function gravarConversas(db: Db, todas: DcConversa[], donos: Donos, config
       statuses,
       fila_desde: filaDesde,
       interno,
+      criada_em: c.createdAt,
+      origem,
       sincronizado_em: new Date().toISOString(),
     });
   }
@@ -841,6 +858,123 @@ async function historicoCompleto(dc: DataCrazy, leadId: string): Promise<DcEvent
     if (eventos.length < 200 || todos.length >= total) break;
   }
   return todos;
+}
+
+// ---------------------------------------------------------------------------
+// 6. Mensagens enviadas (custo do WhatsApp API oficial): só metadados, nunca o texto
+// ---------------------------------------------------------------------------
+
+/** Conversas lidas por rodada (1 chamada por 100 mensagens; a rota tem 60 chamadas/min). */
+const MENSAGENS_POR_RODADA = 150;
+
+/**
+ * Lê as mensagens enviadas das conversas que mandaram algo desde a última leitura (a mais recente
+ * primeiro). A API devolve da mais nova para a mais antiga: para quando chega no que já foi lido
+ * (com 1 h de folga, para pegar a mudança de "enviada" para "entregue").
+ */
+async function lerMensagensEnviadas(db: Db, dc: DataCrazy, todas: DcConversa[]): Promise<number> {
+  const lidas = new Map(
+    (
+      await lerTudo<{ dc_id: string; mensagens_lidas_ate: string }>((de, ate) =>
+        db.from("funil_conversas").select("dc_id, mensagens_lidas_ate").not("mensagens_lidas_ate", "is", null).order("dc_id").range(de, ate),
+      )
+    ).map((c) => [c.dc_id, c.mensagens_lidas_ate]),
+  );
+  const pendentes = todas
+    .filter((c) => {
+      const enviada = c.lastSendedMessageDate;
+      if (!enviada || enviada < INICIO_DO_CUSTO) return false;
+      const ate = lidas.get(c.id);
+      return !ate || Date.parse(enviada) > Date.parse(ate);
+    })
+    .sort((a, b) => (b.lastSendedMessageDate ?? "").localeCompare(a.lastSendedMessageDate ?? ""));
+
+  let lidos = 0;
+  for (const c of pendentes) {
+    if (lidos >= MENSAGENS_POR_RODADA) break;
+    const ate = lidas.get(c.id);
+    const corte = Math.max(Date.parse(INICIO_DO_CUSTO), ate ? Date.parse(ate) - 3_600_000 : 0);
+    const enviadas: DcMensagem[] = [];
+    try {
+      for (let skip = 0; skip < 2_000; skip += 100) {
+        const pagina = await dc.mensagens(c.id, skip, 100);
+        enviadas.push(...pagina.filter((m) => !m.received && !m.isInternal && m.createdAt >= INICIO_DO_CUSTO));
+        const maisAntiga = pagina.reduce((min, m) => Math.min(min, Date.parse(m.createdAt)), Infinity);
+        if (pagina.length < 100 || maisAntiga < corte) break;
+      }
+    } catch (e) {
+      if (e instanceof PrazoEsgotado) break;
+      throw e;
+    }
+    lidos++;
+
+    // lead, etapa e cobrança vêm do recálculo no banco (funil_custo_recalcular)
+    const agora = new Date().toISOString();
+    const linhas = enviadas.map((m) => {
+      const origem = origemDaMensagem(m);
+      return {
+        dc_id: m.id,
+        conversa_dc_id: c.id,
+        numero_dc_id: c.instance?.id ?? null,
+        enviada_em: m.createdAt,
+        tipo: tipoDaMensagem(m),
+        origem,
+        atendente_dc_id: m.attendant?.id ?? null,
+        fluxo: origem === "automacao" ? (m.senderName?.trim().slice(0, 120) ?? null) : null,
+        entrega: entregaDaMensagem(m.status),
+        lida_em: agora,
+      };
+    });
+    for (const lote of fatiar(linhas, LOTE)) await ok(db.from("funil_mensagens_enviadas").upsert(lote, { onConflict: "dc_id" }));
+    await ok(db.from("funil_conversas").update({ mensagens_lidas_ate: c.lastSendedMessageDate }).eq("dc_id", c.id));
+  }
+  return lidos;
+}
+
+/** Etapa no momento do envio, compra e grátis/cobrada (no banco; ver a migration funil_custo_mensagens). */
+async function recalcularCusto(db: Db) {
+  // 3 dias para trás: no começo do mês ainda recalcula o mês anterior (histórico que chegou atrasado)
+  const desde = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  await ok(db.rpc("funil_custo_recalcular", { p_desde: desde }));
+}
+
+/** Custo real que a Meta informa (pricing analytics), no máximo a cada 3 h. Sem META_CUSTO_TOKEN, não faz nada. */
+async function lerCustoDaMeta(db: Db) {
+  const token = process.env.META_CUSTO_TOKEN;
+  if (!token) return;
+  const { data: ultima } = await db
+    .from("funil_meta_custo_dia")
+    .select("atualizado_em")
+    .order("atualizado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (ultima && Date.now() - Date.parse(ultima.atualizado_em) < 3 * 3_600_000) return;
+
+  const numeros = await lerTudo<{ waba_id: string }>((de, ate) =>
+    db.from("funil_numeros").select("waba_id").not("waba_id", "is", null).order("dc_id").range(de, ate),
+  );
+  const fim = Math.floor(Date.now() / 1000);
+  const inicio = Math.max(Math.floor(Date.parse(INICIO_DO_CUSTO) / 1000), fim - 35 * 86_400);
+  const agora = new Date().toISOString();
+  for (const waba of new Set(numeros.map((n) => n.waba_id))) {
+    try {
+      const r = await custoDaWaba(token, waba, inicio, fim);
+      const linhas = r.pontos.map((p) => ({
+        dia: new Date(p.inicio * 1000).toISOString().slice(0, 10),
+        waba_id: waba,
+        tipo: p.tipo,
+        categoria: p.categoria,
+        mensagens: p.mensagens,
+        custo: p.custo,
+        moeda: r.moeda,
+        atualizado_em: agora,
+      }));
+      if (linhas.length) await ok(db.from("funil_meta_custo_dia").upsert(linhas, { onConflict: "dia,waba_id,tipo,categoria" }));
+    } catch (e) {
+      // o custo real é complemento: a falha não derruba a sincronização
+      console.error(`funil: custo da Meta (WABA final ${waba.slice(-4)}):`, e instanceof Error ? e.message : e);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

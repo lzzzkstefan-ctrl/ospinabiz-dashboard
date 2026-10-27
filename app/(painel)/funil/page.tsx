@@ -154,6 +154,11 @@ async function Conteudo({ searchParams }: Props) {
 
   return (
     <>
+      {admin && (
+        <Link href="/funil/custo" className="self-start text-[12.5px] text-ink-dim underline-offset-4 hover:text-white hover:underline">
+          Custo de mensagens do WhatsApp →
+        </Link>
+      )}
       <VisaoPorAtendente visao={visao} admin={admin} />
 
       {/* números principais */}

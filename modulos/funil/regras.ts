@@ -70,3 +70,41 @@ export function downsellDosItens(
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Custo de mensagens (WhatsApp API oficial)
+// ---------------------------------------------------------------------------
+
+/** A Meta passou a cobrar cada mensagem enviada em 01/10/2026: só lemos mensagens daqui em diante. */
+export const INICIO_DO_CUSTO = "2026-10-01T00:00:00Z";
+
+export type TipoMensagem = "texto" | "audio" | "video" | "imagem" | "documento" | "template" | "outro";
+export type OrigemMensagem = "automacao" | "atendente" | "celular";
+export type EntregaMensagem = "entregue" | "enviada" | "erro";
+
+/** Tipo pela mídia anexada; botões ou cabeçalho = template (ou mensagem com botões). */
+export function tipoDaMensagem(m: { attachments?: { type?: string | null }[] | null; buttons?: unknown[] | null; header?: string | null }): TipoMensagem {
+  const anexo = (m.attachments?.[0]?.type ?? "").toUpperCase();
+  if (anexo === "AUDIO") return "audio";
+  if (anexo === "VIDEO") return "video";
+  if (anexo === "IMAGE" || anexo === "STICKER") return "imagem";
+  if (anexo === "DOCUMENT") return "documento";
+  if (anexo) return "outro";
+  if (m.buttons?.length || m.header) return "template";
+  return "texto";
+}
+
+/** Quem mandou: atendente (pessoa no CRM), automação (fluxo com nome) ou celular (nenhum dos dois). */
+export function origemDaMensagem(m: { attendant?: { id: string } | null; senderName?: string | null }): OrigemMensagem {
+  if (m.attendant?.id) return "atendente";
+  if (m.senderName?.trim()) return "automacao";
+  return "celular";
+}
+
+/** A Meta cobra a mensagem entregue: RECEIVED (entregue) e READ (lida) contam; SENT ainda não chegou. */
+export function entregaDaMensagem(status: string | null | undefined): EntregaMensagem {
+  const s = (status ?? "").toUpperCase();
+  if (s === "RECEIVED" || s === "READ" || s === "DELIVERED" || s === "PLAYED") return "entregue";
+  if (s === "ERROR" || s === "FAILED") return "erro";
+  return "enviada";
+}

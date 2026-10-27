@@ -6,7 +6,7 @@ import { Aviso, Campo, classeOpcao, classeSelect, type EstadoForm } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useActionState } from "react";
-import { criarMudanca, criarNumeroInterno, salvarConfigFunil, salvarEtiquetaChegada } from "../acoes";
+import { criarMudanca, criarNumeroInterno, salvarConfigFunil, salvarCustoMensagens, salvarEtiquetaChegada } from "../acoes";
 
 export function FormConfigFunil({ horas, inicio, fim, minutos }: { horas: number; inicio: string; fim: string; minutos: number }) {
   const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(salvarConfigFunil, {});
@@ -106,6 +106,31 @@ export function FormNumeroInterno() {
       </Campo>
       <Button type="submit" disabled={pendente}>
         {pendente ? "Salvando…" : "Cadastrar número"}
+      </Button>
+      <Aviso estado={estado} />
+    </form>
+  );
+}
+
+/** Custo de mensagens do WhatsApp API oficial. */
+export function FormCustoMensagens({ preco, franquia, moeda, janela }: { preco: number; franquia: number; moeda: string; janela: number }) {
+  const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(salvarCustoMensagens, {});
+  return (
+    <form action={acao} className="flex flex-wrap items-end gap-3">
+      <Campo rotulo="Preço por mensagem cobrada">
+        <Input name="preco" inputMode="decimal" defaultValue={String(preco).replace(".", ",")} className="w-32 tabular-nums" />
+      </Campo>
+      <Campo rotulo="Franquia grátis por número/mês">
+        <Input name="franquia" inputMode="numeric" defaultValue={String(franquia)} className="w-32 tabular-nums" />
+      </Campo>
+      <Campo rotulo="Moeda">
+        <Input name="moeda" defaultValue={moeda} maxLength={3} className="w-20 uppercase" />
+      </Campo>
+      <Campo rotulo="Janela grátis de anúncio (horas)">
+        <Input name="janela" inputMode="numeric" defaultValue={String(janela)} className="w-28 tabular-nums" />
+      </Campo>
+      <Button type="submit" disabled={pendente}>
+        {pendente ? "Salvando…" : "Salvar"}
       </Button>
       <Aviso estado={estado} />
     </form>

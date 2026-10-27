@@ -17,7 +17,8 @@ export class PrazoEsgotado extends Error {
 
 export type DcEtiqueta = { id: string; name: string; color: string | null };
 export type DcAtendente = { id: string; name: string };
-export type DcInstancia = { id: string; name: string };
+/** Número (instância). Da `config` só o id público da conta na Meta (WABA); o token de lá nunca é lido. */
+export type DcInstancia = { id: string; name: string; config?: { wabaId?: string | null } | null };
 export type DcLead = {
   id: string;
   createdAt: string;
@@ -44,6 +45,8 @@ export type DcConversa = {
   /** atendimento atual: createdAt = quando começou; startedAt = quando alguém assumiu */
   currentThread?: { createdAt?: string | null; startedAt?: string | null } | null;
   instance: { id: string; name: string } | null;
+  /** anúncio Click-to-WhatsApp de onde o lead veio (vazio quando chegou por link) */
+  sourceReferral?: { sourceId?: string | null; sourceUrl?: string | null; ctwaId?: string | null } | null;
   contact: {
     /** id interno do contato na Data Crazy (não é o telefone) */
     id?: string | null;
@@ -65,6 +68,13 @@ export type DcMensagem = {
   isInternal: boolean | null;
   /** atendente que mandou (vazio = automação ou envio pelo celular) */
   attendant: { id: string } | null;
+  /** nome do fluxo de automação que mandou (vazio = atendente ou celular) */
+  senderName?: string | null;
+  /** SENT (enviada), RECEIVED (entregue), READ (lida), ERROR */
+  status?: string | null;
+  attachments?: { type?: string | null }[] | null;
+  buttons?: unknown[] | null;
+  header?: string | null;
 };
 export type DcEventoHistorico = {
   id: string;
