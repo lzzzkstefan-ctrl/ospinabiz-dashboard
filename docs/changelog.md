@@ -2,6 +2,10 @@
 
 Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à mão.
 
+## 27/10/2026
+
+- Funil: Custo de mensagens do WhatsApp (por etapa, por lead, por venda GCS/Viral, franquia por número, link × Click-to-WhatsApp), Custo por funil (cada automação e as mensagens manuais por vendedor) e Mapa do funil (custo previsto pelos JSON das automações)
+
 ## 20/10/2026
 
 - Venda da Hubla sem utm_term (ou com código desconhecido) vai para o Rodrigo, sem comissão; o push de venda e de reembolso agora chega só para o vendedor dono (Davi as dele, Vyenna as dela, Rodrigo nenhum).
