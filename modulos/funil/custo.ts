@@ -3,6 +3,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { calcularCusto, type LeadCusto, type LinhaResumo, type Produto, type ResultadoCusto, type VendaCusto } from "./custo-calculo";
+import type { LinhaFluxo } from "./custo-fluxos";
+import { nomesDosAtendentes } from "./dados";
+import type { BlocoMapa, CaminhoMapa } from "./mapa-fluxo";
 import { INICIO_DO_CUSTO } from "./regras";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -181,4 +184,51 @@ export async function carregarCusto(f: FiltrosCusto): Promise<TelaCusto> {
     conversasPendentes: pendentes.count ?? 0,
     primeiraLida: primeira.data?.enviada_em ?? null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Custo por funil (por automação) e mapa do funil
+// ---------------------------------------------------------------------------
+
+const COLUNAS_FLUXO = "dia, origem, fluxo, atendente_dc_id, lead_dc_id, etapa_custo, cobranca, interno, mensagens";
+
+export type TelaCustoFluxos = {
+  config: ConfigCusto;
+  linhas: LinhaFluxo[];
+  /** lead → comprou (a qualquer momento: venda na Hubla ou Pix/CNPJ) */
+  compradores: Set<string>;
+  atendentes: Map<string, string>;
+};
+
+/** Mensagens do período agrupadas por automação/atendente e lead, e quem desses leads comprou. */
+export async function carregarCustoFluxos(desde: string, ate: string): Promise<TelaCustoFluxos> {
+  const supabase = await createClient();
+  const [config, linhas, atendentes] = await Promise.all([
+    configDoCusto(),
+    todas<LinhaFluxo>((de, fim) =>
+      ["dia", "origem", "fluxo", "atendente_dc_id", "lead_dc_id", "etapa_custo", "cobranca", "interno"]
+        .reduce((q, c) => q.order(c, { nullsFirst: true }), supabase.from("funil_custo_fluxo").select(COLUNAS_FLUXO).gte("dia", desde).lte("dia", ate))
+        .range(de, fim),
+    ),
+    nomesDosAtendentes(),
+  ]);
+  const ids = [...new Set(linhas.map((l) => l.lead_dc_id).filter((id): id is string => !!id))];
+  const compradores = new Set((await leadsPorId(supabase, ids)).filter((l) => l.compra === "hubla" || l.compra === "fora_hubla").map((l) => l.dc_id));
+  return { config, linhas, compradores, atendentes };
+}
+
+export type MapaGuardado = { id: number; nome: string; arquivo: string | null; blocos: BlocoMapa[]; caminhos: CaminhoMapa[]; enviadoEm: string };
+
+export async function listarMapas(): Promise<MapaGuardado[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("funil_fluxos_mapa").select("id, nome, arquivo, blocos, caminhos, enviado_em").order("nome");
+  if (error) throw new Error(`Erro ao carregar o mapa do funil: ${error.message}`);
+  return (data ?? []).map((m) => ({
+    id: Number(m.id),
+    nome: String(m.nome),
+    arquivo: m.arquivo ? String(m.arquivo) : null,
+    blocos: (m.blocos ?? []) as BlocoMapa[],
+    caminhos: (m.caminhos ?? []) as CaminhoMapa[],
+    enviadoEm: String(m.enviado_em),
+  }));
 }

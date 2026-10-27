@@ -357,3 +357,31 @@ Sem o token a tela mostra só o estimado. Como criar: Meta Business Suite da emp
 Configurações do negócio → Usuários do sistema → Adicionar (Admin) → Atribuir ativos → Contas do WhatsApp (as
 da operação, controle total) → Gerar token, com o app da empresa, permissão **whatsapp_business_management**,
 validade "Nunca". O token antigo do monitor (`META_ACCESS_TOKEN`) é de outra conta e não serve.
+
+## Custo por automação (27/10/2026, mesma migration)
+
+Tela `/funil/custo/fluxos` ("Custo por funil", só admin). Contas em `modulos/funil/custo-fluxos.ts`; base na visão
+`funil_custo_fluxo`.
+- **Quem mandou:** a API da Data Crazy traz em cada mensagem de automação o **nome** do fluxo (`senderName`), mas
+  não o id. Por isso a linha é por nome: renomear um fluxo na Data Crazy cria uma linha nova. Mensagem de
+  atendente (inclui mensagem rápida) = manual, uma linha por vendedor. Sem fluxo e sem atendente (envio pelo app no
+  celular) = **estimado**, pela etapa do lead naquele momento. Em outubro (10.694 enviadas) toda mensagem de
+  automação veio com nome e nenhuma ficou sem origem.
+- Por linha: mensagens, leads que passaram por ela, mensagens por lead, custo total e por lead, quantos desses
+  leads compraram (Hubla ou Pix/CNPJ, a qualquer momento). Ordem: a mais cara primeiro.
+- Clicar numa linha: custo por dia (gráfico) e quanto ela gastou com leads que nunca compraram.
+
+## Mapa do funil (custo previsto) (27/10/2026, mesma migration)
+
+Tela `/funil/custo/mapa` (só admin). O admin sobe os JSON exportados das automações da Data Crazy.
+- **O arquivo é lido no navegador** (`modulos/funil/mapa-fluxo.ts`); para o servidor vai só a estrutura, guardada em
+  `funil_fluxos_mapa`: tipo de bloco (texto, áudio, vídeo, imagem, documento), ordem, as primeiras 6 palavras do
+  texto (no máximo 80 letras) e os caminhos. Sem dado de lead. Mesmo nome de fluxo substitui o anterior.
+- **Formato:** a Data Crazy não documenta o export e a API não tem rota de automações. A leitura é tolerante: acha
+  "nós" (objetos com id e tipo/dados) e "ligações" (`source/target`, `from/to` ou `next`) em qualquer lugar do JSON,
+  como nos editores de fluxo. Gatilho, condição, espera, etiqueta e webhook não contam como mensagem. Testado só com
+  um exemplo montado; **conferir com um export de verdade** e ajustar se algo não for reconhecido (a tela avisa).
+- **Caminhos:** do gatilho até cada fim, nomeados pelas saídas das bifurcações (ex.: "GCS 278", "Viral 58,90").
+  Por caminho: mensagens, tipos, custo previsto por lead (mensagens × preço, sem franquia) e o medido no Custo por
+  funil nos últimos 30 dias (mensagens por lead × preço), casando pelo nome do fluxo sem emoji e maiúsculas.
+- **Dá para juntar:** textos seguidos sem espera, pergunta ou condição no meio (destacados em laranja).

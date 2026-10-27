@@ -160,3 +160,49 @@ export async function salvarCustoMensagens(_anterior: EstadoForm, form: FormData
   refresh();
   return { ok: "Salvo. O custo é recalculado na sincronização que começou agora." };
 }
+
+/**
+ * Mapa do funil: recebe SÓ a estrutura já lida no navegador (modulos/funil/mapa-fluxo.ts) e guarda.
+ * Mesmo nome substitui o anterior. Tudo é conferido de novo aqui (tipos, tamanhos, só as primeiras palavras).
+ */
+export async function salvarMapas(mapas: unknown): Promise<EstadoForm> {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return SO_ADMIN;
+  if (!Array.isArray(mapas) || !mapas.length || mapas.length > 50) return { erro: "Nenhum fluxo para salvar." };
+  const TIPOS = new Set(["texto", "audio", "video", "imagem", "documento", "outro"]);
+  const curto = (x: unknown, n: number) => (typeof x === "string" ? x.slice(0, n) : null);
+  const linhas = [];
+  for (const m of mapas as Record<string, unknown>[]) {
+    const nome = curto(m?.nome, 200)?.trim();
+    if (!nome || !Array.isArray(m.blocos) || !Array.isArray(m.caminhos)) return { erro: "Arquivo em formato inesperado." };
+    if (m.blocos.length > 3000 || m.caminhos.length > 60) return { erro: `O fluxo "${nome}" é grande demais.` };
+    const blocos = (m.blocos as Record<string, unknown>[]).map((b) => ({
+      id: curto(b?.id, 80) ?? "",
+      tipo: TIPOS.has(String(b?.tipo)) ? String(b.tipo) : "outro",
+      // só as primeiras palavras (no máximo 80 letras), nunca o texto inteiro
+      inicio: curto(b?.inicio, 80),
+    }));
+    const ids = (x: unknown) => (Array.isArray(x) ? x.slice(0, 3000).map((i) => curto(i, 80) ?? "") : []);
+    const caminhos = (m.caminhos as Record<string, unknown>[]).map((c) => ({
+      nome: curto(c?.nome, 200) ?? "",
+      blocos: ids(c?.blocos),
+      juntaveis: Array.isArray(c?.juntaveis) ? (c.juntaveis as unknown[]).slice(0, 500).map(ids) : [],
+    }));
+    linhas.push({ nome, arquivo: curto(m.arquivo, 300), blocos, caminhos, enviado_por: usuario.id, enviado_em: new Date().toISOString() });
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.from("funil_fluxos_mapa").upsert(linhas, { onConflict: "nome" });
+  if (error) return { erro: "Não deu para salvar o mapa." };
+  refresh();
+  return { ok: linhas.length === 1 ? `Fluxo "${linhas[0].nome}" salvo.` : `${linhas.length} fluxos salvos.` };
+}
+
+export async function apagarMapa(form: FormData): Promise<void> {
+  const usuario = await usuarioLogado();
+  if (usuario?.papel !== "admin") return;
+  const id = Number(form.get("id"));
+  if (!Number.isInteger(id)) return;
+  const supabase = await createClient();
+  await supabase.from("funil_fluxos_mapa").delete().eq("id", id);
+  refresh();
+}

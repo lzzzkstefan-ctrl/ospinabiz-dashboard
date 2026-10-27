@@ -306,6 +306,41 @@ select (m.enviada_em at time zone 'UTC')::date as dia,
   from public.funil_mensagens_enviadas m
  group by 1, 2;
 
+-- Por automação (fluxo) ou atendente: base da tela "Custo por funil".
+-- fluxo vazio + origem atendente = manual; fluxo vazio + origem celular = sem origem (a tela estima pela etapa)
+create view public.funil_custo_fluxo with (security_invoker = true) as
+select (m.enviada_em at time zone 'America/Sao_Paulo')::date as dia,
+       m.origem,
+       coalesce(m.fluxo, '') as fluxo,
+       m.atendente_dc_id,
+       m.lead_dc_id,
+       coalesce(m.etapa_custo, 'sem_etapa') as etapa_custo,
+       coalesce(m.cobranca, 'nao_cobrada') as cobranca,
+       m.interno,
+       count(*)::integer as mensagens
+  from public.funil_mensagens_enviadas m
+ group by 1, 2, 3, 4, 5, 6, 7, 8;
+
+-- ---------------------------------------------------------------------------
+-- 8. Mapa do funil: estrutura das automações exportadas da Data Crazy (JSON), para o custo previsto.
+-- Só a estrutura: tipo de bloco, ordem e as primeiras palavras do texto. O arquivo é lido no navegador
+-- e nunca chega inteiro ao servidor. Mandar de novo um fluxo com o mesmo nome substitui o anterior.
+--   blocos   → [{ id, tipo: texto|audio|video|imagem|documento|outro, inicio: "primeiras palavras" }]
+--   caminhos → [{ nome, blocos: [ids na ordem], juntaveis: [[ids seguidos que podiam ser uma só]] }]
+-- ---------------------------------------------------------------------------
+create table public.funil_fluxos_mapa (
+  id           bigint generated always as identity primary key,
+  nome         text not null unique check (length(trim(nome)) between 1 and 200),
+  arquivo      text check (length(arquivo) <= 300),
+  blocos       jsonb not null default '[]',
+  caminhos     jsonb not null default '[]',
+  enviado_por  uuid references auth.users (id) on delete set null default auth.uid(),
+  enviado_em   timestamptz not null default now(),
+  constraint funil_fluxos_mapa_tamanho check (pg_column_size(blocos) + pg_column_size(caminhos) < 2000000)
+);
+
+create index funil_fluxos_mapa_enviado_por_idx on public.funil_fluxos_mapa (enviado_por);
+
 -- ---------------------------------------------------------------------------
 -- RLS e permissões
 -- ---------------------------------------------------------------------------
@@ -330,3 +365,18 @@ create policy "admin le mensagens enviadas" on public.funil_mensagens_enviadas
 
 create policy "admin le custo da meta" on public.funil_meta_custo_dia
   for select to authenticated using ((select privado.eh_admin()));
+
+-- visão por automação (vale o RLS de funil_mensagens_enviadas = só admin)
+revoke all on public.funil_custo_fluxo from anon;
+grant select on public.funil_custo_fluxo to authenticated;
+
+-- mapa do funil: só admin lê, envia, substitui e apaga
+alter table public.funil_fluxos_mapa enable row level security;
+revoke all on public.funil_fluxos_mapa from anon;
+grant select, insert, delete on public.funil_fluxos_mapa to authenticated;
+grant update (nome, arquivo, blocos, caminhos, enviado_por, enviado_em) on public.funil_fluxos_mapa to authenticated;
+create policy "admin le mapa" on public.funil_fluxos_mapa for select to authenticated using ((select privado.eh_admin()));
+create policy "admin envia mapa" on public.funil_fluxos_mapa for insert to authenticated with check ((select privado.eh_admin()));
+create policy "admin substitui mapa" on public.funil_fluxos_mapa for update to authenticated
+  using ((select privado.eh_admin())) with check ((select privado.eh_admin()));
+create policy "admin apaga mapa" on public.funil_fluxos_mapa for delete to authenticated using ((select privado.eh_admin()));

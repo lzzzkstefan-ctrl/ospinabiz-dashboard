@@ -142,6 +142,14 @@ async function Conteudo({ searchParams }: Props) {
           </span>
         </form>
         <AvisoLeitura pendentes={t.conversasPendentes} primeiraLida={t.primeiraLida} />
+        <nav className="flex flex-wrap gap-4 text-[12.5px]">
+          <Link href={`/funil/custo/fluxos?p=${periodo === "personalizado" ? "7d" : periodo}`} className="text-ink-dim underline-offset-4 hover:text-white hover:underline">
+            Custo por funil (por automação) →
+          </Link>
+          <Link href="/funil/custo/mapa" className="text-ink-dim underline-offset-4 hover:text-white hover:underline">
+            Mapa do funil (custo previsto) →
+          </Link>
+        </nav>
       </section>
 
       {/* números principais */}
