@@ -2,6 +2,7 @@ import { PainelNav, PainelNavMobile, type PapelMenu } from "@/components/painel-
 import { UsuarioAtual } from "@/components/usuario-atual";
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { perguntaFeriado } from "@/modulos/escala/dados";
+import { AvisoNotificacoes } from "./_componentes/aviso-notificacoes";
 import { FeriadoPopup } from "./escala/_componentes/feriado-popup";
 import { Suspense } from "react";
 
@@ -67,6 +68,8 @@ export default function PainelLayout({
       <Suspense fallback={null}>
         <Feriado />
       </Suspense>
+      {/* notificações desativadas neste aparelho: reativa sozinho ou pede um toque */}
+      <AvisoNotificacoes />
       <main className="mx-auto max-w-[1180px] px-6 pb-28 pt-8 md:pb-16 md:pt-[112px] print:max-w-none print:p-0">{children}</main>
     </>
   );

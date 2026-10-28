@@ -147,6 +147,14 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
 - **Quem recebe:** `notificacoes_preferencias` (cada um escolhe no Check-in); sem escolha salva,
   admin recebe tudo e os outros nada. Salvar: update (com data) e, na primeira vez, insert sem
   `atualizado_em` (o grant de insert não inclui a data).
+- **Vigia do aparelho (28/10/2026, pedido do Davi):** `AvisoNotificacoes` no layout do painel, em toda
+  tela, ao abrir e quando o app volta para a frente: inscrição que sumiu do banco volta
+  (`confirmarInscricao`); permissão dada sem inscrição (expirou) → inscreve de novo sozinho; sem
+  permissão → aviso "Notificações desativadas, toque para ativar" (navegador só pede permissão dentro de
+  um toque); bloqueado → onde liberar. "Agora não" esconde 3 dias; "desligar neste aparelho" no Check-in
+  cala de vez naquele aparelho (localStorage). Funções do navegador em `lib/push-navegador.ts`.
+- **Enviar notificação de teste:** botão sempre visível na seção Notificações do Check-in; manda para
+  todos os aparelhos ativados da pessoa (não só o que está aberto).
 - **Depois:** mesmos avisos pelo WhatsApp quando o número remetente do Monitor estiver configurado
   (o envio já existe: `enviarAvisoWhatsApp` em `lib/integracoes/meta.ts`, usado pelos feriados).
 - Testado em 10/10: ativação no Edge (serviço de push do Windows aceitou), "Testar", ainda não

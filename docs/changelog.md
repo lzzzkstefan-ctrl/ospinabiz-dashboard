@@ -2,6 +2,10 @@
 
 Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à mão.
 
+## 28/10/2026
+
+- Se a inscrição do celular expirar, o app refaz sozinho ao abrir; sem permissão aparece 'Notificações desativadas, toque para ativar'; botão 'Enviar notificação de teste' no Check-in
+
 ## 27/10/2026
 
 - Filtro Número banido ganhou o botão Exportar lista (nome, telefone, etapa, vendedor, número antigo) e o Funil liga sozinho número novo da Data Crazy ao cadastro da aba BMs, para lead de número banido não escapar para as filas

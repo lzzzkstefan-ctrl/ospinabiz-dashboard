@@ -7,25 +7,11 @@
 
 import { Aviso, type EstadoForm } from "@/components/formulario";
 import { Button } from "@/components/ui/button";
+import { inscreverAparelho, marcarDesligado, nomeDoAparelho, paraEnviar, situacaoDoAparelho, type SituacaoPush } from "@/lib/push-navegador";
 import { useActionState, useEffect, useState } from "react";
-import { apagarInscricao, salvarInscricao, salvarPreferencias, testarNotificacao, type InscricaoNavegador } from "../acoes";
+import { apagarInscricao, confirmarInscricao, salvarInscricao, salvarPreferencias, testarNotificacao } from "../acoes";
 
-function chaveDoServidor(base64: string): Uint8Array<ArrayBuffer> {
-  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
-  const bruto = atob((base64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
-  const saida = new Uint8Array(new ArrayBuffer(bruto.length));
-  for (let i = 0; i < bruto.length; i++) saida[i] = bruto.charCodeAt(i);
-  return saida;
-}
-
-type Situacao = "verificando" | "sem_suporte" | "iphone_instalar" | "bloqueado" | "desligado" | "ligado";
-
-function nomeDoAparelho(): string {
-  const ua = navigator.userAgent;
-  const so = /iPhone|iPad/.test(ua) ? "iPhone/iPad" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "outro";
-  const nav = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "navegador";
-  return `${nav} · ${so}`;
-}
+type Situacao = "verificando" | SituacaoPush;
 
 export function AtivarNotificacoes() {
   const [situacao, setSituacao] = useState<Situacao>("verificando");
@@ -35,22 +21,15 @@ export function AtivarNotificacoes() {
 
   useEffect(() => {
     let vivo = true;
-    (async () => {
-      const iphone = /iPhone|iPad|iPod/.test(navigator.userAgent);
-      const instalado = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-      let s: Situacao;
-      let sub: PushSubscription | null = null;
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) s = iphone && !instalado ? "iphone_instalar" : "sem_suporte";
-      else if (Notification.permission === "denied") s = "bloqueado";
-      else {
-        const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
-        sub = await reg.pushManager.getSubscription();
-        s = sub ? "ligado" : "desligado";
-      }
-      if (!vivo) return;
-      setInscricao(sub);
-      setSituacao(s);
-    })().catch(() => vivo && setSituacao("sem_suporte"));
+    situacaoDoAparelho()
+      .then(async (r) => {
+        // inscrição no aparelho que sumiu do banco volta sozinha
+        if (r.inscricao) await confirmarInscricao(paraEnviar(r.inscricao), nomeDoAparelho()).catch(() => {});
+        if (!vivo) return;
+        setInscricao(r.inscricao);
+        setSituacao(r.situacao);
+      })
+      .catch(() => vivo && setSituacao("sem_suporte"));
     return () => {
       vivo = false;
     };
@@ -60,15 +39,14 @@ export function AtivarNotificacoes() {
     setOcupado(true);
     setEstado({});
     try {
-      const permissao = await Notification.requestPermission();
-      if (permissao !== "granted") {
-        setSituacao(permissao === "denied" ? "bloqueado" : "desligado");
+      const sub = await inscreverAparelho();
+      if (sub === "negada") {
+        setSituacao(Notification.permission === "denied" ? "bloqueado" : "sem_permissao");
         setEstado({ erro: "Permissão não dada. Sem ela o aparelho não recebe os avisos." });
         return;
       }
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveDoServidor(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!) });
-      const r = await salvarInscricao(JSON.parse(JSON.stringify(sub)) as InscricaoNavegador, nomeDoAparelho());
+      marcarDesligado(false);
+      const r = await salvarInscricao(paraEnviar(sub), nomeDoAparelho());
       setEstado(r);
       if (!r.erro) {
         setInscricao(sub);
@@ -86,9 +64,10 @@ export function AtivarNotificacoes() {
     setOcupado(true);
     const endpoint = inscricao.endpoint;
     await inscricao.unsubscribe().catch(() => {});
+    marcarDesligado(true);
     setEstado(await apagarInscricao(endpoint));
     setInscricao(null);
-    setSituacao("desligado");
+    setSituacao("sem_permissao");
     setOcupado(false);
   }
 
@@ -98,6 +77,7 @@ export function AtivarNotificacoes() {
     setOcupado(false);
   }
 
+  const desligado = situacao === "sem_permissao" || situacao === "sem_inscricao";
   return (
     <div className="flex flex-col gap-2">
       {situacao === "verificando" && <p className="m-0 text-[13px] text-ink-faint">Verificando este aparelho…</p>}
@@ -110,12 +90,12 @@ export function AtivarNotificacoes() {
       )}
       {situacao === "bloqueado" && (
         <p className="m-0 text-[13px] text-[rgb(var(--tag-laranja))]">
-          As notificações estão bloqueadas para este site. Libere no cadeado ao lado do endereço (ou nos ajustes do celular) e recarregue a página.
+          As notificações estão bloqueadas para este site. Libere no cadeado ao lado do endereço (no iPhone: Ajustes → Notificações → Ospinabiz) e abra de novo.
         </p>
       )}
-      {(situacao === "desligado" || situacao === "ligado") && (
+      {(desligado || situacao === "ligado") && (
         <div className="flex flex-wrap items-center gap-3">
-          {situacao === "desligado" ? (
+          {desligado ? (
             <Button type="button" onClick={ativar} disabled={ocupado}>
               {ocupado ? "Ativando…" : "Ativar notificações"}
             </Button>
@@ -124,14 +104,19 @@ export function AtivarNotificacoes() {
               <span className="flex items-center gap-2 text-[13.5px] text-white">
                 <span className="h-2.5 w-2.5 rounded-full bg-[rgb(var(--tag-verde))]" aria-hidden /> Ativadas neste aparelho
               </span>
-              <Button type="button" variant="outline" onClick={testar} disabled={ocupado}>
-                Testar
-              </Button>
               <button type="button" onClick={desligar} disabled={ocupado} className="text-[12.5px] text-ink-dim underline-offset-4 hover:underline">
                 desligar neste aparelho
               </button>
             </>
           )}
+        </div>
+      )}
+      {situacao !== "verificando" && (
+        // sempre visível: o teste vai para todos os aparelhos ativados da pessoa, não só este
+        <div>
+          <Button type="button" variant="outline" onClick={testar} disabled={ocupado}>
+            Enviar notificação de teste
+          </Button>
         </div>
       )}
       <Aviso estado={estado} />
