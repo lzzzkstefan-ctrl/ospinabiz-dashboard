@@ -4,6 +4,7 @@ Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à
 
 ## 27/10/2026
 
+- Filtro Número banido ganhou o botão Exportar lista (nome, telefone, etapa, vendedor, número antigo) e o Funil liga sozinho número novo da Data Crazy ao cadastro da aba BMs, para lead de número banido não escapar para as filas
 - Funil: Custo de mensagens do WhatsApp (por etapa, por lead, por venda GCS/Viral, franquia por número, link × Click-to-WhatsApp), Custo por funil (cada automação e as mensagens manuais por vendedor) e Mapa do funil (custo previsto pelos JSON das automações)
 
 ## 20/10/2026

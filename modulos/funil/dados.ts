@@ -455,6 +455,8 @@ export async function naoComecaram(filtro: FiltroAtendimento = { atendenteId: nu
 
 export type LeadBanido = {
   chave: string;
+  /** lead da Data Crazy (null quando a conversa não tem lead ligado) */
+  leadId: string | null;
   rotulo: string | null;
   vendedor: string | null;
   etapa: string | null;
@@ -527,7 +529,8 @@ export async function leadsEmNumeroBanido(filtro: { atendenteId: string | null }
     if (noBanido.length === 0) continue;
     // a conversa mais recente manda na etapa e no vendedor; sem eles, outra conversa e por fim o lead
     const ordem = [...cs].sort((a, b) => (ultima(b) ?? "").localeCompare(ultima(a) ?? ""));
-    const lead = doLead.get(String(ordem.find((c) => c.lead_dc_id)?.lead_dc_id ?? ""));
+    const leadId = ordem.find((c) => c.lead_dc_id)?.lead_dc_id;
+    const lead = doLead.get(String(leadId ?? ""));
     const comDono = ordem.find((c) => c.atendente_dc_id || c.vendedor_id);
     const vendedor = comDono
       ? vendedorDe(comDono.atendente_dc_id, comDono.vendedor_id, atendentes, nomeDe)
@@ -537,6 +540,7 @@ export async function leadsEmNumeroBanido(filtro: { atendenteId: string | null }
     const etapa = ordem.map((c) => etapaAtual(c.etiquetas_atuais ?? [], listaEtiquetas, listaEtapas)).find(Boolean) ?? etapaAtual(lead?.etiquetas ?? [], listaEtiquetas, listaEtapas);
     linhas.push({
       chave,
+      leadId: leadId ? String(leadId) : null,
       rotulo: cs.find((c) => c.contato_rotulo)?.contato_rotulo ?? null,
       vendedor,
       etapa,
@@ -547,6 +551,42 @@ export async function leadsEmNumeroBanido(filtro: { atendenteId: string | null }
   }
   // quem ainda não tem outro número primeiro (são os órfãos); dentro, a conversa mais recente primeiro
   return linhas.sort((a, b) => (a.outros.length === 0) !== (b.outros.length === 0) ? (a.outros.length === 0 ? -1 : 1) : (b.ultimaEm ?? "").localeCompare(a.ultimaEm ?? ""));
+}
+
+/**
+ * Nome e telefone dos leads (só admin: o RLS de funil_leads_contato esconde do vendedor). Para a
+ * lista exportada do filtro "Número banido", que serve para retomar os leads por outro número.
+ */
+export async function contatosDosLeads(ids: string[]): Promise<Map<string, { nome: string | null; telefone: string | null }>> {
+  const supabase = await createClient();
+  const m = new Map<string, { nome: string | null; telefone: string | null }>();
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data, error } = await supabase.from("funil_leads_contato").select("lead_dc_id, nome, telefone").in("lead_dc_id", ids.slice(i, i + 150));
+    if (error) throw new Error(`Erro ao carregar os contatos: ${error.message}`);
+    for (const c of data) m.set(String(c.lead_dc_id), { nome: c.nome ? String(c.nome).trim() : null, telefone: c.telefone ? String(c.telefone) : null });
+  }
+  return m;
+}
+
+/** CSV (separado por ";", com BOM para o Excel abrir acentos) da lista do filtro "Número banido". */
+export function csvLeadsBanidos(itens: LeadBanido[], contatos: Map<string, { nome: string | null; telefone: string | null }>): string {
+  // começa com = + - @: o Excel leria como fórmula; o apóstrofo deixa como texto
+  const cel = (v: string) => {
+    const s = /^[=+\-@]/.test(v) ? `'${v}` : v;
+    return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const linha = (...vs: string[]) => vs.map(cel).join(";");
+  return (
+    "﻿" +
+    [
+      linha("Nome", "Telefone", "Etapa", "Vendedor", "Número antigo"),
+      ...itens.map((e) => {
+        const c = e.leadId ? contatos.get(e.leadId) : undefined;
+        return linha(c?.nome ?? e.rotulo ?? "", c?.telefone ?? "", e.etapa ?? "", e.vendedor ?? "", e.banidos.join(" · "));
+      }),
+    ].join("\r\n") +
+    "\r\n"
+  );
 }
 
 export type CardAtendente = {

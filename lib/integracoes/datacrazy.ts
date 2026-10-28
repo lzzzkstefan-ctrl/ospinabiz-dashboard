@@ -17,8 +17,8 @@ export class PrazoEsgotado extends Error {
 
 export type DcEtiqueta = { id: string; name: string; color: string | null };
 export type DcAtendente = { id: string; name: string };
-/** Número (instância). Da `config` só o id público da conta na Meta (WABA); o token de lá nunca é lido. */
-export type DcInstancia = { id: string; name: string; config?: { wabaId?: string | null } | null };
+/** Número (instância). Da `config` só o id público da conta na Meta (WABA) e o telefone; o token de lá nunca é lido. */
+export type DcInstancia = { id: string; name: string; config?: { wabaId?: string | null; phoneNumber?: string | null } | null };
 export type DcLead = {
   id: string;
   createdAt: string;

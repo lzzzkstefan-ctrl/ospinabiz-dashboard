@@ -11,7 +11,7 @@
 // Usa a chave secreta (roda só no servidor). Grava uma linha em funil_sincronizacoes.
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { DataCrazy, PrazoEsgotado, type DcConversa, type DcEventoHistorico, type DcLead, type DcMensagem } from "@/lib/integracoes/datacrazy";
+import { DataCrazy, PrazoEsgotado, type DcConversa, type DcEventoHistorico, type DcInstancia, type DcLead, type DcMensagem } from "@/lib/integracoes/datacrazy";
 import { custoDaWaba } from "@/lib/integracoes/meta";
 import {
   INICIO_DO_CUSTO,
@@ -187,6 +187,7 @@ async function sincronizarConfiguracao(db: Db, dc: DataCrazy): Promise<Config> {
         { onConflict: "dc_id" },
       ),
     );
+    await ligarNumerosAoMonitor(db, instancias);
   }
 
   // Nomes: os atuais têm prioridade sobre os antigos (se um nome antigo foi reaproveitado).
@@ -241,6 +242,30 @@ async function lerLeadsDaJanela(dc: DataCrazy, janela: string): Promise<DcLead[]
     ate = pagina[pagina.length - 1].createdAt;
   }
   return [...vistos.values()];
+}
+
+/**
+ * Liga o número da Data Crazy ainda sem ligação ao número da aba BMs com o mesmo final (4 últimos
+ * dígitos do telefone; sem telefone, o grupo de 4 dígitos do nome). Sem ligação o Funil não sabe a
+ * situação do número: um número banido reconectado como instância nova continuaria nas listas.
+ * Só liga quando um único número da aba BMs tem aquele final; nunca troca uma ligação que já existe.
+ */
+async function ligarNumerosAoMonitor(db: Db, instancias: DcInstancia[]): Promise<void> {
+  const [semLigacao, monitor] = await Promise.all([
+    lerTudo<{ dc_id: string }>((de, ate) => db.from("funil_numeros").select("dc_id").is("monitor_numero_id", null).order("dc_id").range(de, ate)),
+    lerTudo<{ id: number; final: string }>((de, ate) => db.from("monitor_numeros").select("id, final").order("id").range(de, ate)),
+  ]);
+  const livres = new Set(semLigacao.map((n) => n.dc_id));
+  const porFinal = new Map<string, number[]>();
+  for (const m of monitor) porFinal.set(m.final, [...(porFinal.get(m.final) ?? []), m.id]);
+  for (const i of instancias) {
+    if (!livres.has(i.id)) continue;
+    const digitos = (i.config?.phoneNumber ?? "").replace(/\D/g, "");
+    const final = digitos.length >= 4 ? digitos.slice(-4) : (i.name.match(/(?<!\d)\d{4}(?!\d)/)?.[0] ?? null);
+    const ids = final ? porFinal.get(final) : undefined;
+    if (ids?.length !== 1) continue;
+    await ok(db.from("funil_numeros").update({ monitor_numero_id: ids[0] }).eq("dc_id", i.id).is("monitor_numero_id", null));
+  }
 }
 
 /**

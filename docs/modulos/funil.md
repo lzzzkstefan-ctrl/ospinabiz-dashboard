@@ -298,6 +298,18 @@ números e os leads são distribuídos por **atendente** na Data Crazy.
   está banido.
 - Embaixo das Filas, uma linha discreta "N conversas abertas em números banidos" leva ao filtro "Número banido".
 
+## Exportar lista e ligação automática dos números (27/10/2026, pedido do Davi; sem migration)
+
+- Furo encontrado: o Funil só sabe a situação de um número da Data Crazy se ele estiver **ligado** a um número
+  da aba BMs (`funil_numeros.monitor_numero_id`). Número reconectado como instância nova (ex.: o 2682 depois do
+  ban de 16/10) e números novos (1357, 8419) estavam sem ligação, e os leads deles continuavam nas filas e
+  listas mesmo com o número banido. Agora a sincronização liga sozinha (`ligarNumerosAoMonitor`): instância sem
+  ligação + um único número da aba BMs com o mesmo final (4 últimos dígitos do telefone da instância; sem
+  telefone, os 4 dígitos do nome). Nunca troca uma ligação existente; final repetido na aba BMs não liga.
+- Filtro "Número banido": botão **Exportar lista** (só admin, porque o telefone do lead só o admin lê). Baixa
+  um CSV (`/api/funil/numero-banido`, separado por ";", abre no Excel) com nome, telefone, etapa, vendedor e
+  número antigo, para retomar os leads pelo número novo. Respeita o filtro de vendedor da tela.
+
 ## Custo de mensagens (27/10/2026, migration funil_custo_mensagens)
 
 Pedido do Davi: quanto custam as mensagens do WhatsApp API oficial, por etapa, por lead e por venda.

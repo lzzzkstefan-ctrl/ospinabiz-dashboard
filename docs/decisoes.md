@@ -493,3 +493,14 @@ e a cobrança (franquia, grátis de anúncio ou cobrada) são calculadas por uma
 - **Regra de cobrança como o Davi passou:** até meados de 2026, a regra pública da Meta era outra (mensagem
   de atendimento dentro da janela de 24 h grátis; só template cobrado). Se a comparação com o real mostrar
   diferença grande, a regra é ajustada.
+
+## 2026-10-27: Número da Data Crazy ligado sozinho ao número da aba BMs pelo final
+
+- **Por quê:** o Funil decide se um número está banido pela ligação com a aba BMs. Quando um número é
+  reconectado ou um número novo entra na Data Crazy, ele vira uma instância nova, sem ligação, e os leads dele
+  apareciam nas filas mesmo com o número banido (aconteceu com o 2682, o 1357 e o 8419).
+- **Como:** a sincronização liga a instância sem ligação ao único número da aba BMs com o mesmo final (4
+  últimos dígitos do telefone). Final repetido não liga e ligação existente nunca é trocada, para não errar
+  em silêncio.
+- **Limite:** se um número banido voltar a ser usado com o mesmo telefone, ele é ligado ao cadastro banido;
+  é preciso mudar a situação dele na aba BMs.

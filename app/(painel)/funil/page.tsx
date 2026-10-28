@@ -284,7 +284,7 @@ async function Conteudo({ searchParams }: Props) {
         </form>
       </section>
 
-      {banidos && <LeadsNumeroBanido itens={banidos} admin={admin} />}
+      {banidos && <LeadsNumeroBanido itens={banidos} admin={admin} exportar={`/api/funil/numero-banido${atendenteId ? `?v=${encodeURIComponent(atendenteId)}` : ""}`} />}
       <FilasDataCrazy filas={esperando.filas} admin={admin} emBanidos={esperando.abertasEmBanidos} />
       <NaoComecaram itens={parados} />
       <ListaEsperando
@@ -823,7 +823,7 @@ function ListaEsperando({
 }
 
 /** Filtro "Número banido": leads com conversa em número banido (aba BMs), para retomar por outro número. */
-function LeadsNumeroBanido({ itens, admin }: { itens: LeadBanido[]; admin: boolean }) {
+function LeadsNumeroBanido({ itens, admin, exportar }: { itens: LeadBanido[]; admin: boolean; exportar: string }) {
   const hora = (iso: string) =>
     new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
   const orfaos = itens.filter((e) => e.outros.length === 0).length;
@@ -835,9 +835,21 @@ function LeadsNumeroBanido({ itens, admin }: { itens: LeadBanido[]; admin: boole
           {itens.length > 0 && <span className="font-normal text-ink-dim"> ({orfaos} sem outro número)</span>}
         </h2>
         {admin && (
-          <Link href="/bms" className="text-[12px] text-ink-dim underline-offset-4 hover:underline">
-            Marcar número como banido na aba BMs
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            {itens.length > 0 && (
+              // arquivo para baixar: <a> comum, não Link (o Link tentaria abrir como página)
+              <a
+                href={exportar}
+                download
+                className="rounded-full border border-line px-3 py-1 text-[12px] text-ink transition-colors hover:border-ink-dim hover:text-white"
+              >
+                Exportar lista
+              </a>
+            )}
+            <Link href="/bms" className="text-[12px] text-ink-dim underline-offset-4 hover:underline">
+              Marcar número como banido na aba BMs
+            </Link>
+          </div>
         )}
       </div>
       <p className="m-0 mb-3 text-[12px] text-ink-faint">
