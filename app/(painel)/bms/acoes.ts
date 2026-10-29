@@ -4,8 +4,9 @@
 // (o RLS do banco confere de novo) e atualizam a tela depois de salvar.
 
 import { ehAdmin } from "@/lib/auth/papeis";
-import { atualizarBm, atualizarNumero, banirBm, desfazerBanBm, inserirBm, inserirNumero, nomesDasBms } from "@/modulos/bms/dados";
-import { hojeBrasilia, lerCamposNumero, limparTexto } from "@/modulos/bms/regras";
+import { atualizarBm, atualizarNumero, banirBm, desfazerBanBm, inserirBm, inserirNumero, nomesDasBms, type CamposSaude } from "@/modulos/bms/dados";
+import { hojeBrasilia, lerCamposNumero, lerSituacao, limparTexto, LIMITES, normalizarTelefone, type Qualidade } from "@/modulos/bms/regras";
+import { problemaNaObservacao } from "@/modulos/bms/saude";
 import { refresh } from "next/cache";
 
 export type EstadoForm = { erro?: string; ok?: string };
@@ -52,28 +53,14 @@ export async function criarNumero(_anterior: EstadoForm, form: FormData): Promis
   const lido = lerCamposNumero(form, (id) => nomes.get(id));
   if ("erro" in lido) return { erro: lido.erro };
 
-  const { erro } = await inserirNumero(lido.campos);
+  const ddd = limparTexto(form.get("ddd"), 2);
+  if (ddd && !/^[1-9][0-9]$/.test(ddd)) return { erro: "DDD inválido (2 dígitos)." };
+
+  const { erro } = await inserirNumero({ ...lido.campos, ddd: ddd || null });
   if (erro) return { erro };
 
   refresh();
   return { ok: `Número ${lido.campos.final} cadastrado.` };
-}
-
-export async function editarNumero(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
-  if (!(await ehAdmin())) return SO_ADMIN;
-
-  const id = idDoForm(form);
-  if (!id) return { erro: "Número não encontrado." };
-
-  const nomes = await nomesDasBms();
-  const lido = lerCamposNumero(form, (bmId) => nomes.get(bmId));
-  if ("erro" in lido) return { erro: lido.erro };
-
-  const { erro } = await atualizarNumero(id, lido.campos);
-  if (erro) return { erro };
-
-  refresh();
-  return { ok: "Salvo." };
 }
 
 /** Arquiva ou reativa uma BM ou um número. Arquivar tira dos testes sem apagar o histórico. */
@@ -118,4 +105,75 @@ export async function desfazerBan(_anterior: EstadoForm, form: FormData): Promis
 
   refresh();
   return { ok: "Ban desfeito." };
+}
+
+/** Data yyyy-mm-dd do formulário: vazia = null; inválida ou no futuro = erro. */
+function lerData(valor: FormDataEntryValue | null, nome: string): { data: string | null } | { erro: string } {
+  const data = String(valor ?? "");
+  if (!data) return { data: null };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return { erro: `${nome} inválida.` };
+  if (data > hojeBrasilia()) return { erro: `${nome} não pode ser no futuro.` };
+  return { data };
+}
+
+/**
+ * Card do número principal: telefone completo, limite e qualidade (manuais, enquanto a Meta não
+ * informa), observação e "em operação desde". A observação nunca guarda usuário, senha ou IP.
+ */
+export async function salvarSaude(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  if (!(await ehAdmin())) return SO_ADMIN;
+
+  const id = idDoForm(form);
+  if (!id) return { erro: "Número não encontrado." };
+
+  const textoTelefone = limparTexto(form.get("telefone"), 30);
+  const telefone = textoTelefone ? normalizarTelefone(textoTelefone) : null;
+  if (textoTelefone && !telefone) return { erro: "Telefone inválido. Use DDD + número, ex.: (21) 99999-1072." };
+
+  const limiteTexto = String(form.get("limite") ?? "");
+  const limite = limiteTexto ? Number(limiteTexto) : null;
+  if (limite !== null && !(LIMITES as readonly number[]).includes(limite)) return { erro: "Limite inválido." };
+
+  const q = form.get("qualidade");
+  const qualidade: Qualidade | null = q === "verde" || q === "amarela" || q === "vermelha" ? q : null;
+
+  const observacao = limparTexto(form.get("observacao"), 300);
+  const problema = observacao ? problemaNaObservacao(observacao) : null;
+  if (problema) return { erro: problema };
+
+  const desde = lerData(form.get("em_operacao_desde"), "A data de início");
+  if ("erro" in desde) return desde;
+
+  const { erro } = await atualizarNumero(id, { telefone, limite, qualidade, observacao: observacao || null, em_operacao_desde: desde.data });
+  if (erro) return { erro };
+
+  refresh();
+  return { ok: "Salvo." };
+}
+
+/**
+ * "Gerenciar números": muda a situação de um número (em operação, reserva, desconectado, banido) e
+ * se ele é principal. Banido usa a data como data do ban; principal em operação sem início usa a
+ * data como começo do contador "dias sem ban".
+ */
+export async function mudarSituacao(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  if (!(await ehAdmin())) return SO_ADMIN;
+
+  const id = idDoForm(form);
+  if (!id) return { erro: "Escolha o número." };
+  const situacao = lerSituacao(form.get("situacao"));
+  const principal = form.get("principal") === "on";
+  const lida = lerData(form.get("data"), "A data");
+  if ("erro" in lida) return lida;
+  const data = lida.data ?? hojeBrasilia();
+
+  const campos: CamposSaude = { situacao, principal };
+  if (situacao === "banido") campos.banido_em = data;
+  if (principal && situacao === "operacao" && form.get("tem_inicio") !== "true") campos.em_operacao_desde = data;
+
+  const { erro } = await atualizarNumero(id, campos);
+  if (erro) return { erro };
+
+  refresh();
+  return { ok: "Situação salva." };
 }

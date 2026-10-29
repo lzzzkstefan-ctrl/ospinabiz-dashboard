@@ -2,6 +2,10 @@
 
 Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à mão.
 
+## 29/10/2026
+
+- BMs: a aba mostra a saúde dos 2 números principais (🫆 1072 e 🐻‍❄️ 8419, BM Principal): dias sem ban, limite e qualidade, leads, mensagens, custo e vendas de hoje e 7 dias, alertas e a comparação Antes x Agora; o resto foi para o Arquivo e o cadastro para "Gerenciar números"
+
 ## 28/10/2026
 
 - Se a inscrição do celular expirar, o app refaz sozinho ao abrir; sem permissão aparece 'Notificações desativadas, toque para ativar'; botão 'Enviar notificação de teste' no Check-in

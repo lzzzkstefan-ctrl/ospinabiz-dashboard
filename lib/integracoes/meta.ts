@@ -52,6 +52,29 @@ export async function custoDaWaba(token: string, wabaId: string, inicio: number,
   };
 }
 
+/** Um número de WhatsApp de uma WABA, como a Meta devolve (qualidade e limite de mensagens). */
+export type NumeroNaMeta = { telefone: string; qualidade: string | null; tier: string | null };
+
+/**
+ * Números de uma conta do WhatsApp (WABA) com qualidade (quality_rating) e limite (messaging_limit_tier).
+ * Mesmo token do custo (META_CUSTO_TOKEN, passado por quem chama). Lança erro se a Meta recusar.
+ */
+export async function numerosDaWaba(token: string, wabaId: string): Promise<NumeroNaMeta[]> {
+  const r = await fetch(`${GRAPH}/${encodeURIComponent(wabaId)}/phone_numbers?fields=display_phone_number,quality_rating,messaging_limit_tier`, {
+    headers: { authorization: `Bearer ${token}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  });
+  type Linha = { display_phone_number?: string; quality_rating?: string; messaging_limit_tier?: string };
+  const corpo = (await r.json().catch(() => ({}))) as { data?: Linha[]; error?: { message?: string; code?: number } };
+  if (!r.ok) throw new Error(`Meta ${r.status}${corpo.error?.code ? ` (${corpo.error.code})` : ""}: ${corpo.error?.message ?? "sem detalhe"}`.slice(0, 300));
+  return (corpo.data ?? []).map((n) => ({
+    telefone: (n.display_phone_number ?? "").replace(/\D/g, ""),
+    qualidade: n.quality_rating ?? null,
+    tier: n.messaging_limit_tier ?? null,
+  }));
+}
+
 /** Template de aviso livre (um parâmetro {{1}} com o texto), usado pelas mensagens automáticas da equipe. */
 export function avisoWhatsAppConfigurado(): boolean {
   return Boolean(process.env.META_PHONE_NUMBER_ID && process.env.META_ACCESS_TOKEN && process.env.META_TEMPLATE_AVISO_NAME);

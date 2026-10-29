@@ -1,6 +1,7 @@
 // Regras do cadastro de BMs e números monitorados (sem banco, sem tela).
 
-export type Situacao = "operacao" | "desconectado" | "banido";
+export type Situacao = "operacao" | "reserva" | "desconectado" | "banido";
+export type Qualidade = "verde" | "amarela" | "vermelha";
 export type Pessoa = { id: number; nome: string };
 export type Numero = {
   id: number;
@@ -14,6 +15,15 @@ export type Numero = {
   banido_em: string | null;
   ativo: boolean;
   responsavel: Pessoa | null;
+  /** número principal da operação (card grande no topo) */
+  principal: boolean;
+  /** só o DDD, para o card sem o telefone completo */
+  ddd: string | null;
+  /** começo do contador "dias sem ban" (yyyy-mm-dd) */
+  em_operacao_desde: string | null;
+  /** qualidade na Meta preenchida à mão (com o token da Meta a tela lê de lá) */
+  qualidade: Qualidade | null;
+  observacao: string | null;
 };
 export type Bm = {
   id: number;
@@ -74,34 +84,42 @@ export function entraNoTeste(numero: Numero, bm: Pick<Bm, "ativo" | "banida_em">
 }
 
 // ---------------------------------------------------------------------------
-// Seções da tela: Ativos com acesso / Ativos sem acesso / Fora da operação / Levou ban.
+// Arquivo da tela (tudo que não é número principal), recolhido e só leitura:
+// Reserva / Em operação fora dos principais / Fora da operação / Levou ban / Arquivados.
 // Cada número cai numa seção; dentro dela, os números ficam agrupados por BM.
 // Número arquivado (ativo = não) ou de BM arquivada vai para "Arquivados".
 // BM banida (todos os números dela) e número banido de BM ativa vão para "Levou ban".
 // ---------------------------------------------------------------------------
-export type IdSecao = "com_acesso" | "sem_acesso" | "fora" | "levou_ban" | "arquivados";
+export type IdSecao = "reserva" | "outros" | "fora" | "levou_ban" | "arquivados";
 export type Secao = { id: IdSecao; titulo: string; grupos: { bm: Bm; numeros: Numero[] }[]; total: number };
 
 const TITULOS: Record<IdSecao, string> = {
-  com_acesso: "Ativos com acesso",
-  sem_acesso: "Ativos sem acesso",
+  reserva: "Reserva",
+  outros: "Em operação, fora dos principais",
   fora: "Fora da operação",
   levou_ban: "Levou ban",
   arquivados: "Arquivados",
 };
 
+/** Número principal ativo, de BM ativa e não banida, que não levou ban: vai para o topo da tela. */
+export function ehPrincipal(numero: Numero, bm: Pick<Bm, "ativo" | "banida_em">): boolean {
+  return numero.principal && numero.ativo && bm.ativo && !bm.banida_em && numero.situacao !== "banido";
+}
+
 function secaoDoNumero(numero: Numero, bm: Bm): IdSecao {
   if (!bm.ativo || !numero.ativo) return "arquivados";
   if (bm.banida_em || numero.situacao === "banido") return "levou_ban";
   if (numero.situacao === "desconectado") return "fora";
-  return bm.acesso_admin ? "com_acesso" : "sem_acesso";
+  if (numero.situacao === "reserva") return "reserva";
+  return "outros";
 }
 
+/** Seções do Arquivo (sem os números principais). */
 export function agruparEmSecoes(bms: Bm[]): Secao[] {
-  const ordem: IdSecao[] = ["com_acesso", "sem_acesso", "fora", "levou_ban", "arquivados"];
+  const ordem: IdSecao[] = ["reserva", "outros", "fora", "levou_ban", "arquivados"];
   return ordem.map((id) => {
     const grupos = bms
-      .map((bm) => ({ bm, numeros: bm.numeros.filter((n) => secaoDoNumero(n, bm) === id) }))
+      .map((bm) => ({ bm, numeros: bm.numeros.filter((n) => !ehPrincipal(n, bm) && secaoDoNumero(n, bm) === id) }))
       .filter((g) => g.numeros.length > 0);
     return { id, titulo: TITULOS[id], grupos, total: grupos.reduce((s, g) => s + g.numeros.length, 0) };
   });
@@ -144,11 +162,15 @@ export function lerCamposNumero(
   const respTexto = String(form.get("responsavel_id") ?? "");
   const responsavel_id = respTexto ? Number(respTexto) : null;
 
-  const s = form.get("situacao");
-  const situacao: Situacao = s === "desconectado" || s === "banido" ? s : "operacao";
+  const situacao = lerSituacao(form.get("situacao"));
   const apelido = limparTexto(form.get("apelido"), 60) || `${final} ${nomeBm(bm_id)}`;
 
   return { campos: { bm_id, final, telefone, apelido, limite, responsavel_id, situacao } };
+}
+
+/** Situação vinda do formulário (qualquer outra coisa vira "operacao"). */
+export function lerSituacao(valor: FormDataEntryValue | null): Situacao {
+  return valor === "reserva" || valor === "desconectado" || valor === "banido" ? valor : "operacao";
 }
 
 /** Erro do banco em português, para mostrar na tela. */
@@ -162,6 +184,8 @@ export function mensagemDoErro(erro: { code?: string; message?: string } | null)
       return "Já está cadastrado.";
     case "23514":
       if (texto.includes("final_bate")) return "O telefone tem que terminar com o final cadastrado.";
+      if (texto.includes("observacao")) return "A observação não pode ter IP nem passar de 300 letras.";
+      if (texto.includes("ddd")) return "DDD inválido (2 dígitos).";
       return "Algum campo está fora do formato.";
     case "23503":
       return "BM ou responsável não encontrado.";

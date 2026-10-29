@@ -1,6 +1,6 @@
 import { Campo, classeOpcao, classeSelect } from "@/components/formulario";
 import { Input } from "@/components/ui/input";
-import { LIMITES, formatarLimite, type Bm, type Numero, type Pessoa } from "@/modulos/bms/regras";
+import { LIMITES, formatarLimite, type Bm, type Numero, type Pessoa, type Situacao } from "@/modulos/bms/regras";
 
 // Campos do formulário de número da tela de BMs.
 
@@ -9,10 +9,12 @@ export function CamposNumero({
   bms,
   equipe,
   numero,
+  situacaoPadrao = "operacao",
 }: {
   bms: Pick<Bm, "id" | "nome">[];
   equipe: Pessoa[];
   numero?: Numero;
+  situacaoPadrao?: Situacao;
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -30,6 +32,9 @@ export function CamposNumero({
       </Campo>
       <Campo rotulo="Final (4 dígitos)">
         <Input name="final" inputMode="numeric" maxLength={4} placeholder="1234" defaultValue={numero?.final} />
+      </Campo>
+      <Campo rotulo="DDD">
+        <Input name="ddd" inputMode="numeric" maxLength={2} placeholder="21" defaultValue={numero?.ddd ?? ""} />
       </Campo>
       <Campo rotulo="Telefone completo (opcional)">
         <Input name="telefone" inputMode="tel" placeholder="(11) 99999-1234" defaultValue={numero?.telefone ?? ""} />
@@ -62,9 +67,12 @@ export function CamposNumero({
         </select>
       </Campo>
       <Campo rotulo="Situação">
-        <select name="situacao" defaultValue={numero?.situacao ?? "operacao"} className={classeSelect}>
+        <select name="situacao" defaultValue={numero?.situacao ?? situacaoPadrao} className={classeSelect}>
           <option value="operacao" className={classeOpcao}>
             Em operação
+          </option>
+          <option value="reserva" className={classeOpcao}>
+            Reserva
           </option>
           <option value="desconectado" className={classeOpcao}>
             Desconectado

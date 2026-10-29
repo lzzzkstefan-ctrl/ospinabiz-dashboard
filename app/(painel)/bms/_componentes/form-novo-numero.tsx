@@ -21,8 +21,7 @@ export function FormNovoNumero({ bms, equipe }: { bms: Pick<Bm, "id" | "nome">[]
 
   return (
     <form action={acao} className="flex flex-col gap-3">
-      <p className="text-[11px] uppercase tracking-wide text-ink-faint">Novo número</p>
-      <CamposNumero bms={bms} equipe={equipe} />
+      <CamposNumero bms={bms} equipe={equipe} situacaoPadrao="reserva" />
       <Button type="submit" disabled={salvando} className="self-start">
         {salvando ? "Salvando..." : "Cadastrar número"}
       </Button>

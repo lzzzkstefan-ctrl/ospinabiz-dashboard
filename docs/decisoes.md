@@ -504,3 +504,16 @@ e a cobrança (franquia, grátis de anúncio ou cobrada) são calculadas por uma
   em silêncio.
 - **Limite:** se um número banido voltar a ser usado com o mesmo telefone, ele é ligado ao cadastro banido;
   é preciso mudar a situação dele na aba BMs.
+
+## 2026-10-29: Aba BMs mostra a saúde dos números principais, não a lista de BMs
+
+- **Por quê:** a operação passou a usar 2 números numa BM isolada para testar se o ban vinha de muitos números
+  juntos. O que importa agora é o contador "dias sem ban" e os sinais de risco desses 2 números; a lista de
+  BMs antigas virou histórico.
+- **Principal como coluna (`principal`), não como BM especial:** dá para trocar um número reserva por um
+  principal sem mudar de BM nem perder o histórico.
+- **Limite e qualidade manuais até existir o `META_CUSTO_TOKEN`:** com o token, a tela lê da Meta na hora (sem
+  guardar), porque o valor da Meta muda e o manual ficaria velho.
+- **Custo calculado em `modulos/bms` com a mesma regra do Funil** (cobradas × preço), lendo as visões do
+  custo: um módulo não importa outro.
+- **Observação sem credencial:** proxy é descrito em texto; usuário, senha e IP nunca entram no banco.

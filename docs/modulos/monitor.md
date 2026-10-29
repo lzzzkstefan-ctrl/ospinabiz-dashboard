@@ -102,3 +102,37 @@ Estas decisões substituem o que está acima onde houver conflito.
   contador "em operação". Os leads e as vendas continuam nos relatórios. Os números banidos entram no filtro
   "Número banido" do Funil.
 - 16/10/2026: BM 01 (12 números) e BM KAIKY (2682) marcadas como banidas, motivo "Ban permanente da Meta".
+
+## Números principais e Arquivo (29/10/2026, migration bms_numeros_principais)
+
+Teste: a operação passou a rodar com **2 números principais numa BM nova e isolada (com proxy)**, para ver se o
+ban vinha de ter muitos números juntos. A aba BMs deixou de ser uma lista de BMs e passou a mostrar a saúde
+desses números.
+
+- **Cadastro:** BM "BM Principal" com 🫆 1072 (DDD 21) e 🐻‍❄️ 8419 (DDD 18, veio da BM 09), os dois
+  "em operação desde" 29/10/2026. Dados reais só no banco.
+- **Colunas novas em `monitor_numeros`:** `principal`, `ddd`, `em_operacao_desde` (começo do contador
+  "dias sem ban"), `qualidade` (manual: verde/amarela/vermelha) e `observacao` (texto livre, até 300 letras).
+  Situação nova **Reserva** (fora do monitor, que só testa "operacao").
+- **Observação nunca guarda usuário, senha ou IP de proxy:** o banco recusa texto com IP; a tela recusa também
+  "senha:", "usuário:", "user:pass@".
+- **Card de cada principal:** situação, BM, DDD, atendentes que receberam leads dele nos últimos 7 dias,
+  dias sem ban, limite (tier) e qualidade, tabela Hoje / 7 dias (leads, mensagens, custo, vendas), último
+  teste do monitor e observação. Mensagens e custo só para admin (mesma regra do Funil: custo = mensagens
+  cobradas × preço da configuração do custo). O vendedor vê só os próprios leads e vendas.
+- **Limite e qualidade:** com `META_CUSTO_TOKEN`, a tela lê da Meta (`/{waba}/phone_numbers`:
+  `quality_rating` e `messaging_limit_tier`), casando pelo telefone completo ou pelo final. Sem o token (ou se
+  a Meta recusar), usa o que foi preenchido à mão e mostra "manual".
+- **Alertas no card:** qualidade amarela ou vermelha, ou contatos do dia acima de 80% do limite. "Contatos
+  do dia" = leads diferentes que receberam mensagem do número hoje (é o que a Meta conta no limite de 24 h);
+  só admin.
+- **Comparação "Antes x Agora" (só admin):** antes = toda a operação até a véspera do teste; agora = só os
+  principais desde o início do teste.
+  - Dias até o ban: média, por número banido antes do teste, do 1º lead dele até a data do ban.
+  - Leads por dia: leads sem internos ÷ dias do período.
+  - Custo por venda: mensagens cobradas × preço ÷ vendas. O "antes" só conta desde 01/10/2026, quando o
+    custo começou a ser lido.
+- **Arquivo:** todo o resto (reserva, em operação fora dos principais, fora da operação, levou ban,
+  arquivados), recolhido e só leitura. Nada é apagado: leads, vendas e testes continuam ligados.
+- **"Gerenciar números" (só admin):** botão discreto que abre um modal para mudar a situação (e marcar como
+  principal), cadastrar número reserva e cuidar das BMs (nova BM, renomear, banir, arquivar).

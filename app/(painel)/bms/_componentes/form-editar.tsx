@@ -3,13 +3,12 @@
 import { Aviso, Campo, Gaveta } from "@/components/formulario";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { dataBR, hojeBrasilia, type Bm, type Numero, type Pessoa } from "@/modulos/bms/regras";
+import { dataBR, hojeBrasilia, type Bm } from "@/modulos/bms/regras";
 import { useActionState } from "react";
-import { banir, desfazerBan, editarBm, editarNumero, type EstadoForm } from "../acoes";
+import { banir, desfazerBan, editarBm, type EstadoForm } from "../acoes";
 import { BotaoAtivo } from "./botao-ativo";
-import { CamposNumero } from "./campos";
 
-// Edição que abre no próprio card (sem trocar de página). Só aparece para admin.
+// Edição da BM (nome, acesso, ban, arquivar), dentro do "Gerenciar números". Só admin.
 
 export function EditarBm({ bm }: { bm: Pick<Bm, "id" | "nome" | "acesso_admin" | "ativo" | "banida_em" | "ban_motivo"> }) {
   const [estado, acao, salvando] = useActionState<EstadoForm, FormData>(editarBm, {});
@@ -85,35 +84,5 @@ function BanDaBm({ bm }: { bm: Pick<Bm, "id" | "banida_em" | "ban_motivo"> }) {
       </div>
       <Aviso estado={estadoBan} />
     </form>
-  );
-}
-
-export function EditarNumero({
-  numero,
-  bms,
-  equipe,
-}: {
-  numero: Numero;
-  bms: Pick<Bm, "id" | "nome">[];
-  equipe: Pessoa[];
-}) {
-  const [estado, acao, salvando] = useActionState<EstadoForm, FormData>(editarNumero, {});
-
-  return (
-    <Gaveta rotulo="Editar">
-      <form action={acao} className="flex flex-col gap-3">
-        <input type="hidden" name="id" value={numero.id} />
-        <CamposNumero bms={bms} equipe={equipe} numero={numero} />
-        <div className="flex items-center gap-2">
-          <Button type="submit" size="sm" disabled={salvando}>
-            {salvando ? "Salvando..." : "Salvar"}
-          </Button>
-        </div>
-        <Aviso estado={estado} />
-      </form>
-      <div className="mt-2 border-t border-line-soft pt-2">
-        <BotaoAtivo tabela="numero" id={numero.id} ativo={numero.ativo} />
-      </div>
-    </Gaveta>
   );
 }
