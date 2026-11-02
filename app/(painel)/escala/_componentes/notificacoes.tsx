@@ -7,7 +7,7 @@
 
 import { Aviso, type EstadoForm } from "@/components/formulario";
 import { Button } from "@/components/ui/button";
-import { inscreverAparelho, marcarDesligado, nomeDoAparelho, paraEnviar, situacaoDoAparelho, type SituacaoPush } from "@/lib/push-navegador";
+import { idDoAparelho, inscreverAparelho, marcarDesligado, nomeDoAparelho, paraEnviar, situacaoDoAparelho, type SituacaoPush } from "@/lib/push-navegador";
 import { useActionState, useEffect, useState } from "react";
 import { apagarInscricao, confirmarInscricao, salvarInscricao, salvarPreferencias, testarNotificacao } from "../acoes";
 
@@ -24,7 +24,7 @@ export function AtivarNotificacoes() {
     situacaoDoAparelho()
       .then(async (r) => {
         // inscrição no aparelho que sumiu do banco volta sozinha
-        if (r.inscricao) await confirmarInscricao(paraEnviar(r.inscricao), nomeDoAparelho()).catch(() => {});
+        if (r.inscricao) await confirmarInscricao(paraEnviar(r.inscricao), nomeDoAparelho(), idDoAparelho()).catch(() => {});
         if (!vivo) return;
         setInscricao(r.inscricao);
         setSituacao(r.situacao);
@@ -46,7 +46,7 @@ export function AtivarNotificacoes() {
         return;
       }
       marcarDesligado(false);
-      const r = await salvarInscricao(paraEnviar(sub), nomeDoAparelho());
+      const r = await salvarInscricao(paraEnviar(sub), nomeDoAparelho(), idDoAparelho());
       setEstado(r);
       if (!r.erro) {
         setInscricao(sub);

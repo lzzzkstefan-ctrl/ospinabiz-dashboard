@@ -137,8 +137,8 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
   site): `.env.local` e Vercel. A pública entra no build (NEXT_PUBLIC): mudar exige novo deploy.
 - **Avisos** (`modulos/escala/alertas.ts`, envio em `lib/integracoes/webpush.ts`):
   pausa começou / acabou (na hora, pela ação; quem pausou não recebe o próprio), pausa longa,
-  **operação descoberta** (no horário de atendimento, em dia com algum horário fixo, ninguém online;
-  pausa não conta; avisa uma vez e avisa "coberta de novo" quando alguém volta; sábado sem horário
+  **operação descoberta** (no horário de atendimento, em dia com algum horário fixo, 15 min seguidos sem
+  ninguém online desde 02/11/2026; pausa não conta; avisa uma vez e avisa "coberta de novo" quando alguém volta; sábado sem horário
   fixo não avisa — decisão do Davi), **sem check-in** (por pessoa, 15 min depois do início do
   horário fixo). Pausa longa, descoberta e sem check-in: pg_cron `escala-alertas` a cada 2 min →
   `/api/escala/alertas`, e também logo depois de entrar/sair/pausar.
@@ -229,3 +229,23 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
   Antes o erro era engolido: o aparelho ficava sem push e sem aviso nenhum.
 - **Lembrete das 20h do feriado:** sai também por push. Só pelo WhatsApp ele não chegava em ninguém (`equipe_whatsapp` vazia).
 - **Limite:** a resposta 201 só diz que Apple ou Google aceitaram o aviso, não que ele apareceu no aparelho.
+
+## Confirmação de recebimento (02/11/2026, migration push_recebimento)
+
+Pedido do Davi: os avisos chegam num dia e no outro não, embora Apple/Google aceitem quase todos.
+
+- **Caminho medido:** `push_entregas` tem uma linha por aviso e aparelho. O id dela vai dentro do aviso; depois de
+  mostrar a notificação, o `sw.js` devolve o id em `POST /api/push/recebido` e a linha ganha `recebido_em`. O id é a prova
+  de quem chamou (aleatório e cifrado só para aquele aparelho), porque o service worker pode rodar sem sessão.
+  `notificacoes_enviadas.recebido_em` guarda só o primeiro aparelho, já que um aviso vai para vários.
+- **Tela:** `/admin/notificacoes` (link no Check-in, só admin), por pessoa e aparelho, por dia e aviso a aviso.
+- **Como ler:** aparelho antigo só confirma depois de pegar o `sw.js` novo (ao abrir o app). Por isso não confirmado só
+  conta depois do 1º recibo do aparelho; sem nenhum recibo aparece "nunca confirmou". Recibo que falhou por falta de
+  internet parece aviso perdido, mesmo que a notificação tenha aparecido.
+- **Service worker:** todo push termina em notificação, inclusive sem dados ou com erro (aviso genérico). `VERSAO` no
+  topo do arquivo vai no recibo: subir a cada mudança. A cada abertura do app, `reg.update()` procura versão nova.
+- **Inscrição:** a cada abertura, `guardarInscricao` compara com o banco, atualiza e passa para quem está logado.
+  `aparelho_id` (localStorage) separa dois aparelhos iguais de uma inscrição repetida. Linha antiga sem esse id é comparada
+  pelo nome e sai. Se era outro aparelho de verdade, ele volta ao abrir o app.
+- **Operação descoberta:** `escala_alerta_estado.sem_ninguem_desde` conta os 15 min (`DESCOBERTA_APOS_MIN`). Alguém online
+  zera a contagem sem aviso nenhum. O aviso e o "coberta de novo" contam desde o início da falta.

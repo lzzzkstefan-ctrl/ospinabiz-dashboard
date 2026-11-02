@@ -258,22 +258,35 @@ export function horas(min: number): string {
   return h ? `${h}h${m ? String(m).padStart(2, "0") : ""}` : `${m}min`;
 }
 
+/** Minutos seguidos sem ninguém online até avisar operação descoberta (decisão do Davi, 02/11/2026). */
+export const DESCOBERTA_APOS_MIN = 15;
+
 /**
  * Operação descoberta (aviso mais importante): o que fazer agora.
- * - "descobriu": no horário de atendimento, em dia com horário fixo, ninguém online (pausa não
- *   conta) e ainda não tinha avisado → avisa;
- * - "cobriu": estava descoberta e alguém ficou online dentro do horário → avisa que cobriu;
- * - "limpar": estava descoberta, mas acabou o horário (ou o dia não tem horário fixo) → só esquece;
- * - "nada": segue como estava (inclusive descoberta já avisada: não repete).
+ * - "contar": no horário de atendimento, em dia com horário fixo, ninguém online (pausa não conta) e a
+ *   contagem não tinha começado → começa a contar;
+ * - "descobriu": a contagem chegou em DESCOBERTA_APOS_MIN seguidos e ainda não tinha avisado → avisa;
+ * - "cobriu": já tinha avisado e alguém ficou online dentro do horário → avisa que cobriu;
+ * - "limpar": alguém ficou online antes do aviso, ou acabou o horário (ou o dia não tem horário fixo) → só esquece;
+ * - "nada": segue como estava (contando, ou descoberta já avisada: não repete).
  */
-export function decidirDescoberta(o: { agoraMin: number; inicio: string; fim: string; diaComFixo: boolean; online: number; jaDescobertaDesde: string | null }):
-  | "descobriu"
-  | "cobriu"
-  | "limpar"
-  | "nada" {
+export function decidirDescoberta(o: {
+  agoraMin: number;
+  agoraMs: number;
+  inicio: string;
+  fim: string;
+  diaComFixo: boolean;
+  online: number;
+  semNinguemDesde: string | null;
+  jaDescobertaDesde: string | null;
+}): "contar" | "descobriu" | "cobriu" | "limpar" | "nada" {
   const noHorario = o.diaComFixo && o.agoraMin >= minutos(o.inicio) && o.agoraMin < minutos(o.fim);
-  if (noHorario && o.online === 0) return o.jaDescobertaDesde ? "nada" : "descobriu";
-  if (!o.jaDescobertaDesde) return "nada";
+  if (noHorario && o.online === 0) {
+    if (o.jaDescobertaDesde) return "nada";
+    if (!o.semNinguemDesde) return "contar";
+    return o.agoraMs - Date.parse(o.semNinguemDesde) >= DESCOBERTA_APOS_MIN * 60_000 ? "descobriu" : "nada";
+  }
+  if (!o.jaDescobertaDesde) return o.semNinguemDesde ? "limpar" : "nada";
   return noHorario && o.online > 0 ? "cobriu" : "limpar";
 }
 

@@ -5,8 +5,11 @@
 import webpush from "web-push";
 
 export type Inscricao = { endpoint: string; p256dh: string; auth: string };
-/** validadeS: por quanto tempo o serviço de push tenta entregar se o aparelho estiver desligado (padrão 1 h). */
-export type Aviso = { titulo: string; corpo: string; url?: string; tag?: string; importante?: boolean; validadeS?: number };
+/**
+ * validadeS: por quanto tempo o serviço de push tenta entregar se o aparelho estiver desligado (padrão 1 h).
+ * entrega: id que o aparelho devolve para confirmar o recebimento (push_entregas).
+ */
+export type Aviso = { titulo: string; corpo: string; url?: string; tag?: string; importante?: boolean; validadeS?: number; entrega?: string };
 /** O que o serviço de push respondeu (vai para notificacoes_enviadas.resultado). */
 export type Envio = { situacao: "ok" | "expirada" | "erro" | "sem_chaves"; codigo?: number; detalhe?: string };
 

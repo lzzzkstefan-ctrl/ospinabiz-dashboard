@@ -2,14 +2,15 @@
 
 // Vigia das notificações push, em todas as telas do painel. A cada abertura (e quando o app volta
 // para a frente):
-// - inscrição no aparelho: confere se ainda está no banco (se sumiu, volta);
+// - inscrição no aparelho: confere se é igual à do banco (se mudou ou sumiu de lá, atualiza e tira a
+//   repetida do mesmo aparelho);
 // - permissão dada mas sem inscrição (expirou ou foi apagada): cria de novo sozinho, sem perguntar;
 // - sem permissão: mostra "Notificações desativadas, toque para ativar" (o navegador só deixa pedir
 //   a permissão dentro de um toque, principalmente no iPhone);
 // - bloqueado: mostra onde liberar.
 // "Agora não" esconde por 3 dias neste aparelho; "desligar neste aparelho" (Check-in) cala de vez. iPhone fora do app instalado não tem push: nada aparece.
 
-import { desligadoDeProposito, inscreverAparelho, marcarDesligado, nomeDoAparelho, paraEnviar, situacaoDoAparelho } from "@/lib/push-navegador";
+import { desligadoDeProposito, idDoAparelho, inscreverAparelho, marcarDesligado, nomeDoAparelho, paraEnviar, situacaoDoAparelho } from "@/lib/push-navegador";
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { confirmarInscricao, salvarInscricao } from "../escala/acoes";
@@ -35,7 +36,7 @@ export function AvisoNotificacoes() {
     async function conferir() {
       const r = await situacaoDoAparelho();
       if (r.situacao === "ligado" && r.inscricao) {
-        await confirmarInscricao(paraEnviar(r.inscricao), nomeDoAparelho());
+        await confirmarInscricao(paraEnviar(r.inscricao), nomeDoAparelho(), idDoAparelho());
         if (vivo) setAviso(null);
         return;
       }
@@ -47,7 +48,7 @@ export function AvisoNotificacoes() {
         try {
           const sub = await inscreverAparelho();
           if (sub !== "negada") {
-            const s = await salvarInscricao(paraEnviar(sub), nomeDoAparelho());
+            const s = await salvarInscricao(paraEnviar(sub), nomeDoAparelho(), idDoAparelho());
             if (!s.erro) {
               if (vivo) setAviso(null);
               return;
@@ -80,7 +81,7 @@ export function AvisoNotificacoes() {
         return;
       }
       marcarDesligado(false);
-      const r = await salvarInscricao(paraEnviar(sub), nomeDoAparelho());
+      const r = await salvarInscricao(paraEnviar(sub), nomeDoAparelho(), idDoAparelho());
       if (r.erro) setErro(r.erro);
       else setAviso(null);
     } catch {

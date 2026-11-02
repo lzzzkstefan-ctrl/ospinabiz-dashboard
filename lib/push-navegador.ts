@@ -22,6 +22,22 @@ export function nomeDoAparelho(): string {
   return `${nav} · ${so}`;
 }
 
+const CHAVE_APARELHO = "ospinabiz:aparelho-id";
+
+/** Id deste aparelho/navegador, guardado nele: separa dois iPhones de verdade de uma inscrição repetida. */
+export function idDoAparelho(): string | null {
+  try {
+    let id = localStorage.getItem(CHAVE_APARELHO);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(CHAVE_APARELHO, id);
+    }
+    return id;
+  } catch {
+    return null;
+  }
+}
+
 /** Inscrição como objeto simples (dá para mandar para a ação do servidor). */
 export const paraEnviar = (sub: PushSubscription) => JSON.parse(JSON.stringify(sub)) as InscricaoNavegador;
 
@@ -33,6 +49,8 @@ export async function situacaoDoAparelho(): Promise<{ situacao: SituacaoPush; in
     return { situacao: iphone && !instalado ? "iphone_instalar" : "sem_suporte", inscricao: null };
   if (Notification.permission === "denied") return { situacao: "bloqueado", inscricao: null };
   const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
+  // procura versão nova a cada abertura; ela ativa sozinha (skipWaiting + clients.claim no sw.js)
+  void reg.update().catch(() => {});
   const inscricao = await reg.pushManager.getSubscription();
   if (inscricao) return { situacao: "ligado", inscricao };
   return { situacao: Notification.permission === "granted" ? "sem_inscricao" : "sem_permissao", inscricao: null };

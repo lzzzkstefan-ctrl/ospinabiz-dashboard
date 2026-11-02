@@ -139,6 +139,11 @@ async function Conteudo({ searchParams }: Props) {
             Avisos no navegador e no celular, mesmo com a página fechada. Ative em cada aparelho (computador, celular). No celular, instale a Ospinabiz na tela de início.
           </p>
           <AtivarNotificacoes />
+          {admin && (
+            <Link href="/admin/notificacoes" className="mt-3 inline-block text-[12.5px] text-ink-dim underline-offset-4 hover:text-white hover:underline">
+              Diagnóstico por aparelho →
+            </Link>
+          )}
         </div>
         <div>
           <h3 className="mb-2 text-[13px] font-semibold text-white">Quais avisos eu quero</h3>

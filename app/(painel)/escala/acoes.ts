@@ -6,6 +6,8 @@
 
 import type { EstadoForm } from "@/components/formulario";
 import { usuarioLogado } from "@/lib/auth/papeis";
+import { guardarInscricao } from "@/lib/notificacoes";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { InscricaoNavegador } from "@/lib/push-navegador";
 import { hojeSP } from "@/modulos/funil/calculo";
@@ -329,25 +331,21 @@ export async function salvarWhatsappEquipe(_anterior: EstadoForm, form: FormData
  * O aparelho abriu o app com uma inscrição: garante que ela está no banco (se foi apagada, por
  * expirar ou por engano, volta). Sem refresh: roda em segundo plano a cada abertura.
  */
-export async function confirmarInscricao(sub: InscricaoNavegador, aparelho: string): Promise<{ voltou: boolean }> {
+export async function confirmarInscricao(sub: InscricaoNavegador, aparelho: string, aparelhoId: string | null): Promise<{ voltou: boolean }> {
   if (!/^https:\/\//.test(sub?.endpoint ?? "") || !sub.keys?.p256dh || !sub.keys?.auth) return { voltou: false };
   const usuario = await usuarioLogado();
   if (!usuario) return { voltou: false };
-  const supabase = await createClient();
-  const { data } = await supabase.from("push_inscricoes").select("id, p256dh, auth").eq("endpoint", sub.endpoint).maybeSingle();
-  if (data && data.p256dh === sub.keys.p256dh && data.auth === sub.keys.auth) return { voltou: false };
-  if (data) await supabase.from("push_inscricoes").delete().eq("endpoint", sub.endpoint);
-  const { error } = await supabase.from("push_inscricoes").insert({ endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth, aparelho: aparelho.slice(0, 200) });
-  return { voltou: !error };
+  const r = await guardarInscricao(createAdminClient(), usuario.id, sub, aparelho, aparelhoId);
+  return { voltou: r.mudou };
 }
 
 /** Aparelho ativou as notificações: guarda a inscrição (troca se já existia). */
-export async function salvarInscricao(sub: InscricaoNavegador, aparelho: string): Promise<EstadoForm> {
+export async function salvarInscricao(sub: InscricaoNavegador, aparelho: string, aparelhoId: string | null): Promise<EstadoForm> {
   if (!/^https:\/\//.test(sub?.endpoint ?? "") || !sub.keys?.p256dh || !sub.keys?.auth) return { erro: "Inscrição inválida." };
-  const supabase = await createClient();
-  await supabase.from("push_inscricoes").delete().eq("endpoint", sub.endpoint);
-  const { error } = await supabase.from("push_inscricoes").insert({ endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth, aparelho: aparelho.slice(0, 200) });
-  if (error) return { erro: "Não deu para ativar." };
+  const usuario = await usuarioLogado();
+  if (!usuario) return { erro: "Entre de novo." };
+  const r = await guardarInscricao(createAdminClient(), usuario.id, sub, aparelho, aparelhoId);
+  if (r.erro) return { erro: "Não deu para ativar." };
   refresh();
   return { ok: "Notificações ativadas neste aparelho." };
 }

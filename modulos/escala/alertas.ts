@@ -7,7 +7,8 @@
 // Contexto em docs/modulos/escala.md ("Notificações").
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { enviarPush, type Aviso } from "@/lib/integracoes/webpush";
+import type { Aviso } from "@/lib/integracoes/webpush";
+import { entregarAviso } from "@/lib/notificacoes";
 import {
   COLUNAS_COMPROMISSO,
   decidirDescoberta,
@@ -25,7 +26,7 @@ import {
 } from "./regras";
 
 export const TIPOS_AVISO = [
-  { id: "operacao_descoberta", nome: "Operação descoberta (ninguém online no horário de atendimento, em dia com horário fixo)" },
+  { id: "operacao_descoberta", nome: "Operação descoberta (15 min seguidos sem ninguém online no horário de atendimento, em dia com horário fixo)" },
   { id: "sem_checkin", nome: "Alguém não entrou até 15 min depois do horário fixo" },
   { id: "pausa_longa", nome: "Pausa passou do limite" },
   { id: "pausa_inicio", nome: "Alguém entrou em pausa" },
@@ -78,18 +79,7 @@ export async function avisar(db: Db, tipo: TipoAviso | "teste" | "feriado", chav
     });
 
     // etiqueta única por acontecimento: o celular não troca um aviso pelo outro em silêncio
-    const comTag: Aviso = { url: "/escala", ...aviso, tag: `${tipo}:${chave}` };
-    const resultado: { aparelho: string | null; situacao: string; codigo?: number; detalhe?: string }[] = [];
-    let enviados = 0;
-    for (const i of alvo) {
-      const r = await enviarPush({ endpoint: i.endpoint, p256dh: i.p256dh, auth: i.auth }, comTag);
-      resultado.push({ aparelho: i.aparelho ?? null, ...r });
-      if (r.situacao === "ok") enviados++;
-      if (r.situacao === "expirada") await db.from("push_inscricoes").delete().eq("id", i.id);
-    }
-    await db.from("notificacoes_enviadas").update({ enviados, resultado }).eq("id", registro.id);
-    if (alvo.length) await db.from("push_inscricoes").update({ ultimo_envio: new Date().toISOString() }).in("id", alvo.map((i) => i.id));
-    return enviados;
+    return await entregarAviso(db, registro.id, alvo, { url: "/escala", ...aviso, tag: `${tipo}:${chave}` });
   } catch (e) {
     await db.from("notificacoes_enviadas").update({ erro: String(e instanceof Error ? e.message : e).slice(0, 500) }).eq("id", registro.id);
     throw e;
@@ -161,7 +151,7 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
     db.from("escala_padrao").select("id, dia_semana, equipe_id, inicio, fim, tipo, desde, ate"),
     // entradas que começaram hoje (Brasília) ou ainda estão abertas
     db.from("escala_checkins").select("equipe_id, inicio").gte("inicio", new Date(Date.parse(`${hoje}T03:00:00Z`)).toISOString()),
-    db.from("escala_alerta_estado").select("descoberta_desde").maybeSingle(),
+    db.from("escala_alerta_estado").select("descoberta_desde, sem_ninguem_desde").maybeSingle(),
     db.from("feriados").select("roda").eq("data", hoje).maybeSingle(),
     db.from("compromissos").select(COLUNAS_COMPROMISSO).eq("data", hoje).eq("cancelado", false).returns<Compromisso[]>(),
   ]);
@@ -204,24 +194,28 @@ export async function verificarAlertas(agoraIso = new Date().toISOString()): Pro
   const descobertaDesde = estado.data?.descoberta_desde ? String(estado.data.descoberta_desde) : null;
   // igual ao sábado sem escala: se todos os escalados avisaram "dia inteiro fora", não avisa descoberta
   const diaComFixo = !folga && ((padroes.data ?? []) as Padrao[]).some((p) => padraoVale(p, hoje) && !foraDiaInteiro.has(Number(p.equipe_id)));
-  const decisao = decidirDescoberta({ agoraMin: agora.minuto, inicio: hhmm(ini), fim: hhmm(fim), diaComFixo, online: online.length, jaDescobertaDesde: descobertaDesde });
+  const semNinguemDesde = estado.data?.sem_ninguem_desde ? String(estado.data.sem_ninguem_desde) : null;
+  const decisao = decidirDescoberta({ agoraMin: agora.minuto, agoraMs, inicio: hhmm(ini), fim: hhmm(fim), diaComFixo, online: online.length, semNinguemDesde, jaDescobertaDesde: descobertaDesde });
   const descoberta = decisao;
-  if (decisao === "descobriu") {
-    await db.from("escala_alerta_estado").update({ descoberta_desde: agoraIso }).eq("id", true);
+  if (decisao === "contar") {
+    await db.from("escala_alerta_estado").update({ sem_ninguem_desde: agoraIso }).eq("id", true);
+  } else if (decisao === "descobriu" && semNinguemDesde) {
+    // o aviso conta desde que ficou sem ninguém, não desde os 15 min
+    await db.from("escala_alerta_estado").update({ descoberta_desde: semNinguemDesde }).eq("id", true);
     // quem deveria estar: horário fixo de agora + quem está em pausa
     const doDia = ((padroes.data ?? []) as Padrao[]).filter((p) => padraoVale(p, hoje) && minutos(p.inicio) <= agora.minuto && agora.minuto < minutos(p.fim));
     const situacao = [...new Set([...doDia.map((p) => p.equipe_id), ...(pausas.data ?? []).map((p) => Number(p.equipe_id))])].map((id) => {
       const pa = (pausas.data ?? []).find((p) => Number(p.equipe_id) === id);
       return `${nomeDe.get(id) ?? "?"} ${pa ? `em pausa (${motivoTexto(pa.motivo as MotivoPausa, pa.detalhe)})` : "offline"}`;
     });
-    await avisar(db, "operacao_descoberta", `descoberta:${agoraIso}`, {
+    await avisar(db, "operacao_descoberta", `descoberta:${semNinguemDesde}`, {
       titulo: "⚠️ OPERAÇÃO DESCOBERTA",
-      corpo: `Ninguém online desde ${horaDe(agoraIso)}.${situacao.length ? ` ${situacao.join(" · ")}.` : " Ninguém no horário fixo agora."}`,
+      corpo: `Ninguém online desde ${horaDe(semNinguemDesde)}.${situacao.length ? ` ${situacao.join(" · ")}.` : " Ninguém no horário fixo agora."}`,
       tag: "operacao-descoberta",
       importante: true,
     });
   } else if (decisao === "cobriu" || decisao === "limpar") {
-    await db.from("escala_alerta_estado").update({ descoberta_desde: null }).eq("id", true);
+    await db.from("escala_alerta_estado").update({ descoberta_desde: null, sem_ninguem_desde: null }).eq("id", true);
     if (decisao === "cobriu" && descobertaDesde) {
       const quem = online.map((c) => nomeDe.get(Number(c.equipe_id)) ?? "?").join(", ");
       const min = Math.round((agoraMs - Date.parse(descobertaDesde)) / 60_000);
