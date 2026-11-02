@@ -42,15 +42,18 @@ export function AvisoNotificacoes() {
       // desligou de propósito no Check-in: não religa nem insiste
       if (desligadoDeProposito()) return;
       if (r.situacao === "sem_inscricao") {
-        // a permissão continua dada: refaz a inscrição sem perguntar nada
-        const sub = await inscreverAparelho();
-        if (sub !== "negada") {
-          const s = await salvarInscricao(paraEnviar(sub), nomeDoAparelho());
-          if (!s.erro) {
-            if (vivo) setAviso(null);
-            return;
+        // a permissão continua dada: refaz a inscrição sem perguntar nada. Se o navegador recusar fora de
+        // um toque (pode lançar erro), segue para o aviso, em vez de ficar sem push e sem avisar ninguém
+        try {
+          const sub = await inscreverAparelho();
+          if (sub !== "negada") {
+            const s = await salvarInscricao(paraEnviar(sub), nomeDoAparelho());
+            if (!s.erro) {
+              if (vivo) setAviso(null);
+              return;
+            }
           }
-        }
+        } catch {}
       }
       if (!vivo || adiado()) return;
       if (r.situacao === "sem_permissao" || r.situacao === "sem_inscricao") setAviso("desativadas");

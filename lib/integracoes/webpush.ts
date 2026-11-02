@@ -5,7 +5,8 @@
 import webpush from "web-push";
 
 export type Inscricao = { endpoint: string; p256dh: string; auth: string };
-export type Aviso = { titulo: string; corpo: string; url?: string; tag?: string; importante?: boolean };
+/** validadeS: por quanto tempo o serviço de push tenta entregar se o aparelho estiver desligado (padrão 1 h). */
+export type Aviso = { titulo: string; corpo: string; url?: string; tag?: string; importante?: boolean; validadeS?: number };
 /** O que o serviço de push respondeu (vai para notificacoes_enviadas.resultado). */
 export type Envio = { situacao: "ok" | "expirada" | "erro" | "sem_chaves"; codigo?: number; detalhe?: string };
 
@@ -31,8 +32,8 @@ export async function enviarPush(i: Inscricao, aviso: Aviso): Promise<Envio> {
     const r = await webpush.sendNotification(
       { endpoint: i.endpoint, keys: { p256dh: i.p256dh, auth: i.auth } },
       JSON.stringify(aviso),
-      // aviso de operação descoberta: entrega com prioridade; os outros podem esperar o aparelho acordar
-      { TTL: 60 * 60, urgency: aviso.importante ? "high" : "normal" },
+      // sempre com prioridade: com "normal", o celular em economia de bateria pode segurar o aviso até acordar
+      { TTL: aviso.validadeS ?? 60 * 60, urgency: "high" },
     );
     return { situacao: "ok", codigo: r.statusCode };
   } catch (e) {

@@ -219,3 +219,13 @@ sem plantão. Com poucos leads (cerca de 55 desde 04/10), avisar quando a base f
   20h → lembrete com os compromissos de amanhã (pg_cron dos alertas, a cada 2 min, chave
   `vespera:<dia>`). Preferência "compromisso": sem escolha salva, **todos** recebem. Só push: o
   WhatsApp de avisos (template da Meta) ainda não está configurado.
+
+## Revisão das notificações (02/11/2026, sem migration)
+
+- **Prioridade:** todo push sai com `urgency: high`. Com `normal`, o celular em economia de bateria pode segurar o aviso.
+- **Validade:** venda e reembolso valem 24 h se o aparelho estiver desligado; avisos do Check-in seguem com 1 h, porque
+  "fulano em pausa" horas depois só atrapalha.
+- **Reinscrição sem toque:** se o navegador recusar refazer a inscrição (erro), o aviso "Notificações desativadas" aparece.
+  Antes o erro era engolido: o aparelho ficava sem push e sem aviso nenhum.
+- **Lembrete das 20h do feriado:** sai também por push. Só pelo WhatsApp ele não chegava em ninguém (`equipe_whatsapp` vazia).
+- **Limite:** a resposta 201 só diz que Apple ou Google aceitaram o aviso, não que ele apareceu no aparelho.

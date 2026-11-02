@@ -24,7 +24,8 @@ export async function avisarPessoas(db: Db, tipo: string, chave: string, aviso: 
       : { data: [], error: null };
     if (error) throw new Error(error.message);
 
-    const comTag: Aviso = { ...aviso, tag: `${tipo}:${chave}` };
+    // venda e reembolso continuam valendo depois de horas: celular desligado à noite ainda recebe (24 h)
+    const comTag: Aviso = { validadeS: 24 * 60 * 60, ...aviso, tag: `${tipo}:${chave}` };
     const resultado: { aparelho: string | null; situacao: string; codigo?: number; detalhe?: string }[] = [];
     let enviados = 0;
     for (const i of inscricoes ?? []) {

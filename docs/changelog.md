@@ -4,6 +4,7 @@ Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à
 
 ## 02/11/2026
 
+- Notificações: todas saem com prioridade alta, venda e reembolso esperam até 24 h o celular ligar e o lembrete de feriado também vem por push
 - Funil: conversa que não vem mais na Data Crazy é encerrada sozinha e não fica para sempre em "em atendimento" ou "esperando"
 - Funil: todo mundo vê a aba igual ao admin (cards de todos, distribuição e resumo da equipe), com o período à vista no topo
 

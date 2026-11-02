@@ -197,6 +197,8 @@ export async function verificarFeriados(agoraIso = new Date().toISOString()) {
 
     // lembrete das 20h da véspera (uma vez)
     if (f.data !== hoje && agora.minuto >= LEMBRETE_MIN && !f.lembrete_em) {
+      // também por push: sem WhatsApp cadastrado (equipe_whatsapp), o lembrete não chegava em ninguém
+      await avisar(db, "feriado", `lembrete-push:${f.id}`, { titulo: "Lembrete: decidir feriado", corpo: textoLembrete(f, hoje), url: "/escala", importante: true }, { so });
       const { data: registro } = await db
         .from("notificacoes_enviadas")
         .upsert({ tipo: "feriado", chave: `lembrete:${f.id}`, titulo: "Lembrete: decidir feriado", corpo: textoLembrete(f, hoje) }, { onConflict: "tipo,chave", ignoreDuplicates: true })
