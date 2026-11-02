@@ -58,7 +58,7 @@ export async function sincronizarFunil(): Promise<ResultadoSincronizacao> {
     const internos = await lerNumerosInternos(db);
     const leads = await lerLeadsDaJanela(dc, janela);
     contagem.leads = leads.length;
-    const lidas = await lerConversas(dc, janela);
+    const { lidas, completa } = await lerConversas(dc, janela);
     // todas as conversas com mensagem na janela (inclusive de lead antigo): base dos "esperando"
     const todas = lidas.filter((c) => (c.lastMessageDate ?? "") >= janela);
     const donos = montarDonos(leads, lidas, janela, await lerMarcadorDeChegada(db));
@@ -66,6 +66,7 @@ export async function sincronizarFunil(): Promise<ResultadoSincronizacao> {
     await gravarSemEtiqueta(db, lidas, donos, config, internos);
     await sincronizarConversas(db, lidas, leads, donos, janela, config);
     await gravarConversas(db, todas, donos, config, internos);
+    if (completa) await encerrarConversasSumidas(db, lidas, janela);
     contagem.historicos = await lerHistoricos(db, dc, config);
     await lerPrimeirasRespostas(db, dc, todas, donos, config);
     await lerMensagensEnviadas(db, dc, todas);
@@ -346,15 +347,18 @@ async function gravarLeads(db: Db, leads: DcLead[], janela: string, internos: Se
 // 3. Conversas (da última mensagem para trás, até o início da janela)
 // ---------------------------------------------------------------------------
 
-async function lerConversas(dc: DataCrazy, janela: string): Promise<DcConversa[]> {
+/** `completa` = leu até o início da janela ou até o fim da lista (senão, faltar na leitura não prova nada). */
+async function lerConversas(dc: DataCrazy, janela: string): Promise<{ lidas: DcConversa[]; completa: boolean }> {
   const lidas: DcConversa[] = [];
   for (let skip = 0; skip < 10_000; skip += 100) {
     const pagina = await dc.conversas(skip, 100);
     lidas.push(...pagina);
     const ultima = pagina[pagina.length - 1]?.lastMessageDate;
-    if (pagina.length < 100 || !ultima || ultima < janela) break;
+    if (pagina.length < 100) return { lidas, completa: lidas.length > 0 };
+    if (!ultima) return { lidas, completa: false };
+    if (ultima < janela) return { lidas, completa: true };
   }
-  return lidas;
+  return { lidas, completa: false };
 }
 
 /** Prefixo do lead "sem etiqueta": contato novo que escreveu e ainda não virou lead na Data Crazy. */
@@ -631,11 +635,12 @@ async function gravarConversas(db: Db, todas: DcConversa[], donos: Donos, config
     interno: boolean;
     criada_em: string | null;
     origem: string;
+    sumiu_da_api_em: string | null;
   };
   const atuais = await lerTudo<Atual>((de, ate) =>
     db
       .from("funil_conversas")
-      .select("dc_id, lead_dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, contato_rotulo, finalizada, statuses, fila_desde, interno, criada_em, origem")
+      .select("dc_id, lead_dc_id, ultima_mensagem_em, esperando_desde, numero_dc_id, atendente_dc_id, etiquetas_atuais, contato_rotulo, finalizada, statuses, fila_desde, interno, criada_em, origem, sumiu_da_api_em")
       .order("dc_id")
       .range(de, ate),
   );
@@ -678,6 +683,7 @@ async function gravarConversas(db: Db, todas: DcConversa[], donos: Donos, config
       antes.interno === interno &&
       antes.contato_rotulo === rotulo &&
       antes.origem === origem &&
+      !antes.sumiu_da_api_em &&
       mesmoInstante(antes.criada_em, c.createdAt) &&
       mesmasEtiquetas(antes.etiquetas_atuais, etiquetas)
     ) continue;
@@ -701,10 +707,32 @@ async function gravarConversas(db: Db, todas: DcConversa[], donos: Donos, config
       interno,
       criada_em: c.createdAt,
       origem,
+      sumiu_da_api_em: null,
       sincronizado_em: new Date().toISOString(),
     });
   }
   for (const lote of fatiar(linhas, LOTE)) await ok(db.from("funil_conversas").upsert(lote, { onConflict: "dc_id" }));
+}
+
+/**
+ * Conversa aberta no banco que não veio na leitura completa (ex.: número desconectado ou banido) ficaria aberta
+ * para sempre, porque só se atualiza o que a API devolve. Na 1ª falta só marca: uma conversa que recebe mensagem
+ * durante a leitura pode escapar de uma rodada. Se faltar de novo, encerra, sem apagar nada. Última mensagem
+ * antes da janela fica como está: a leitura para na janela, então faltar não prova que sumiu.
+ */
+async function encerrarConversasSumidas(db: Db, lidas: DcConversa[], janela: string): Promise<void> {
+  const vistas = new Set(lidas.map((c) => c.id));
+  const abertas = await lerTudo<{ dc_id: string; ultima_mensagem_em: string | null; sumiu_da_api_em: string | null }>((de, ate) =>
+    db.from("funil_conversas").select("dc_id, ultima_mensagem_em, sumiu_da_api_em").eq("finalizada", false).order("dc_id").range(de, ate),
+  );
+  const sumidas = abertas.filter((c) => !vistas.has(c.dc_id) && c.ultima_mensagem_em && Date.parse(c.ultima_mensagem_em) >= Date.parse(janela));
+  const agora = new Date().toISOString();
+  for (const lote of fatiar(sumidas.filter((c) => !c.sumiu_da_api_em).map((c) => c.dc_id), LOTE)) {
+    await ok(db.from("funil_conversas").update({ sumiu_da_api_em: agora }).in("dc_id", lote));
+  }
+  for (const lote of fatiar(sumidas.filter((c) => c.sumiu_da_api_em).map((c) => c.dc_id), LOTE)) {
+    await ok(db.from("funil_conversas").update({ finalizada: true, statuses: [], fila_desde: null, sincronizado_em: agora }).in("dc_id", lote));
+  }
 }
 
 /** "Maria -1234": primeiro nome + 4 últimos dígitos (nunca o nome completo nem o telefone). */

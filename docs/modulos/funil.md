@@ -415,3 +415,14 @@ Pedido do Davi: vendedor vê na aba Funil o mesmo panorama do admin.
 - **Em atendimento agora:** conversa não finalizada na Data Crazy, com status `opened`, uma por lead, fora número
   interno e banido, sem limite de idade da última mensagem. Conversa esquecida aberta conta até alguém finalizar.
 - **Sem atendente:** conversa aberta sem atendente, fora interno e banido. Número desconectado **entra**.
+
+## Conversa que sumiu da API (02/11/2026, migration funil_conversas_sumiu_da_api)
+
+- **Problema:** a sincronização só atualiza o que a API devolve. Conversa que não vem mais (visto em conversas de
+  número desconectado e banido) ficava aberta no banco para sempre e aparecia em "Sem atendente", por exemplo.
+- **Regra:** depois de uma leitura completa, conversa aberta no banco que não veio e tem última mensagem dentro da
+  janela é marcada em `sumiu_da_api_em`. Se faltar de novo na rodada seguinte, vira `finalizada = true`, sem status.
+  Duas rodadas porque uma conversa que recebe mensagem durante a leitura pode escapar de uma delas.
+- **Nada é apagado.** Se voltar na API, a marca sai e vale o que a API disser. O filtro "Número banido" continua
+  mostrando esses leads (ele lê conversas abertas e finalizadas).
+- **Fora da regra:** última mensagem antes da janela, porque a leitura para na janela e faltar não prova que sumiu.
