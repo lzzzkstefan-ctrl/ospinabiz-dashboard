@@ -517,3 +517,14 @@ e a cobrança (franquia, grátis de anúncio ou cobrada) são calculadas por uma
 - **Custo calculado em `modulos/bms` com a mesma regra do Funil** (cobradas × preço), lendo as visões do
   custo: um módulo não importa outro.
 - **Observação sem credencial:** proxy é descrito em texto; usuário, senha e IP nunca entram no banco.
+
+## 2026-11-02: Aba Funil igual para todos, lendo visões próprias em vez de abrir o RLS
+
+- **Por quê:** o vendedor precisa ver o panorama da equipe no Funil, mas Início, Webinários e Vendas têm que continuar
+  filtrados. Mudar as políticas de `funil_leads` e `funil_conversas` abriria também essas abas.
+- **Visões do dono (`security_invoker = false`):** ignoram o RLS de propósito. Por isso só têm SELECT, só para logado,
+  sem nome completo nem telefone, e vendas só em quantidade. O Security Advisor do Supabase vai apontar
+  `security_definer_view` nelas: é esperado.
+- **Admin lê pelas mesmas visões:** mesmo caminho de código, então os números não têm como divergir por papel.
+- **Cálculo continua em `calculo.ts`:** as visões entregam linhas, não totais, para não reescrever o funil em SQL.
+  Quem está logado consegue ler essas linhas pela API, por isso o limite de colunas.

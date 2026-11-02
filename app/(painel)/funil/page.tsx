@@ -29,8 +29,9 @@ import { BarrasConversao, BarrasPorDia, FunilEtapas, TabelaPorNumero } from "./_
 import { SincronizarAgora } from "./_componentes/sincronizar-agora";
 
 // Funil e Leads (v1). Contexto e regras em docs/modulos/funil.md; cálculo em modulos/funil/calculo.ts.
-// Admin vê tudo e filtra por vendedor (= atendente da Data Crazy, o dono do lead desde 16/10/2026) e,
-// em segundo plano, por número; o vendedor vê só o funil dele (garantido pelo RLS).
+// Todo logado vê igual ao admin (visões da equipe, só leitura) e filtra por vendedor (= atendente da Data
+// Crazy, o dono do lead desde 16/10/2026) e, em segundo plano, por número. Só o admin tem custo,
+// configuração, sincronizar e exportar telefones.
 
 // b=1: filtro "Número banido" (lista os leads com conversa em número banido)
 type Busca = { p?: string; de?: string; ate?: string; v?: string; n?: string; conv?: string; b?: string };
@@ -69,24 +70,24 @@ async function Conteudo({ searchParams }: Props) {
   const hoje = hojeSP();
   const { periodo, desde, ate } = lerPeriodo(sp.p, sp.de, sp.ate, hoje);
 
-  const opcoes = admin ? await opcoesDoFunil() : { vendedores: [], numeros: [] };
-  const atendenteId = admin && opcoes.vendedores.some((v) => v.id === sp.v) ? sp.v! : null;
-  const numeroId = admin && opcoes.numeros.some((n) => n.id === sp.n) ? sp.n! : null;
+  const opcoes = await opcoesDoFunil();
+  const atendenteId = opcoes.vendedores.some((v) => v.id === sp.v) ? sp.v! : null;
+  const numeroId = opcoes.numeros.some((n) => n.id === sp.n) ? sp.n! : null;
   const soBanido = sp.b === "1";
 
   // card, tooltip por número e tabela por número saem do MESMO resultado (uma leitura dos leads)
   const cfg = await configDoFunil();
   const [r, sync, nomes, esperando, respostas, bms, mudancas, chegada, parados, banidos, visao] = await Promise.all([
-    carregarFunil({ desde, ate, atendenteId, numeroId }, cfg),
+    carregarFunil({ desde, ate, atendenteId, numeroId }, cfg, "equipe"),
     statusDaSincronizacao(),
     nomesDosNumeros(),
-    leadsEsperando(cfg, { atendenteId, numeroId }),
+    leadsEsperando(cfg, { atendenteId, numeroId }, "equipe"),
     primeiraResposta({ desde, ate, atendenteId, numeroId }, cfg),
     bmDosNumeros(),
     mudancasDoFunil(desde, ate),
     chegadaNoPeriodo({ desde, ate, atendenteId, numeroId }, cfg),
     naoComecaram({ atendenteId, numeroId }),
-    soBanido ? leadsEmNumeroBanido({ atendenteId }) : null,
+    soBanido ? leadsEmNumeroBanido({ atendenteId }, "equipe") : null,
     visaoPorAtendente(cfg),
   ]);
   // marcas de mudança no funil, por dia
@@ -159,7 +160,86 @@ async function Conteudo({ searchParams }: Props) {
           Custo de mensagens do WhatsApp →
         </Link>
       )}
-      <VisaoPorAtendente visao={visao} admin={admin} />
+      {/* período e filtros no topo: o período escolhido fica sempre à vista */}
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <nav className="flex flex-wrap gap-1.5" aria-label="Período">
+              {PERIODOS.map((p) => (
+                <Link
+                  key={p.id}
+                  href={linkPeriodo(p.id)}
+                  aria-current={periodo === p.id ? "page" : undefined}
+                  className={cn(
+                    "rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors",
+                    periodo === p.id ? "bg-accent/15 text-white" : "text-ink-dim hover:text-white",
+                  )}
+                >
+                  {p.nome}
+                </Link>
+              ))}
+            </nav>
+            <p className="m-0 text-[13.5px] font-semibold tabular-nums text-white">
+              Período: {PERIODOS.find((p) => p.id === periodo)?.nome} · {desde === ate ? dataBR(desde) : `${dataBR(desde)} a ${dataBR(ate)}`}
+            </p>
+          </div>
+          <Link
+            href={linkBanido}
+            aria-pressed={soBanido}
+            className={cn(
+              "rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors",
+              soBanido
+                ? "border-[rgb(var(--tag-vermelho)/0.6)] bg-[rgb(var(--tag-vermelho)/0.12)] text-white"
+                : "border-line text-ink-dim hover:text-white",
+            )}
+          >
+            Número banido{soBanido ? " ✕" : ""}
+          </Link>
+        </div>
+        <form method="get" action="/funil" className="flex flex-wrap items-end gap-3 text-xs text-ink-dim">
+          <input type="hidden" name="p" value={periodo === "personalizado" ? "personalizado" : periodo} />
+          {soBanido && <input type="hidden" name="b" value="1" />}
+          {periodo === "personalizado" && (
+            <>
+              <label className="flex flex-col gap-1">
+                De
+                <input type="date" name="de" defaultValue={desde} max={hoje} className={campo} />
+              </label>
+              <label className="flex flex-col gap-1">
+                Até
+                <input type="date" name="ate" defaultValue={ate} max={hoje} className={campo} />
+              </label>
+            </>
+          )}
+          <label className="flex flex-col gap-1 font-medium text-ink">
+            Vendedor (atendente)
+            <select name="v" defaultValue={atendenteId ?? ""} className={cn(campo, "min-w-[180px] border-accent/40")}>
+              <option value="">Todos</option>
+              {opcoes.vendedores.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-ink-faint">
+            Número (ativos)
+            <select name="n" defaultValue={numeroId ?? ""} className={cn(campo, "max-w-[160px] py-1 text-[12px] text-ink-dim")}>
+              <option value="">Todos</option>
+              {opcoes.numeros.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="rounded-full border border-line px-4 py-1.5 text-[12.5px] font-medium text-ink transition-colors hover:text-white">
+            Aplicar
+          </button>
+        </form>
+      </section>
+
+      <VisaoPorAtendente visao={visao} />
 
       {/* números principais */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -200,92 +280,8 @@ async function Conteudo({ searchParams }: Props) {
         {admin && <SincronizarAgora />}
       </div>
 
-      {/* filtros: tudo numa linha acima dos gráficos */}
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <nav className="flex flex-wrap gap-1.5" aria-label="Período">
-            {PERIODOS.map((p) => (
-              <Link
-                key={p.id}
-                href={linkPeriodo(p.id)}
-                aria-current={periodo === p.id ? "page" : undefined}
-                className={cn(
-                  "rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors",
-                  periodo === p.id ? "bg-accent/15 text-white" : "text-ink-dim hover:text-white",
-                )}
-              >
-                {p.nome}
-              </Link>
-            ))}
-          </nav>
-          <Link
-            href={linkBanido}
-            aria-pressed={soBanido}
-            className={cn(
-              "rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors",
-              soBanido
-                ? "border-[rgb(var(--tag-vermelho)/0.6)] bg-[rgb(var(--tag-vermelho)/0.12)] text-white"
-                : "border-line text-ink-dim hover:text-white",
-            )}
-          >
-            Número banido{soBanido ? " ✕" : ""}
-          </Link>
-        </div>
-        <form method="get" action="/funil" className="flex flex-wrap items-end gap-3 text-xs text-ink-dim">
-          <input type="hidden" name="p" value={periodo === "personalizado" ? "personalizado" : periodo} />
-          {soBanido && <input type="hidden" name="b" value="1" />}
-          {periodo === "personalizado" && (
-            <>
-              <label className="flex flex-col gap-1">
-                De
-                <input type="date" name="de" defaultValue={desde} max={hoje} className={campo} />
-              </label>
-              <label className="flex flex-col gap-1">
-                Até
-                <input type="date" name="ate" defaultValue={ate} max={hoje} className={campo} />
-              </label>
-            </>
-          )}
-          {admin && (
-            <>
-              <label className="flex flex-col gap-1 font-medium text-ink">
-                Vendedor (atendente)
-                <select name="v" defaultValue={atendenteId ?? ""} className={cn(campo, "min-w-[180px] border-accent/40")}>
-                  <option value="">Todos</option>
-                  {opcoes.vendedores.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-ink-faint">
-                Número (ativos)
-                <select name="n" defaultValue={numeroId ?? ""} className={cn(campo, "max-w-[160px] py-1 text-[12px] text-ink-dim")}>
-                  <option value="">Todos</option>
-                  {opcoes.numeros.map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {n.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          )}
-          {(admin || periodo === "personalizado") && (
-            <button type="submit" className="rounded-full border border-line px-4 py-1.5 text-[12.5px] font-medium text-ink transition-colors hover:text-white">
-              Aplicar
-            </button>
-          )}
-          <span className="self-center text-[12px] text-ink-faint">
-            {desde === ate ? dataBR(desde) : `${dataBR(desde)} a ${dataBR(ate)}`}
-            {!admin && " · só os seus leads"}
-          </span>
-        </form>
-      </section>
-
       {banidos && <LeadsNumeroBanido itens={banidos} admin={admin} exportar={`/api/funil/numero-banido${atendenteId ? `?v=${encodeURIComponent(atendenteId)}` : ""}`} />}
-      <FilasDataCrazy filas={esperando.filas} admin={admin} emBanidos={esperando.abertasEmBanidos} />
+      <FilasDataCrazy filas={esperando.filas} emBanidos={esperando.abertasEmBanidos} />
       <NaoComecaram itens={parados} />
       <ListaEsperando
         id="esperando"
@@ -458,7 +454,7 @@ const campo = "rounded-lg border border-line bg-bg-raised-2 px-2.5 py-1.5 text-[
 const CORES = ["bg-accent", "bg-[rgb(var(--tag-roxo))]", "bg-[rgb(var(--tag-verde))]", "bg-[rgb(var(--tag-azul))]", "bg-[rgb(var(--tag-amarelo))]"];
 
 /** Um card por atendente (o dono do lead), o card "Sem atendente" e a distribuição dos leads de hoje. */
-function VisaoPorAtendente({ visao, admin }: { visao: VisaoAtendentes; admin: boolean }) {
+function VisaoPorAtendente({ visao }: { visao: VisaoAtendentes }) {
   const s = visao.semAtendente;
   const cor = (id: string | null, i: number) => (id === null ? "bg-[rgb(var(--tag-laranja))]" : CORES[i % CORES.length]);
   return (
@@ -466,7 +462,7 @@ function VisaoPorAtendente({ visao, admin }: { visao: VisaoAtendentes; admin: bo
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-[15px] font-semibold text-white">Hoje por atendente</h2>
         <p className="m-0 text-[12px] text-ink-faint">
-          O dono do lead é o atendente da conversa na Data Crazy (o número é só detalhe).{!admin && " Só os seus leads."}
+          O dono do lead é o atendente da conversa na Data Crazy (o número é só detalhe). Sempre o dia de hoje, em qualquer período.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -570,7 +566,7 @@ function AvisoSincronizacao({ sync }: { sync: StatusSincronizacao }) {
 }
 
 /** Filas da Data Crazy: Não iniciados + Em atendimento numa lista (coluna Situação) e Aguardando. */
-function FilasDataCrazy({ filas, admin, emBanidos }: { filas: Filas; admin: boolean; emBanidos: number }) {
+function FilasDataCrazy({ filas, emBanidos }: { filas: Filas; emBanidos: number }) {
   const naoIniciados = filas.atendimento.filter((f) => f.situacao === "nao_iniciado").length;
   return (
     <section id="filas" className="glass-lite glass-static scroll-mt-28 p-4">
@@ -583,7 +579,6 @@ function FilasDataCrazy({ filas, admin, emBanidos }: { filas: Filas; admin: bool
       <p className="m-0 mb-3 text-[12px] text-ink-faint">
         Não iniciado = ninguém assumiu o atendimento. Conversas em número banido ficam fora. Uma linha por lead (o mesmo lead em dois números aparece uma vez, com os números juntos). O Aguardando (o lead espera a empresa) pode repetir um lead da outra lista, como no CRM. O tempo é real (não só
         o horário de atendimento): no Aguardando, desde a última mensagem do lead; na outra, desde o início do atendimento atual. Atualiza a cada 15 minutos.
-        {!admin && " Só as suas conversas (as que ninguém assumiu ainda não têm vendedor)."}
       </p>
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <TabelaFila titulo="Não iniciados e em atendimento" itens={filas.atendimento} comSituacao />

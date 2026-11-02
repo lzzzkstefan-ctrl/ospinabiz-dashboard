@@ -2,6 +2,10 @@
 
 Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à mão.
 
+## 02/11/2026
+
+- Funil: todo mundo vê a aba igual ao admin (cards de todos, distribuição e resumo da equipe), com o período à vista no topo
+
 ## 29/10/2026
 
 - BMs: a aba mostra a saúde dos 2 números principais (🫆 1072 e 🐻‍❄️ 8419, BM Principal): dias sem ban, limite e qualidade, leads, mensagens, custo e vendas de hoje e 7 dias, alertas e a comparação Antes x Agora; o resto foi para o Arquivo e o cadastro para "Gerenciar números"

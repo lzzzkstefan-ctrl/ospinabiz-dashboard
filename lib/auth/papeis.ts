@@ -1,5 +1,5 @@
-// Papéis de usuário: "admin", "atendente" e "plantonista" (só cobre turnos: Escala, check-in, os
-// leads dele no Funil e as tarefas dele; nada de Vendas, Webinários nem Monitor; migration escala).
+// Papéis de usuário: "admin", "atendente" e "plantonista" (só cobre turnos: Escala, check-in, a aba
+// Funil (igual para todos) e as tarefas dele; nada de Vendas, Webinários nem Monitor; migration escala).
 // O papel fica em app_metadata.papel (o usuário não consegue editar), nunca em user_metadata.
 // Funções para checar o papel do usuário logado ficam aqui, num lugar só.
 // Obs.: o papel vem do token de login. Se mudar o papel de alguém no Supabase,

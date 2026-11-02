@@ -41,7 +41,7 @@ só em tabela de admin; o telefone serve só para cruzar com a Hubla.
 - Funil por vendedor e por número de WhatsApp
 - Tempo médio entre etapas
 
-Acesso: admin vê tudo; vendedor vê só o funil dele.
+Acesso: todo logado vê a aba Funil igual ao admin desde 02/11/2026 (ver "Mesma visão para todos").
 Depois (não agora): mensagens por etapa e webhook das automações.
 
 ## Decisões (09/10/2026)
@@ -397,3 +397,21 @@ Tela `/funil/custo/mapa` (só admin). O admin sobe os JSON exportados das automa
   Por caminho: mensagens, tipos, custo previsto por lead (mensagens × preço, sem franquia) e o medido no Custo por
   funil nos últimos 30 dias (mensagens por lead × preço), casando pelo nome do fluxo sem emoji e maiúsculas.
 - **Dá para juntar:** textos seguidos sem espera, pergunta ou condição no meio (destacados em laranja).
+
+## Mesma visão para todos (02/11/2026, migration funil_visao_equipe)
+
+Pedido do Davi: vendedor vê na aba Funil o mesmo panorama do admin.
+
+- **O que filtrava:** o RLS de `funil_leads`, `funil_eventos`, `funil_conversas`, `funil_atendentes` e `vendas` (o
+  vendedor só lê as linhas com o `vendedor_id` dele), mais a tela, que escondia os filtros de vendedor e número.
+- **Agora:** a aba lê as visões `funil_leads_equipe`, `funil_eventos_equipe`, `funil_conversas_equipe`,
+  `funil_atendentes_equipe` e `funil_vendas_equipe`, para admin e vendedor (mesmo caminho, mesmos números). As
+  políticas das tabelas não mudaram: Início e Webinários continuam só com os leads do vendedor (`Alcance` em dados.ts).
+- **Limites das visões:** só SELECT e só para logado; sem nome completo nem telefone (fica o rótulo "Maria -1234");
+  vendas só em quantidade por dia e vendedor; sem número interno.
+- **Continua só admin:** custo de mensagens, /funil/config, Sincronizar agora e exportar a lista com telefones.
+- **Período:** o padrão é 7 dias para todos e vem só da URL (nada salvo por usuário). O card "Leads hoje" do Início abre
+  `/funil?p=hoje`. O período e as datas agora ficam no topo. "Hoje por atendente" é sempre o dia de hoje.
+- **Em atendimento agora:** conversa não finalizada na Data Crazy, com status `opened`, uma por lead, fora número
+  interno e banido, sem limite de idade da última mensagem. Conversa esquecida aberta conta até alguém finalizar.
+- **Sem atendente:** conversa aberta sem atendente, fora interno e banido. Número desconectado **entra**.

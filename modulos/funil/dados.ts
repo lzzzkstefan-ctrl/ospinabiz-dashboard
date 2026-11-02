@@ -1,5 +1,6 @@
-// Leitura da tela Funil e Leads, com o usuário logado: o RLS mostra ao vendedor só os
-// leads dele (e o registro de contato, com nome e telefone, nunca é lido aqui).
+// Leitura da tela Funil e Leads, com o usuário logado. A aba Funil lê as visões *_equipe (todo logado
+// vê igual ao admin, só leitura); Início e Webinários seguem nas tabelas, onde o RLS mostra ao vendedor
+// só os leads dele. O registro de contato, com nome e telefone, só o admin lê (contatosDosLeads).
 
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -23,6 +24,16 @@ import {
 export type FiltrosFunil = { desde: string; ate: string; atendenteId: string | null; numeroId: string | null };
 export type FiltroAtendimento = { atendenteId: string | null; numeroId: string | null };
 
+/**
+ * De onde ler: "proprio" = tabelas com RLS (o vendedor recebe só o dele); "equipe" = visões só de leitura
+ * da migration funil_visao_equipe, usadas pela aba Funil (todos veem os números da equipe).
+ */
+export type Alcance = "proprio" | "equipe";
+const FONTES = {
+  proprio: { leads: "funil_leads", eventos: "funil_eventos", conversas: "funil_conversas" },
+  equipe: { leads: "funil_leads_equipe", eventos: "funil_eventos_equipe", conversas: "funil_conversas_equipe" },
+} as const;
+
 /** Chegada do lead: o que vier primeiro entre a 1ª mensagem lida e criado_em (que já é a chegada pela
  * 1ª conversa ou pela etiqueta CL, ver sincronizar.ts). */
 function chegadaDe(l: { criado_em: unknown; primeira_msg_lead_em: unknown }): string {
@@ -31,14 +42,15 @@ function chegadaDe(l: { criado_em: unknown; primeira_msg_lead_em: unknown }): st
   return msg && Date.parse(msg) < Date.parse(criado) ? msg : criado;
 }
 
-export async function carregarFunil(f: FiltrosFunil, horario?: { inicio: string; fim: string }): Promise<Resultado> {
+export async function carregarFunil(f: FiltrosFunil, horario?: { inicio: string; fim: string }, alcance: Alcance = "proprio"): Promise<Resultado> {
   const supabase = await createClient();
+  const fonte = FONTES[alcance];
 
   const leads: LeadFunil[] = [];
   for (let de = 0; ; de += 1000) {
     let q = supabase
-      .from("funil_leads")
-      .select("dc_id, dia, criado_em, primeira_msg_lead_em, vendedor_id, numero_dc_id, compra, funil_eventos(etiqueta_dc_id, em, origem, acao)")
+      .from(fonte.leads)
+      .select(`dc_id, dia, criado_em, primeira_msg_lead_em, vendedor_id, numero_dc_id, compra, funil_eventos:${fonte.eventos}(etiqueta_dc_id, em, origem, acao)`)
       .gte("dia", f.desde)
       .lte("dia", f.ate)
       .eq("funil_eventos.acao", "colocou")
@@ -98,11 +110,11 @@ export async function opcoesDoFunil(): Promise<OpcoesFunil> {
 
 /**
  * Nome de cada atendente da Data Crazy que pode ser vendedor (sem os de suporte): o nome da pessoa da
- * equipe quando ligado, senão o nome na Data Crazy. O vendedor vê só o próprio (RLS).
+ * equipe quando ligado, senão o nome na Data Crazy.
  */
 export async function nomesDosAtendentes(): Promise<Map<string, string>> {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("funil_atendentes").select("dc_id, nome, equipe(nome)").eq("suporte_dc", false);
+  const { data, error } = await supabase.from("funil_atendentes_equipe").select("dc_id, nome, equipe(nome)").eq("suporte_dc", false);
   if (error) throw new Error(`Erro ao carregar atendentes: ${error.message}`);
   type Linha = { dc_id: string; nome: string; equipe: { nome: string } | null };
   return new Map(((data ?? []) as unknown as Linha[]).map((a) => [String(a.dc_id), (a.equipe?.nome ?? a.nome).trim()]));
@@ -158,8 +170,8 @@ export async function nomesDosNumeros(): Promise<Map<string, string>> {
 }
 
 // ---------------------------------------------------------------------------
-// Atendimento (migration funil_atendimento). Tudo com o login de quem vê: o vendedor só recebe
-// as conversas e os leads dele (RLS).
+// Atendimento (migration funil_atendimento). Tudo com o login de quem vê; na aba Funil, pelas visões
+// da equipe (ver Alcance).
 // ---------------------------------------------------------------------------
 export type ConfigFunil = { horasEspera: number; inicio: string; fim: string; minutosResposta: number };
 
@@ -230,10 +242,10 @@ export type Filas = { total: number; atendimento: ItemFila[]; aguardando: Espera
  * Uma linha por lead: o mesmo lead em mais de um número vira uma linha só, com os números juntos e o
  * maior tempo de espera (o resto vem da conversa que espera há mais tempo).
  */
-export async function leadsEsperando(cfg: ConfigFunil, filtro: FiltroAtendimento = { atendenteId: null, numeroId: null }): Promise<ListasEsperando> {
+export async function leadsEsperando(cfg: ConfigFunil, filtro: FiltroAtendimento = { atendenteId: null, numeroId: null }, alcance: Alcance = "proprio"): Promise<ListasEsperando> {
   const supabase = await createClient();
   let q = supabase
-    .from("funil_conversas")
+    .from(FONTES[alcance].conversas)
     .select("dc_id, lead_dc_id, contato_rotulo, atendente_dc_id, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em, statuses, fila_desde")
     // finalizada = finalizada ou arquivada na Data Crazy (se o lead escrever de novo, ela reabre)
     .eq("finalizada", false)
@@ -357,16 +369,13 @@ export async function leadsEsperando(cfg: ConfigFunil, filtro: FiltroAtendimento
   return { leads: todos.filter((e) => !e.aluno), alunos: todos.filter((e) => e.aluno), aguardandoLead: ordenar(aguardando), filas, abertasEmBanidos };
 }
 
-/**
- * Leads sem atendimento na chegada, dos leads que entraram no período (o RLS mostra ao vendedor só
- * os dele). Número interno fica fora.
- */
+/** Leads sem atendimento na chegada, dos leads que entraram no período. Número interno fica fora. */
 export async function chegadaNoPeriodo(f: FiltrosFunil, cfg: ConfigFunil): Promise<Chegada> {
   const supabase = await createClient();
   const leads: LeadChegada[] = [];
   for (let de = 0; ; de += 1000) {
     let q = supabase
-      .from("funil_leads")
+      .from("funil_leads_equipe")
       .select("criado_em, primeira_msg_lead_em, primeira_resposta_em, compra")
       .gte("dia", f.desde)
       .lte("dia", f.ate)
@@ -399,8 +408,8 @@ export type NaoComecou = { leadId: string; rotulo: string | null; vendedor: stri
 export async function naoComecaram(filtro: FiltroAtendimento = { atendenteId: null, numeroId: null }): Promise<NaoComecou[]> {
   const supabase = await createClient();
   let q = supabase
-    .from("funil_leads")
-    .select("dc_id, criado_em, primeira_msg_lead_em, numero_dc_id, atendente_dc_id, vendedor_id, compra, funil_eventos(etiqueta_dc_id, acao)")
+    .from("funil_leads_equipe")
+    .select("dc_id, criado_em, primeira_msg_lead_em, numero_dc_id, atendente_dc_id, vendedor_id, compra, funil_eventos:funil_eventos_equipe(etiqueta_dc_id, acao)")
     .gte("criado_em", new Date(Date.now() - 7 * 86_400_000).toISOString())
     .eq("interno", false)
     .eq("funil_eventos.acao", "colocou")
@@ -435,7 +444,7 @@ export async function naoComecaram(filtro: FiltroAtendimento = { atendenteId: nu
   const rotuloDe = new Map<string, string>();
   const ids = pendentes.map((l) => String(l.dc_id));
   for (let i = 0; i < ids.length; i += 150) {
-    const { data } = await supabase.from("funil_conversas").select("lead_dc_id, contato_rotulo").in("lead_dc_id", ids.slice(i, i + 150));
+    const { data } = await supabase.from("funil_conversas_equipe").select("lead_dc_id, contato_rotulo").in("lead_dc_id", ids.slice(i, i + 150));
     for (const c of data ?? []) if (c.contato_rotulo && !rotuloDe.has(String(c.lead_dc_id))) rotuloDe.set(String(c.lead_dc_id), String(c.contato_rotulo));
   }
   return pendentes
@@ -474,13 +483,14 @@ export type LeadBanido = {
  * conversas contam (abertas e finalizadas), sem limite de período. Uma linha por lead (mesma chave das
  * filas: lead da Data Crazy, ou o rótulo). Etapa e vendedor vêm da conversa mais recente (sem eles, de outra conversa ou do lead).
  */
-export async function leadsEmNumeroBanido(filtro: { atendenteId: string | null } = { atendenteId: null }): Promise<LeadBanido[]> {
+export async function leadsEmNumeroBanido(filtro: { atendenteId: string | null } = { atendenteId: null }, alcance: Alcance = "proprio"): Promise<LeadBanido[]> {
   const supabase = await createClient();
+  const fonte = FONTES[alcance];
   const banidos = await numerosBanidos();
   if (banidos.size === 0) return [];
 
   const sel = "dc_id, lead_dc_id, contato_rotulo, atendente_dc_id, vendedor_id, numero_dc_id, etiquetas_atuais, ultima_recebida_em, ultima_enviada_em";
-  let q = supabase.from("funil_conversas").select(sel).in("numero_dc_id", [...banidos]).eq("interno", false).limit(5000);
+  let q = supabase.from(fonte.conversas).select(sel).in("numero_dc_id", [...banidos]).eq("interno", false).limit(5000);
   if (filtro.atendenteId) q = q.eq("atendente_dc_id", filtro.atendenteId);
   const [conversas, etapas, etiquetas, equipe, numeros, atendentes] = await Promise.all([
     q,
@@ -500,8 +510,8 @@ export async function leadsEmNumeroBanido(filtro: { atendenteId: string | null }
   for (let i = 0; i < leadIds.length; i += 150) {
     const fatia = leadIds.slice(i, i + 150);
     const [cs, ls] = await Promise.all([
-      supabase.from("funil_conversas").select(sel).in("lead_dc_id", fatia).eq("interno", false),
-      supabase.from("funil_leads").select("dc_id, atendente_dc_id, vendedor_id, etiquetas_atuais").in("dc_id", fatia),
+      supabase.from(fonte.conversas).select(sel).in("lead_dc_id", fatia).eq("interno", false),
+      supabase.from(fonte.leads).select("dc_id, atendente_dc_id, vendedor_id, etiquetas_atuais").in("dc_id", fatia),
     ]);
     for (const c of cs.data ?? []) if (!banidos.has(String(c.numero_dc_id))) outras.push(c);
     for (const l of ls.data ?? [])
@@ -615,27 +625,28 @@ export type VisaoAtendentes = {
 
 /**
  * Visão por atendente (pedido do Davi, 16/10/2026): o dono do lead é o atendente da conversa na Data
- * Crazy (o número virou detalhe). Hoje = dia de Brasília. O vendedor vê só o próprio (RLS).
+ * Crazy (o número virou detalhe). Hoje = dia de Brasília. Todos veem todos os atendentes (visões da equipe).
  */
 export async function visaoPorAtendente(cfg: ConfigFunil): Promise<VisaoAtendentes> {
   const supabase = await createClient();
   const hoje = hojeSP();
   const [atendentes, ligacoes, leads, conversas, vendas, banidos] = await Promise.all([
     nomesDosAtendentes(),
-    supabase.from("funil_atendentes").select("dc_id, equipe_id").eq("suporte_dc", false),
+    supabase.from("funil_atendentes_equipe").select("dc_id, equipe_id").eq("suporte_dc", false),
     supabase
-      .from("funil_leads")
+      .from("funil_leads_equipe")
       .select("dc_id, atendente_dc_id, primeira_msg_lead_em, primeira_resposta_em, primeira_resposta_por")
       .eq("dia", hoje)
       .eq("interno", false)
       .limit(5000),
     supabase
-      .from("funil_conversas")
+      .from("funil_conversas_equipe")
       .select("dc_id, lead_dc_id, contato_rotulo, atendente_dc_id, numero_dc_id, statuses, ultima_recebida_em, ultima_enviada_em, fila_desde")
       .eq("finalizada", false)
       .eq("interno", false)
       .limit(5000),
-    supabase.from("vendas").select("vendedor_id").eq("data", hoje).eq("status", "pago").eq("aguardando_confirmacao", false).limit(5000),
+    // só a quantidade por vendedor: o valor das vendas continua fechado pelo RLS de vendas
+    supabase.from("funil_vendas_equipe").select("vendedor_id, vendas").eq("data", hoje).limit(5000),
     numerosBanidos(),
   ]);
   if (leads.error) throw new Error(`Erro ao carregar os leads de hoje: ${leads.error.message}`);
@@ -643,7 +654,7 @@ export async function visaoPorAtendente(cfg: ConfigFunil): Promise<VisaoAtendent
 
   const pessoaDe = new Map((ligacoes.data ?? []).map((a) => [String(a.dc_id), a.equipe_id ? Number(a.equipe_id) : null]));
   const vendasDe = new Map<number, number>();
-  for (const v of vendas.data ?? []) if (v.vendedor_id) vendasDe.set(Number(v.vendedor_id), (vendasDe.get(Number(v.vendedor_id)) ?? 0) + 1);
+  for (const v of vendas.data ?? []) vendasDe.set(Number(v.vendedor_id), Number(v.vendas));
 
   const card = new Map<string, CardAtendente>();
   for (const [id, nome] of atendentes) {
@@ -713,7 +724,7 @@ export type PrimeiraResposta = { vendedor: string; leads: number; mediaMs: numbe
 export async function primeiraResposta(f: FiltrosFunil, cfg: ConfigFunil): Promise<PrimeiraResposta[]> {
   const supabase = await createClient();
   let q = supabase
-    .from("funil_leads")
+    .from("funil_leads_equipe")
     .select("primeira_msg_lead_em, primeira_resposta_em, primeira_resposta_por")
     .gte("dia", f.desde)
     .lte("dia", f.ate)
@@ -723,7 +734,7 @@ export async function primeiraResposta(f: FiltrosFunil, cfg: ConfigFunil): Promi
     .limit(5000);
   if (f.atendenteId) q = q.eq("atendente_dc_id", f.atendenteId);
   if (f.numeroId) q = q.eq("numero_dc_id", f.numeroId);
-  const [leads, atendentes, equipe] = await Promise.all([q, supabase.from("funil_atendentes").select("dc_id, nome, equipe_id"), supabase.from("equipe").select("id, nome")]);
+  const [leads, atendentes, equipe] = await Promise.all([q, supabase.from("funil_atendentes_equipe").select("dc_id, nome, equipe_id"), supabase.from("equipe").select("id, nome")]);
   if (leads.error) throw new Error(`Erro ao carregar primeira resposta: ${leads.error.message}`);
   const nomeEquipe = new Map((equipe.data ?? []).map((p) => [Number(p.id), String(p.nome)]));
   const quem = new Map((atendentes.data ?? []).map((a) => [String(a.dc_id), a.equipe_id ? (nomeEquipe.get(Number(a.equipe_id)) ?? String(a.nome)) : String(a.nome)]));
