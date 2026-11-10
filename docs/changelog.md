@@ -2,6 +2,10 @@
 
 Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à mão.
 
+## 10/11/2026
+
+- Venda nova da Hubla com o atendente no utm_medium (formato novo) vai para o vendedor certo; o formato antigo (utm_term) continua valendo. A venda de 10/11 13:00 voltou para o Davi.
+
 ## 02/11/2026
 
 - Notificações: cada aparelho agora confirma o aviso recebido, com tela de diagnóstico por pessoa e dia; operação descoberta só avisa depois de 15 min sem ninguém

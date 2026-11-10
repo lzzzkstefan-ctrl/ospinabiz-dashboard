@@ -117,7 +117,7 @@ export function FormEditar({
             ))}
           </select>
         </Campo>
-        <Campo rotulo="Código UTM da Hubla (vendas)">
+        <Campo rotulo="Nome do atendente nas UTMs (vendas)">
           <Input name="utm" defaultValue={utm ?? ""} maxLength={40} placeholder="ex.: davi" className="font-mono" />
         </Campo>
       </div>
@@ -135,7 +135,7 @@ export function FormEditar({
         </label>
       )}
       <p className="m-0 text-[11.5px] text-ink-faint">
-        O atendente faz o Funil mostrar os leads da pessoa. O código UTM liga a venda da Hubla a ela (utm_term). Vazio = desliga (o histórico fica).
+        O atendente faz o Funil mostrar os leads da pessoa. O nome do atendente nas UTMs liga a venda da Hubla a ela: vale o utm_medium (formato novo) e, se ele não tiver um nome conhecido, o utm_term (formato antigo). Vazio = desliga (o histórico fica).
       </p>
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={pendente}>

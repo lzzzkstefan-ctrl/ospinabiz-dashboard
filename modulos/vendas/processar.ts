@@ -14,6 +14,8 @@
 // Venda nova paga (18/10/2026): push "💰 Venda R$ … · produto · vendedor · comissão R$ …" (aviso-venda.ts).
 // Sem utm_term (20/10/2026): sem código, vazio ou desconhecido → vendas_config.dono_sem_utm (o Rodrigo,
 // sem comissão e sem push); forma 'sem_utm'.
+// utm_medium (10/11/2026): a Hubla passou a mandar o atendente no medium; vale o medium e, se ele não
+// for de um vendedor, o term (regras.ts, vendedorDasUtms). O medium fica no evento e na venda.
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { lerFatura, type FaturaHubla } from "./hubla";
@@ -46,6 +48,7 @@ export async function processarEvento(eventoId: number): Promise<void> {
         // a Edge Function grava só o bruto: tipo e fatura são preenchidos aqui
         tipo: fatura.tipoBruto,
         id_fatura: fatura.idFatura,
+        utm_medium: fatura.utmMedium,
         resultado: fim.resultado,
         erro: null,
         venda_id: fim.vendaId ?? null,
@@ -119,7 +122,7 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
   if (reembolsoAntes.error) throw new Error(`erro ao ler eventos: ${reembolsoAntes.error.message}`);
   if (config.error) throw new Error(`erro ao ler a configuração: ${config.error.message}`);
 
-  const dono = donoDaVenda(f.utmTerm, vendedores.data, config.data?.dono_sem_utm == null ? null : Number(config.data.dono_sem_utm));
+  const dono = donoDaVenda({ medium: f.utmMedium, term: f.utmTerm }, vendedores.data, config.data?.dono_sem_utm == null ? null : Number(config.data.dono_sem_utm));
   const vendedorId = dono?.vendedorId ?? null;
   const produto = montarVendaNova(f, tickets.data as Ticket[], idsViral.data as IdHubla[]);
   const jaReembolsada = reembolsoAntes.data.length > 0;
@@ -133,6 +136,7 @@ async function pagamento(db: Db, eventoId: number, f: FaturaHubla): Promise<Conc
       forma_atribuicao: dono?.forma ?? null,
       atribuida_em: vendedorId ? agora : null,
       utm_term: f.utmTerm,
+      utm_medium: f.utmMedium,
       ...produto,
       receita_liquida: f.receitaLiquidaCentavos === null ? null : f.receitaLiquidaCentavos / 100,
       status: jaReembolsada ? "reembolso" : "pago",

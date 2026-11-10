@@ -109,7 +109,7 @@ async function montarPedido(db: Db, f: FaturaHubla, recebidoEm: string) {
     refund_id: f.pedido!.id,
     id_fatura: f.idFatura!,
     venda_id: v?.id ?? null,
-    vendedor_id: v?.vendedor_id ?? donoDaVenda(f.utmTerm, vendedores.data ?? [], cfg?.dono_sem_utm == null ? null : Number(cfg.dono_sem_utm))?.vendedorId ?? null,
+    vendedor_id: v?.vendedor_id ?? donoDaVenda({ medium: f.utmMedium, term: f.utmTerm }, vendedores.data ?? [], cfg?.dono_sem_utm == null ? null : Number(cfg.dono_sem_utm))?.vendedorId ?? null,
     utm_term: f.utmTerm,
     linha: v?.linha ?? (viral ? "viral" : "gcs"),
     produto: (viral ?? f.principais[0])?.nome ?? f.itens[0] ?? null,

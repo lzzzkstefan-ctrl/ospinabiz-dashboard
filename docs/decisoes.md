@@ -528,3 +528,15 @@ e a cobrança (franquia, grátis de anúncio ou cobrada) são calculadas por uma
 - **Admin lê pelas mesmas visões:** mesmo caminho de código, então os números não têm como divergir por papel.
 - **Cálculo continua em `calculo.ts`:** as visões entregam linhas, não totais, para não reescrever o funil em SQL.
   Quem está logado consegue ler essas linhas pela API, por isso o limite de colunas.
+
+## 2026-11-10: Atendente da venda pelo utm_medium, com o utm_term de reserva
+
+- **Por quê:** a Hubla passou a mandar o atendente em `utm.medium` e o telefone do lead em `utm.term`, mas parte das
+  vendas ainda vem no formato antigo. Olhar só o term mandava as vendas novas para o Rodrigo (sem comissão).
+- **Medium só quando é nome de vendedor:** o pedido era "medium se existir; senão term", mas anúncio da Meta manda
+  `medium = "ctwa"` com o atendente no term. Com a regra literal essas vendas iriam para o Rodrigo; testar o medium
+  contra os vendedores e cair no term resolve os dois formatos.
+- **Coluna mantém o nome `vendedores.utm_term`:** só o rótulo da tela mudou ("Nome do atendente nas UTMs"). Renomear a
+  coluna mexeria em scripts, visões e RLS sem ganho.
+- **Telefone do lead não vai para a tela:** o detalhe da venda mostra "telefone do lead" no lugar do term numérico.
+

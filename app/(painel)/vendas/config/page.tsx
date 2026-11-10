@@ -192,6 +192,7 @@ async function ConteudoConfig({ searchParams }: Props) {
                   <span className="tabular-nums text-ink-faint">#{e.id} · {new Date(e.recebido_em).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span>
                   <span className="text-white">{e.tipo ?? "?"}</span>
                   <span className="text-ink-dim">fatura {e.id_fatura ?? "?"}</span>
+                  {e.utm_medium && <span className="font-mono text-ink-dim">utm_medium {e.utm_medium}</span>}
                   <span className="text-[rgb(var(--tag-laranja))]">{e.erro ?? "não terminou de processar"}</span>
                   <span className="text-ink-faint">{e.tentativas} tentativa(s)</span>
                   <form action={reprocessar} className="ml-auto">

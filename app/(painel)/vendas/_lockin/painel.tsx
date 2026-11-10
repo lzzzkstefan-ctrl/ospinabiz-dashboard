@@ -795,7 +795,14 @@ function DetalheVenda({
           )}
         </div>
       )}
-      <p className="mb-4 text-[11.5px] text-ink-faint">Fatura {v.id_fatura}</p>
+      <p className="mb-4 text-[11.5px] text-ink-faint">
+        Fatura {v.id_fatura}
+        {admin && v.origem === "webhook" && (
+          <span className="block font-mono">
+            utm_medium: {v.utm_medium ?? "—"} · utm_term: {v.utm_term ?? "—"}
+          </span>
+        )}
+      </p>
       {admin && <VendaForm tickets={tickets} vendedores={vendedores} plataformas={plataformas} venda={v} vendedorInicial={v.vendedor_id} hoje={hoje} onSalvo={onFechar} />}
     </Janela>
   );

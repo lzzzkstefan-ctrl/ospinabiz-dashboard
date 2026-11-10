@@ -33,7 +33,7 @@ const NOME_ACAO: Record<string, string> = {
   novo_link: "gerou novo link para",
   papel: "trocou o papel de",
   atendente: "trocou o atendente da Data Crazy de",
-  utm: "trocou o código UTM de",
+  utm: "trocou o nome nas UTMs de",
   desativar: "desativou",
   reativar: "reativou",
   teste: "mudou a visibilidade de teste de",

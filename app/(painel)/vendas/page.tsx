@@ -386,7 +386,7 @@ function ResumoPorVendedor({ linhas: brutas, nomes, faixa }: { linhas: LinhaGera
         no fechamento, na tela dele. Receita na Hubla = valor real das faturas pagas, com order bumps e já sem a taxa da Hubla (vendas de teste e
         pendentes ficam fora){semValor > 0 ? ` (${semValor} venda(s) do mês ainda sem esse valor)` : ""}; bruto e líquido de ticket = base da comissão (sem bumps), sempre pela
         tabela de tickets. Recebido real = parte do ticket no valor que entrou de verdade (com juros do parcelamento), só informação, desde outubro/2026.
-        Venda sem utm_term vai para o Rodrigo e não gera comissão (desde 20/10/2026).
+        Venda sem o nome do atendente nas UTMs (utm_medium ou utm_term) vai para o Rodrigo e não gera comissão (desde 20/10/2026).
       </p>
     </section>
   );

@@ -101,28 +101,38 @@ export function nomeDoMes(mes: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Atribuição pelo link (utm_term)
+// Atribuição pelo link (nome do atendente nas UTMs)
 // ---------------------------------------------------------------------------
 export const normalizarTerm = (t: string | null | undefined) => (t ?? "").toLowerCase().replace(/\s+/g, "");
 
-/** Vendedor dono do código do link, ou null (sem código ou código desconhecido → "A atribuir"). */
-export function vendedorDoUtm(utmTerm: string | null, vendedores: { equipe_id: number; utm_term: string; ativo: boolean }[]): number | null {
-  const t = normalizarTerm(utmTerm);
+/** Vendedor dono do nome no link, ou null (sem nome ou nome desconhecido). */
+export function vendedorDoUtm(nome: string | null, vendedores: { equipe_id: number; utm_term: string; ativo: boolean }[]): number | null {
+  const t = normalizarTerm(nome);
   if (!t) return null;
   return vendedores.find((v) => v.ativo && normalizarTerm(v.utm_term) === t)?.equipe_id ?? null;
 }
 
 /**
- * Dono de uma venda nova (20/10/2026): o vendedor do código do link; sem código, código vazio ou
+ * Nome do atendente nas UTMs (10/11/2026): a Hubla passou a mandar o atendente em utm_medium (e o
+ * telefone do lead em utm_term); vendas antigas e alguns links ainda trazem o atendente em utm_term.
+ * Vale o medium se ele for de um vendedor; senão, o term. O medium não é sempre um nome: anúncio da
+ * Meta manda medium "ctwa" com o atendente no term, por isso não basta "medium se existir".
+ */
+export function vendedorDasUtms(utm: { medium: string | null; term: string | null }, vendedores: { equipe_id: number; utm_term: string; ativo: boolean }[]): number | null {
+  return vendedorDoUtm(utm.medium, vendedores) ?? vendedorDoUtm(utm.term, vendedores);
+}
+
+/**
+ * Dono de uma venda nova (20/10/2026): o vendedor do nome nas UTMs; sem nome, vazio ou
  * desconhecido → o dono das vendas sem utm (vendas_config.dono_sem_utm, hoje o Rodrigo: sem comissão).
  * Sem esse dono configurado → null ("A atribuir", como antes).
  */
 export function donoDaVenda(
-  utmTerm: string | null,
+  utm: { medium: string | null; term: string | null },
   vendedores: { equipe_id: number; utm_term: string; ativo: boolean }[],
   donoSemUtm: number | null,
 ): { vendedorId: number; forma: "utm" | "sem_utm" } | null {
-  const vendedor = vendedorDoUtm(utmTerm, vendedores);
+  const vendedor = vendedorDasUtms(utm, vendedores);
   if (vendedor) return { vendedorId: vendedor, forma: "utm" };
   return donoSemUtm ? { vendedorId: donoSemUtm, forma: "sem_utm" } : null;
 }

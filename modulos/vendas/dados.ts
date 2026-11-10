@@ -246,14 +246,14 @@ export async function listarCustos(): Promise<CustoConfig[]> {
   }));
 }
 
-export type EventoComErro = { id: number; recebido_em: string; tipo: string | null; id_fatura: string | null; erro: string | null; tentativas: number };
+export type EventoComErro = { id: number; recebido_em: string; tipo: string | null; id_fatura: string | null; utm_medium: string | null; erro: string | null; tentativas: number };
 
 /** Eventos com erro ou que nunca terminaram de processar. */
 export async function listarEventosComErro(): Promise<EventoComErro[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("hubla_eventos")
-    .select("id, recebido_em, tipo, id_fatura, erro, tentativas")
+    .select("id, recebido_em, tipo, id_fatura, utm_medium, erro, tentativas")
     .or("erro.not.is.null,processado.eq.false")
     .order("recebido_em", { ascending: false })
     .limit(100);

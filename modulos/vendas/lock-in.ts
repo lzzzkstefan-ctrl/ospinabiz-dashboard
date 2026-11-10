@@ -57,6 +57,9 @@ export type VendaLI = {
   data: string;
   pago_em: string | null;
   final_lead: string | null;
+  /** UTMs do link (detalhe da venda, só admin): atendente no medium (formato novo) ou no term (antigo) */
+  utm_medium?: string | null;
+  utm_term?: string | null;
   origem: "webhook" | "importacao" | "manual";
   plataforma: Plataforma;
   snap_bruto: number | string | null;

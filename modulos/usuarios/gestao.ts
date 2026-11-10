@@ -167,7 +167,7 @@ export async function mudarLigacoes(quemId: string, alvoId: string, dados: { ate
   const { data: p } = await db.from("equipe").select("id, nome").eq("usuario_id", alvoId).maybeSingle();
   if (!p) return { erro: "Esse login não está ligado a ninguém da equipe." };
   const utm = dados.utm?.trim().toLowerCase() || null;
-  if (utm && !utmOk(utm)) return { erro: "Código UTM: só letras minúsculas, números, - e _ (até 40)." };
+  if (utm && !utmOk(utm)) return { erro: "Nome nas UTMs: só letras minúsculas, números, - e _ (até 40)." };
 
   // atendente da Data Crazy
   const { data: atuais } = await db.from("funil_atendentes").select("dc_id, nome, equipe_id").eq("equipe_id", p.id);
@@ -190,7 +190,7 @@ export async function mudarLigacoes(quemId: string, alvoId: string, dados: { ate
   if (antesUtm !== utm) {
     if (utm) {
       const { data: dono } = await db.from("vendedores").select("equipe_id").eq("utm_term", utm).maybeSingle();
-      if (dono && Number(dono.equipe_id) !== Number(p.id)) return { erro: `O código "${utm}" já é de outra pessoa.` };
+      if (dono && Number(dono.equipe_id) !== Number(p.id)) return { erro: `O nome "${utm}" já é de outra pessoa.` };
       const { error } = vd ? await db.from("vendedores").update({ utm_term: utm, ativo: true }).eq("equipe_id", p.id) : await db.from("vendedores").insert({ equipe_id: p.id, utm_term: utm, email: c.alvo.email });
       if (error) return { erro: `Não deu para salvar o código: ${error.message}` };
     } else if (vd) {

@@ -15,7 +15,8 @@ Venda aprovada na Hubla
 ```
 
 - **Pagamento** (`invoice.payment_succeeded`): cria UMA venda por fatura (`id_fatura` único).
-  - `utm_term` = código de um vendedor ativo (`davi`, `vyenna`) → atribuída na hora.
+  - Nome de um vendedor ativo (`davi`, `vyenna`) no `utm_medium` (formato novo) ou, se o medium não
+    tiver nome conhecido, no `utm_term` (formato antigo) → atribuída na hora (ver "Nome do atendente nas UTMs").
   - Sem código, código vazio ou desconhecido → **Rodrigo** (`vendas_config.dono_sem_utm`, forma
     `sem_utm`; ver "Venda sem utm_term"). Sem esse dono configurado → **A revisar**, como antes.
   - Se já chegou reembolso dessa fatura antes, a venda já nasce **reembolso**.
@@ -302,3 +303,23 @@ Alerta de pedido de reembolso da Hubla. Decisão e porquês em `docs/decisoes.md
 - **Reprocessamento de 20/10/2026:** as vendas de outubro (mês aberto, sem fechamento) que estavam
   sem vendedor foram passadas para o Rodrigo (forma `sem_utm`, registradas em `vendas_alteracoes`
   em nome do Davi).
+
+## Nome do atendente nas UTMs (10/11/2026, migration `vendas_utm_medium`)
+
+- **Formato novo da Hubla:** o atendente vem em `utm.medium` (`"medium":"davi"`), o `utm.term` traz o
+  telefone do lead e o `utm.content` é `lead_<telefone>`. Algumas vendas (ex.: da Vyenna) ainda chegam
+  no formato antigo, com o atendente no `utm.term`.
+- **Regra** (`vendedorDasUtms` em `regras.ts`): vale o medium se ele for o nome de um vendedor ativo;
+  senão, o term; nenhum dos dois → dono das vendas sem utm (Rodrigo). Sem diferenciar maiúscula nem
+  espaço. Não é "medium se existir" porque o anúncio da Meta manda `medium = "ctwa"` com o atendente
+  no term (vendas de 07/11 e 09/11): com a regra literal, elas iriam para o Rodrigo.
+- **Onde fica:** `hubla_eventos.utm_medium` e `vendas.utm_medium` (eventos antigos preenchidos a partir
+  do payload). O detalhe da venda (só admin, vendas do webhook) mostra `utm_medium` e `utm_term`; um
+  term que é telefone aparece como "telefone do lead" (o número não vai para a tela). A lista de
+  eventos com erro em Vendas → Config mostra o medium.
+- **Configuração:** o campo em Usuários virou "Nome do atendente nas UTMs" (vale para medium e term).
+  A coluna continua `vendedores.utm_term`.
+- **Correção de 10/11/2026:** a venda 1311 (10/11, 13:00, lead final 9855, `medium = "davi"`) tinha ido
+  para o Rodrigo como `sem_utm`; a migration passou para o Davi (`forma = 'utm'`, linha em
+  `vendas_atribuicoes`), sem criar venda nova. Era a única nesse caso. O push de venda dela não foi
+  enviado (na hora era do Rodrigo, que não recebe).

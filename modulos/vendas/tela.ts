@@ -16,7 +16,7 @@ import { calcularMargem, centavos, custosDoMes, resumir, type Faixa, type Ticket
 const COLUNAS =
   "id, id_fatura, vendedor_id, sem_vendedor, ticket_id, principal_produto, motivo_sem_ticket, itens, bumps, status, data, pago_em, final_lead, origem, plataforma, " +
   "snap_bruto, snap_liquido, snap_comissao_6, snap_comissao_7, snap_comissao_8, snap_comissao_9, snap_comissao_10, receita_liquida, teste, aguardando_confirmacao, " +
-  "linha, valor_pago, viral_preco, viral_liquido";
+  "linha, valor_pago, viral_preco, viral_liquido, utm_medium, utm_term";
 
 async function todas<T>(pagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
   const tudo: T[] = [];
@@ -82,6 +82,12 @@ function semComissaoDoDono<T extends { vendedorId: number | null; comissao: Reco
 }
 
 /** vendedorId: um vendedor, ou null = todas que a pessoa pode ver (visão Geral do admin). */
+/** No formato novo o utm_term traz o telefone do lead: a tela mostra só que é um telefone (o número não sai do servidor). */
+function termParaTela(term: string | null | undefined): string | null {
+  if (!term) return null;
+  return /^\+?[\d\s().-]{8,}$/.test(term) ? "telefone do lead" : term;
+}
+
 export async function carregarVendas(vendedorId: number | null, inicio: string, fim: string): Promise<VendaLI[]> {
   const supabase = await createClient();
   const brutas = await todas<Omit<VendaLI, "cliente">>((de, ate) => {
@@ -110,6 +116,7 @@ export async function carregarVendas(vendedorId: number | null, inicio: string, 
   const dono = (await donoSemUtm())?.id ?? null;
   return brutas.map((v) => ({
     ...v,
+    utm_term: termParaTela(v.utm_term),
     cliente: clienteCurto(nomes.get(v.id), v.final_lead),
     reembolso_pedido: pedidos.has(v.id),
     sem_comissao: dono !== null && v.vendedor_id === dono,
@@ -357,7 +364,7 @@ export async function buscarMesPublico(codigo: string) {
     valor_bruto: Number(t.valor_bruto),
     valor_liquido: Number(t.valor_liquido),
   }));
-  const lista: VendaLI[] = vendas.map((v) => ({ ...v, cliente: clienteCurto(nomes.get(v.id), v.final_lead) }));
+  const lista: VendaLI[] = vendas.map((v) => ({ ...v, utm_term: termParaTela(v.utm_term), cliente: clienteCurto(nomes.get(v.id), v.final_lead) }));
   const porId = new Map(tickets.map((t) => [t.id, t]));
   return {
     mes,

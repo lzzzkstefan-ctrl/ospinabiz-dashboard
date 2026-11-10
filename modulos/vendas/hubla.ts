@@ -18,6 +18,8 @@ export type FaturaHubla = {
   tipo: TipoEvento;
   idFatura: string | null;
   utmTerm: string | null;
+  /** formato novo da Hubla (10/11/2026): o atendente vem aqui, e o utm_term traz o telefone do lead */
+  utmMedium: string | null;
   utmContent: string | null;
   itens: string[];
   /** ofertas principais (isOrderBump = false) */
@@ -111,6 +113,7 @@ export function lerFatura(payload: unknown): FaturaHubla {
             : "outro",
     idFatura: texto(fatura.id),
     utmTerm: texto(utm.term) ?? texto(utmPrimeira.term),
+    utmMedium: texto(utm.medium) ?? texto(utmPrimeira.medium),
     utmContent: texto(utm.content) ?? texto(utmPrimeira.content),
     itens,
     principais,
