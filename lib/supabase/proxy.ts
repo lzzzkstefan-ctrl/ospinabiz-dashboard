@@ -19,7 +19,7 @@ const ADMIN_PATHS = ["/vendas/fechamento"];
 // Central de gestão (21/11/2026): só quem tem app_metadata.gestao (Davi e Rodrigo). Inclui o Hoje ("/"),
 // as abas arquivadas (lib/arquivo.ts) e Usuários. Os outros (Vyenna, Teste) vão para Vendas.
 // Manter igual a `para: "gestao"` em components/painel-nav.tsx.
-const GESTAO_PATHS = ["/arquivado", "/configuracoes/usuarios", "/configuracoes/diagnostico", "/admin"];
+const GESTAO_PATHS = ["/projetos", "/decisoes", "/arquivado", "/configuracoes/usuarios", "/configuracoes/diagnostico", "/admin"];
 
 function soGestao(pathname: string) {
   return pathname === "/" || comecaCom(pathname, GESTAO_PATHS) || ehAbaArquivada(pathname);
