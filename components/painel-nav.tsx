@@ -2,7 +2,7 @@
 
 import { LogoutButton } from "@/components/logout-button";
 import { cn } from "@/lib/utils";
-import { Archive, BadgeDollarSign, FolderKanban, House, Layers, Scale, Settings, Workflow } from "lucide-react";
+import { Archive, BadgeDollarSign, FolderKanban, House, Layers, Scale, Settings, Trophy, Workflow } from "lucide-react";
 import { ehAbaArquivada } from "@/lib/arquivo";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -23,6 +23,7 @@ const TODOS: { href: string; label: string; icon: typeof House; emBreve: boolean
   { href: "/funis", label: "Funis", icon: Workflow, emBreve: false, para: "gestao" },
   { href: "/projetos", label: "Projetos", icon: FolderKanban, emBreve: false, para: "gestao" },
   { href: "/decisoes", label: "Decisões", icon: Scale, emBreve: false, para: "gestao" },
+  { href: "/progresso", label: "Progresso", icon: Trophy, emBreve: false, para: "gestao" },
   { href: "/arquivado", label: "Arquivado", icon: Archive, emBreve: false, para: "gestao" },
   // quem não é da gestão vê só Notificações dentro (a página confere)
   { href: "/configuracoes", label: "Configurações", icon: Settings, emBreve: false, para: "todos" },
