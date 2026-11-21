@@ -540,3 +540,13 @@ e a cobrança (franquia, grátis de anúncio ou cobrada) são calculadas por uma
   coluna mexeria em scripts, visões e RLS sem ganho.
 - **Telefone do lead não vai para a tela:** o detalhe da venda mostra "telefone do lead" no lugar do term numérico.
 
+## 2026-11-21: Central de gestão: abas da operação arquivadas e acesso de gestão separado do papel
+
+- **Por quê:** a operação do dia a dia passou para o Prime; o app vira a central de gestão do Davi e do Rodrigo.
+- **Arquivar, não apagar:** as telas antigas continuam abertas só para leitura, com os dados como estavam.
+- **Três camadas de só leitura:** tela (CSS), servidor (`soLeitura`) e banco (gatilho). A do banco garante que nada grava
+  nem por fora do app; a do servidor evita efeito colateral (push, WhatsApp, Meta) antes de chegar ao banco.
+- **`app_metadata.gestao` em vez do papel admin:** a Vyenna também é admin, e a aba Vendas lê esse papel. Tirar o admin
+  dela mudaria a Vendas; uma marca nova separa "gestão" sem mexer no resto.
+- **Melhorias congelada:** backlog e changelog param em 21/11/2026; as entregas vão para Projetos (fase 2).
+

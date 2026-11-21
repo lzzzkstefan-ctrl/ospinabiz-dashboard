@@ -104,18 +104,11 @@ export function FormEditar({
         <Campo rotulo="Papel">
           <SelectPapel padrao={papel} podeChefe={podeChefe} />
         </Campo>
-        <Campo rotulo="Atendente na Data Crazy">
-          <select name="atendente" defaultValue={atendente ?? ""} className={classeSelect}>
-            <option value="" className={classeOpcao}>
-              nenhum
-            </option>
-            {atendentes.map((a) => (
-              <option key={a.dcId} value={a.dcId} disabled={!a.livre && a.dcId !== atendente} className={classeOpcao}>
-                {a.nome}
-                {!a.livre && a.dcId !== atendente ? " (de outra pessoa)" : ""}
-              </option>
-            ))}
-          </select>
+        {/* Funil (Data Crazy) arquivado em 21/11/2026: a ligação fica como está, só para consulta.
+            Vai escondida no formulário para o servidor ver "não mudou" e não gravar no Funil. */}
+        <Campo rotulo="Atendente na Data Crazy (Funil arquivado)">
+          <input type="hidden" name="atendente" value={atendente ?? ""} />
+          <span className="block py-2 text-[13.5px] text-ink-dim">{atendentes.find((a) => a.dcId === atendente)?.nome ?? "nenhum"}</span>
         </Campo>
         <Campo rotulo="Nome do atendente nas UTMs (vendas)">
           <Input name="utm" defaultValue={utm ?? ""} maxLength={40} placeholder="ex.: davi" className="font-mono" />
@@ -135,7 +128,7 @@ export function FormEditar({
         </label>
       )}
       <p className="m-0 text-[11.5px] text-ink-faint">
-        O atendente faz o Funil mostrar os leads da pessoa. O nome do atendente nas UTMs liga a venda da Hubla a ela: vale o utm_medium (formato novo) e, se ele não tiver um nome conhecido, o utm_term (formato antigo). Vazio = desliga (o histórico fica).
+        O nome do atendente nas UTMs liga a venda da Hubla a ela: vale o utm_medium (formato novo) e, se ele não tiver um nome conhecido, o utm_term (formato antigo). Vazio = desliga (o histórico fica).
       </p>
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={pendente}>

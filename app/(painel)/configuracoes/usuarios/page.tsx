@@ -8,17 +8,14 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { BotaoAtivo, BotaoNovoLink, FormConvidar, FormEditar } from "./_componentes/formularios";
 
-// Usuários (só chefe e gerente em Vendas): lista, convite com link para o WhatsApp, papel, ligação
+// Usuários (Configurações; só a gestão desde 21/11/2026): lista, convite com link para o WhatsApp, papel, ligação
 // com o atendente da Data Crazy e o código UTM da Hubla, desativar/reativar e o registro de mudanças.
 // Contexto em docs/modulos/usuarios.md.
 
 export default function UsuariosPage() {
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[28px] leading-tight">Usuários</h1>
-        <p className="mt-1 text-[13.5px] text-ink-dim">Quem entra na dashboard, com que papel, e a ligação com a Data Crazy e a Hubla.</p>
-      </div>
+      <p className="m-0 text-[13.5px] text-ink-dim">Quem entra no app, com que papel, e o nome de cada um nas UTMs da Hubla.</p>
       <Suspense fallback={<p className="text-[13.5px] text-ink-faint">Carregando...</p>}>
         <Conteudo />
       </Suspense>
@@ -49,7 +46,7 @@ const resumo = (v: unknown) =>
 
 async function Conteudo() {
   const eu = await usuarioLogado();
-  if (!eu || (eu.vendas !== "chefe" && eu.vendas !== "gerente")) notFound();
+  if (!eu?.gestao) notFound();
   const souChefe = eu.vendas === "chefe";
   const { usuarios, atendentes, registro } = await carregarUsuarios();
 

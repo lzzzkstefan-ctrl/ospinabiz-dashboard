@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CAMPOS_MENSAGEM, ETAPAS_SESSAO } from "@/modulos/webinarios/regras";
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
+import { soLeitura } from "@/lib/arquivo";
 
 const SO_ADMIN: EstadoForm = { erro: "Só o admin pode alterar." };
 const texto = (form: FormData, campo: string, max: number) => {
@@ -32,6 +33,8 @@ async function soAdmin() {
 }
 
 export async function salvarWebinario(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await soAdmin())) return SO_ADMIN;
   const id = idDe(form);
   const nome = texto(form, "nome", 80);
@@ -69,6 +72,8 @@ export async function salvarWebinario(_anterior: EstadoForm, form: FormData): Pr
 
 /** Cria as tarefas do checklist a partir do modelo (só os itens que ainda não existem). */
 export async function criarChecklist(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await soAdmin())) return SO_ADMIN;
   const webinarioId = idDe(form, "webinario_id");
   const responsavel = idDe(form, "responsavel_id");
@@ -92,6 +97,8 @@ export async function criarChecklist(_anterior: EstadoForm, form: FormData): Pro
 }
 
 export async function salvarSessao(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await soAdmin())) return SO_ADMIN;
   const webinarioId = idDe(form, "webinario_id");
   const id = idDe(form);
@@ -119,6 +126,8 @@ export async function salvarSessao(_anterior: EstadoForm, form: FormData): Promi
 }
 
 export async function apagarSessao(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await soAdmin())) return;
   const id = idDe(form);
   if (!id) return;
@@ -128,6 +137,8 @@ export async function apagarSessao(form: FormData): Promise<void> {
 }
 
 export async function criarLink(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await soAdmin())) return SO_ADMIN;
   const webinarioId = idDe(form, "webinario_id");
   const tipo = String(form.get("tipo") ?? "");
@@ -145,6 +156,8 @@ export async function criarLink(_anterior: EstadoForm, form: FormData): Promise<
 }
 
 export async function apagarLink(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await soAdmin())) return;
   const id = idDe(form);
   if (!id) return;
@@ -154,6 +167,8 @@ export async function apagarLink(form: FormData): Promise<void> {
 }
 
 export async function salvarCustoMensagem(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await soAdmin())) return SO_ADMIN;
   const v = Number(String(form.get("custo") ?? "").replace(",", "."));
   if (!Number.isFinite(v) || v < 0 || v > 10) return { erro: "Custo inválido. Ex.: 0,035" };

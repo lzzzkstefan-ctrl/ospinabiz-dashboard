@@ -2,6 +2,10 @@
 
 Gerado da aba Melhorias (coluna Feito, `npm run melhorias:docs`). Não editar à mão.
 
+## 21/11/2026
+
+- O app virou a central de gestão: Monitor, Check-in, BMs, Webinários, Funil, Tarefas e Melhorias foram para Arquivado (só leitura), as rotinas delas foram desligadas e Usuários foi para Configurações. Vendas não mudou.
+
 ## 10/11/2026
 
 - Venda nova da Hubla com o atendente no utm_medium (formato novo) vai para o vendedor certo; o formato antigo (utm_term) continua valendo. A venda de 10/11 13:00 voltou para o Davi.

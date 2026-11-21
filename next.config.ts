@@ -5,6 +5,13 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   // service worker das notificações: nunca em cache (sempre a versão nova) e só scripts do próprio site
   // (docs: guides/progressive-web-apps, "Securing your application")
+  // Usuários e o diagnóstico das notificações foram para Configurações (21/11/2026)
+  async redirects() {
+    return [
+      { source: "/admin/usuarios", destination: "/configuracoes/usuarios", permanent: false },
+      { source: "/admin/notificacoes", destination: "/configuracoes/diagnostico", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

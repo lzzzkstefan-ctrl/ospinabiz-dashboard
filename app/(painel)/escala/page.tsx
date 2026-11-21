@@ -10,7 +10,8 @@ import { Suspense } from "react";
 import { CompromissosPrevistos } from "./_componentes/compromissos";
 import { DiasDaSemana } from "./_componentes/dias";
 import { FormFeriado, FormPadrao, FormPausaLonga } from "./_componentes/formularios";
-import { AtivarNotificacoes, FormPreferencias } from "./_componentes/notificacoes";
+import { AtivarNotificacoes } from "../_componentes/notificacoes-aparelho";
+import { FormPreferencias } from "./_componentes/notificacoes";
 
 // Check-in (endereço /escala). Contexto em docs/modulos/escala.md.
 // De cima para baixo: "Entrei na operação" + quem está online; os 7 dias da semana atual com o
@@ -140,7 +141,7 @@ async function Conteudo({ searchParams }: Props) {
           </p>
           <AtivarNotificacoes />
           {admin && (
-            <Link href="/admin/notificacoes" className="mt-3 inline-block text-[12.5px] text-ink-dim underline-offset-4 hover:text-white hover:underline">
+            <Link href="/configuracoes/diagnostico" className="mt-3 inline-block text-[12.5px] text-ink-dim underline-offset-4 hover:text-white hover:underline">
               Diagnóstico por aparelho →
             </Link>
           )}

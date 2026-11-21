@@ -1,7 +1,6 @@
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { cn } from "@/lib/utils";
 import { carregarDiagnostico } from "@/modulos/escala/diagnostico-push";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
@@ -12,10 +11,7 @@ export default function NotificacoesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link href="/escala" className="text-[13px] text-ink-dim underline-offset-4 hover:underline">
-          ← Check-in
-        </Link>
-        <h1 className="mt-1 text-[28px] leading-tight">Diagnóstico das notificações</h1>
+        <h2 className="text-[15px] font-semibold text-white">Diagnóstico das notificações</h2>
         <p className="mt-1 text-[13.5px] text-ink-dim">Últimos 14 dias. Aceito = Apple ou Google pegaram o aviso. Recebido = o próprio aparelho mostrou e confirmou.</p>
       </div>
       <Suspense fallback={<p className="text-[13.5px] text-ink-faint">Carregando...</p>}>
@@ -32,7 +28,7 @@ const atraso = (ms: number | null) => (ms === null ? "—" : ms < 60_000 ? `${Ma
 
 async function Conteudo() {
   const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") notFound();
+  if (!usuario?.gestao) notFound();
   const d = await carregarDiagnostico();
 
   return (

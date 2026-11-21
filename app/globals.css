@@ -303,3 +303,17 @@
 .etiqueta-laranja { --tag: var(--tag-laranja); }
 .etiqueta-vermelho { --tag: var(--tag-vermelho); }
 .etiqueta-cinza { --tag: var(--tag-cinza); }
+
+/* ---------- abas arquivadas (21/11/2026): só leitura ----------
+   Dentro de [data-arquivado] (components/arquivado.tsx) tudo que grava fica apagado e sem clique: todos
+   os botões e campos, menos os dos filtros (formulários method="get", que só mudam o endereço), e o
+   arrastar dos quadros. Links continuam. Se algo escapar, a ação do servidor devolve "só leitura"
+   (lib/arquivo.ts) e o banco recusa. */
+[data-arquivado] :is(button, input:not([type="hidden"]), select, textarea):not(:is(form[method="get" i] *)),
+[data-arquivado] [aria-roledescription="sortable"],
+[data-arquivado] [aria-roledescription="draggable"] {
+  pointer-events: none;
+}
+[data-arquivado] :is(button, input:not([type="hidden"]), select, textarea):not(:is(form[method="get" i] *)) {
+  opacity: 0.35;
+}

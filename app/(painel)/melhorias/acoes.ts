@@ -8,6 +8,7 @@ import { usuarioLogado } from "@/lib/auth/papeis";
 import { createClient } from "@/lib/supabase/server";
 import { ehPrioridade, ehStatus, lerCampos, type Status } from "@/modulos/melhorias/regras";
 import { refresh } from "next/cache";
+import { soLeitura } from "@/lib/arquivo";
 
 const SO_GESTOR: EstadoForm = { erro: "Só chefe e gerente podem alterar." };
 
@@ -18,6 +19,8 @@ async function gestor(): Promise<boolean> {
 
 /** Botão "Sugerir melhoria" (Início): qualquer pessoa logada. */
 export async function sugerirMelhoria(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (!usuario) return { erro: "Entre de novo para sugerir." };
   const campos = lerCampos(form);
@@ -30,6 +33,8 @@ export async function sugerirMelhoria(_anterior: EstadoForm, form: FormData): Pr
 }
 
 export async function criarMelhoria(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (!(await gestor()) || !usuario) return SO_GESTOR;
   const campos = lerCampos(form);
@@ -45,6 +50,8 @@ export async function criarMelhoria(_anterior: EstadoForm, form: FormData): Prom
 }
 
 export async function editarMelhoria(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await gestor())) return SO_GESTOR;
   const id = Number(form.get("id"));
   const campos = lerCampos(form);
@@ -64,6 +71,8 @@ export async function editarMelhoria(_anterior: EstadoForm, form: FormData): Pro
 
 /** Arrastar para outra coluna (ou trocar no seletor). Indo para "Feito", `novidade` é a linha de Novidades. */
 export async function moverMelhoria(id: number, status: Status, novidade?: string): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await gestor())) return SO_GESTOR;
   if (!Number.isInteger(id) || id <= 0 || !ehStatus(status)) return { erro: "Movimento inválido." };
   const supabase = await createClient();
@@ -75,6 +84,8 @@ export async function moverMelhoria(id: number, status: Status, novidade?: strin
 }
 
 export async function apagarMelhoria(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await gestor())) return;
   const id = Number(form.get("id"));
   if (!Number.isInteger(id) || id <= 0) return;

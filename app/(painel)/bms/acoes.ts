@@ -8,6 +8,7 @@ import { atualizarBm, atualizarNumero, banirBm, desfazerBanBm, inserirBm, inseri
 import { hojeBrasilia, lerCamposNumero, lerSituacao, limparTexto, LIMITES, normalizarTelefone, type Qualidade } from "@/modulos/bms/regras";
 import { problemaNaObservacao } from "@/modulos/bms/saude";
 import { refresh } from "next/cache";
+import { soLeitura } from "@/lib/arquivo";
 
 export type EstadoForm = { erro?: string; ok?: string };
 
@@ -19,6 +20,8 @@ function idDoForm(form: FormData): number | null {
 }
 
 export async function criarBm(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await ehAdmin())) return SO_ADMIN;
 
   const nome = limparTexto(form.get("nome"), 60);
@@ -32,6 +35,8 @@ export async function criarBm(_anterior: EstadoForm, form: FormData): Promise<Es
 }
 
 export async function editarBm(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await ehAdmin())) return SO_ADMIN;
 
   const id = idDoForm(form);
@@ -47,6 +52,8 @@ export async function editarBm(_anterior: EstadoForm, form: FormData): Promise<E
 }
 
 export async function criarNumero(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await ehAdmin())) return SO_ADMIN;
 
   const nomes = await nomesDasBms();
@@ -65,6 +72,8 @@ export async function criarNumero(_anterior: EstadoForm, form: FormData): Promis
 
 /** Arquiva ou reativa uma BM ou um número. Arquivar tira dos testes sem apagar o histórico. */
 export async function alternarAtivo(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await ehAdmin())) return;
 
   const id = idDoForm(form);
@@ -78,6 +87,8 @@ export async function alternarAtivo(form: FormData): Promise<void> {
 
 /** Marca a BM como banida (data padrão: hoje) e todos os números dela como banidos, com a mesma data. */
 export async function banir(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await ehAdmin())) return SO_ADMIN;
 
   const id = idDoForm(form);
@@ -95,6 +106,8 @@ export async function banir(_anterior: EstadoForm, form: FormData): Promise<Esta
 
 /** Desfaz o ban: a BM e os números voltam para a situação de antes. */
 export async function desfazerBan(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await ehAdmin())) return SO_ADMIN;
 
   const id = idDoForm(form);
@@ -121,6 +134,8 @@ function lerData(valor: FormDataEntryValue | null, nome: string): { data: string
  * informa), observação e "em operação desde". A observação nunca guarda usuário, senha ou IP.
  */
 export async function salvarSaude(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await ehAdmin())) return SO_ADMIN;
 
   const id = idDoForm(form);
@@ -157,6 +172,8 @@ export async function salvarSaude(_anterior: EstadoForm, form: FormData): Promis
  * data como começo do contador "dias sem ban".
  */
 export async function mudarSituacao(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await ehAdmin())) return SO_ADMIN;
 
   const id = idDoForm(form);

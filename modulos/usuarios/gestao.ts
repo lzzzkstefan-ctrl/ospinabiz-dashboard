@@ -1,6 +1,6 @@
 // Aba Usuários: leitura e mudanças no login (Supabase Auth) e nas ligações (equipe, atendente da
 // Data Crazy, código UTM da Hubla). Usa a chave secreta: QUEM CHAMA confere antes se a pessoa logada
-// é chefe/gerente (app/(painel)/admin/usuarios/acoes.ts). As regras de quem pode o quê estão em
+// é chefe/gerente (app/(painel)/configuracoes/usuarios/acoes.ts). As regras de quem pode o quê estão em
 // regras.ts (podeMudar) e são conferidas aqui de novo, com o estado atual do banco.
 
 import { createAdminClient } from "@/lib/supabase/admin";

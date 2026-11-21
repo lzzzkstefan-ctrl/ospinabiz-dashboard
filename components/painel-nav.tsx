@@ -2,61 +2,42 @@
 
 import { LogoutButton } from "@/components/logout-button";
 import { cn } from "@/lib/utils";
-import {
-  Activity,
-  BadgeDollarSign,
-  Building2,
-  CalendarCheck,
-  CalendarClock,
-  Filter,
-  House,
-  Lightbulb,
-  ListChecks,
-  Presentation,
-  Users,
-} from "lucide-react";
+import { Archive, BadgeDollarSign, House, Settings } from "lucide-react";
+import { ehAbaArquivada } from "@/lib/arquivo";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 // Menu no estilo do masterview: pílula de vidro no topo (computador) e barra de
 // ícones flutuante embaixo (celular). Módulo novo = um item aqui.
-// `para`: quem vê o item. "todos" = qualquer logado; "equipe" = admin e atendente (o plantonista,
-// que só cobre turnos, não); "admin" = só admin; "gestor" = chefe e gerente em Vendas (a página confere). O bloqueio de verdade (endereço digitado) fica em
-// lib/supabase/proxy.ts (ADMIN_PATHS e BLOQUEADO_PLANTONISTA): manter as listas iguais.
-type Para = "todos" | "equipe" | "admin" | "gestor";
+// Central de gestão (21/11/2026): Hoje · Vendas · Arquivado · Configurações. As abas novas (Frentes,
+// Funis, Estratégia, Projetos, Testes, Decisões, Biblioteca) entram aqui na fase em que ficarem prontas.
+// `para`: quem vê o item. "gestao" = Davi e Rodrigo (app_metadata.gestao); "equipe" = todos menos o
+// plantonista (que só cobria turnos); "todos" = qualquer logado. O bloqueio de verdade (endereço
+// digitado) fica em lib/supabase/proxy.ts (GESTAO_PATHS e BLOQUEADO_PLANTONISTA): manter igual.
+type Para = "todos" | "equipe" | "gestao";
 const TODOS: { href: string; label: string; icon: typeof House; emBreve: boolean; para: Para }[] = [
-  { href: "/", label: "Início", icon: House, emBreve: false, para: "todos" },
-  { href: "/monitor", label: "Monitor", icon: Activity, emBreve: false, para: "admin" },
-  { href: "/tarefas", label: "Tarefas", icon: ListChecks, emBreve: false, para: "todos" },
+  { href: "/", label: "Hoje", icon: House, emBreve: false, para: "gestao" },
+  // Vendas fica igual para todos (a Vyenna ainda usa até a migração para o Prime)
   { href: "/vendas", label: "Vendas", icon: BadgeDollarSign, emBreve: false, para: "equipe" },
-  { href: "/funil", label: "Funil", icon: Filter, emBreve: false, para: "todos" },
-  { href: "/escala", label: "Check-in", icon: CalendarClock, emBreve: false, para: "todos" },
-  { href: "/webinarios", label: "Webinários", icon: Presentation, emBreve: false, para: "equipe" },
-  { href: "/fechamento", label: "Fechamento", icon: CalendarCheck, emBreve: true, para: "admin" },
-  { href: "/bms", label: "BMs", icon: Building2, emBreve: false, para: "admin" },
-  { href: "/melhorias", label: "Melhorias", icon: Lightbulb, emBreve: false, para: "gestor" },
-  // a página confere de novo: só chefe e gerente em Vendas
-  { href: "/admin/usuarios", label: "Usuários", icon: Users, emBreve: false, para: "admin" },
+  { href: "/arquivado", label: "Arquivado", icon: Archive, emBreve: false, para: "gestao" },
+  // quem não é da gestão vê só Notificações dentro (a página confere)
+  { href: "/configuracoes", label: "Configurações", icon: Settings, emBreve: false, para: "todos" },
 ];
 
 export type PapelMenu = "admin" | "atendente" | "plantonista";
 
-const itens = (papel: PapelMenu, gestor: boolean) =>
-  TODOS.filter(
-    (i) =>
-      i.para === "todos" ||
-      (i.para === "equipe" && papel !== "plantonista") ||
-      (i.para === "admin" && papel === "admin") ||
-      (i.para === "gestor" && gestor),
-  );
+const itens = (papel: PapelMenu, gestao: boolean) =>
+  TODOS.filter((i) => i.para === "todos" || (i.para === "equipe" && papel !== "plantonista") || (i.para === "gestao" && gestao));
 
 function estaAtivo(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
+  // as telas antigas acendem "Arquivado"
+  if (href === "/arquivado" && ehAbaArquivada(pathname)) return true;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 /** Pílula do topo (computador). `usuario` = e-mail de quem está logado. */
-export function PainelNav({ usuario, papel, gestor = false }: { usuario?: React.ReactNode; papel: PapelMenu; gestor?: boolean }) {
+export function PainelNav({ usuario, papel, gestao = false }: { usuario?: React.ReactNode; papel: PapelMenu; gestao?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -67,7 +48,7 @@ export function PainelNav({ usuario, papel, gestor = false }: { usuario?: React.
       aria-label="Navegação principal"
     >
       <span className="shrink-0 px-3 text-[12.5px] font-semibold text-white">Ospinabiz</span>
-      {itens(papel, gestor).map(({ href, label, emBreve }) => {
+      {itens(papel, gestao).map(({ href, label, emBreve }) => {
         const ativo = estaAtivo(pathname, href);
         return (
           <Link
@@ -96,7 +77,7 @@ export function PainelNav({ usuario, papel, gestor = false }: { usuario?: React.
 }
 
 /** Barra de ícones flutuante embaixo (celular). */
-export function PainelNavMobile({ papel, gestor = false }: { papel: PapelMenu; gestor?: boolean }) {
+export function PainelNavMobile({ papel, gestao = false }: { papel: PapelMenu; gestao?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -106,7 +87,7 @@ export function PainelNavMobile({ papel, gestor = false }: { papel: PapelMenu; g
       suppressHydrationWarning
       aria-label="Navegação principal"
     >
-      {itens(papel, gestor).map(({ href, label, icon: Icon }) => {
+      {itens(papel, gestao).map(({ href, label, icon: Icon }) => {
         const ativo = estaAtivo(pathname, href);
         return (
           <Link

@@ -11,7 +11,7 @@ const texto = (msg: string, status: number) => new Response(msg, { status, heade
 export async function GET(request: Request) {
   const usuario = await usuarioLogado();
   if (!usuario) return texto("Faça login.", 401);
-  if (usuario.papel !== "admin") return texto("Só admin pode exportar.", 403);
+  if (!usuario.gestao) return texto("Só a gestão pode exportar.", 403);
 
   const v = new URL(request.url).searchParams.get("v");
   const atendenteId = v && (await opcoesDoFunil()).vendedores.some((o) => o.id === v) ? v : null;

@@ -27,11 +27,15 @@ escolhas em português simples.
 - Dados reais (telefones dos números monitorados, clientes) ficam no banco, nunca no código nem no git.
 - `docs/contas.md` registra onde está cada conta e quem é o dono. Só nomes, nunca senhas ou tokens.
 - Decisão nova de arquitetura vai para `docs/decisoes.md` (com o porquê).
-- **Backlog e novidades (aba Melhorias):** ao terminar algo, o item vai para "Feito" com uma linha
-  explicando (entra em Novidades): `npm run melhorias:docs -- --feito=<id> --linha="..."` (ou arrastar
-  na aba). Entrega sem item no backlog: criar com `--novo="Título" --aba=...` e marcar feito. Antes de
-  cada push, rodar `npm run melhorias:docs` (gera `docs/backlog.md` e `docs/changelog.md`; o banco é a
-  fonte, não editar esses dois arquivos à mão).
+- **Central de gestão (desde 21/11/2026):** a operação do dia a dia está no Prime. Monitor, Check-in, BMs,
+  Webinários, Funil (antigo), Tarefas e Melhorias estão em "Arquivado", só leitura em três camadas
+  (`lib/arquivo.ts`, `[data-arquivado]` no CSS e a trava `arquivada_so_leitura` no banco). Não reativar
+  nada disso sem o Davi pedir. A gestão (Hoje, Arquivado, Usuários e as abas novas) é só de quem tem
+  `app_metadata.gestao` (Davi e Rodrigo); Vendas continua igual para a Vyenna.
+- **Backlog e novidades:** a aba Melhorias foi arquivada (a tabela `melhorias` é só leitura).
+  `docs/backlog.md` e `docs/changelog.md` ficaram congelados em 21/11/2026; não rodar mais
+  `npm run melhorias:docs` com `--novo`/`--feito` (dá erro). As entregas passam a ir para Projetos
+  (fase 2).
 - Versões das dependências principais ficam fixas (sem `latest`).
 
 ## Estrutura
@@ -40,10 +44,11 @@ escolhas em português simples.
 app/                          tudo que vira endereço (URL)
   (auth)/                     telas públicas: login, esqueci-senha, definir-senha, confirmar, erro
   (painel)/                   telas com login; layout.tsx = menu em pílula (topo) + barra de ícones (celular)
-    page.tsx                  Início: capa editável + "Status do dia" (resumo das outras abas)
+    page.tsx                  Hoje: capa editável (só gestão; quem não é vai para Vendas)
     <modulo>/page.tsx         tela do módulo (monitor, vendas, fechamento, bms)
     <modulo>/_componentes/    peças visuais usadas só por esse módulo
-    admin/usuarios/           convites e papéis (só admin)
+    arquivado/                lista das abas arquivadas (cada uma tem layout.tsx com a faixa "Arquivado")
+    configuracoes/            Notificações deste aparelho (todos), usuarios/ e diagnostico/ (só gestão)
   api/                        endereços chamados por máquinas (Meta, pg_cron, botões)
     <modulo>/<acao>/route.ts  ex.: api/monitor/webhook, api/monitor/rodar-teste
 modulos/<modulo>/             regras de negócio do módulo (sem tela, sem HTML)

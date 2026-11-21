@@ -8,6 +8,7 @@ import { usuarioLogado } from "@/lib/auth/papeis";
 import { atualizarTarefa, inserirTarefa, ordemNoTopo } from "@/modulos/tarefas/dados";
 import { ehStatus, lerCamposTarefa, lerResponsavel } from "@/modulos/tarefas/regras";
 import { refresh } from "next/cache";
+import { soLeitura } from "@/lib/arquivo";
 
 const SEM_LOGIN: EstadoForm = { erro: "Entre de novo para salvar." };
 
@@ -18,6 +19,8 @@ function idValido(valor: unknown): number | null {
 
 /** "+ Nova tarefa": título e responsável; entra no topo de "A fazer". */
 export async function criarTarefa(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await usuarioLogado())) return SEM_LOGIN;
 
   const lido = lerCamposTarefa(form);
@@ -31,6 +34,8 @@ export async function criarTarefa(_anterior: EstadoForm, form: FormData): Promis
 }
 
 export async function editarTarefa(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await usuarioLogado())) return SEM_LOGIN;
 
   const id = idValido(form.get("id"));
@@ -49,6 +54,8 @@ export async function editarTarefa(_anterior: EstadoForm, form: FormData): Promi
 
 /** Arrastar e soltar: coluna e posição numa única atualização. Com erro, a tela recarrega do banco. */
 export async function moverTarefa(id: number, status: string, ordem: number): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await usuarioLogado())) return SEM_LOGIN;
   if (!idValido(id) || !ehStatus(status) || !Number.isFinite(ordem)) return { erro: "Movimento inválido." };
 
@@ -59,6 +66,8 @@ export async function moverTarefa(id: number, status: string, ordem: number): Pr
 
 /** Mini menu da bolinha: troca só o responsável. */
 export async function trocarResponsavel(id: number, responsavelId: number | null): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await usuarioLogado())) return SEM_LOGIN;
   const responsavel_id = lerResponsavel(responsavelId ?? "");
   if (!idValido(id) || responsavel_id === undefined) return { erro: "Responsável inválido." };
@@ -70,6 +79,8 @@ export async function trocarResponsavel(id: number, responsavelId: number | null
 
 /** Bolinha de concluir: manda para o topo de "Feito" ou volta para o topo de "A fazer". */
 export async function alternarConclusao(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   if (!(await usuarioLogado())) return;
 
   const id = idValido(form.get("id"));

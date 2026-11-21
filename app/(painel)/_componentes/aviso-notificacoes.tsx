@@ -13,7 +13,7 @@
 import { desligadoDeProposito, idDoAparelho, inscreverAparelho, marcarDesligado, nomeDoAparelho, paraEnviar, situacaoDoAparelho } from "@/lib/push-navegador";
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { confirmarInscricao, salvarInscricao } from "../escala/acoes";
+import { confirmarInscricao, salvarInscricao } from "../acoes-push";
 
 const CHAVE_ADIADO = "ospinabiz:push-adiado-ate";
 const ADIAR_MS = 3 * 86_400_000;
@@ -107,7 +107,7 @@ export function AvisoNotificacoes() {
       {aviso === "desativadas" ? (
         <button type="button" onClick={ativar} disabled={ocupado} className="flex-1 text-left">
           <span className="block text-[13.5px] font-semibold text-white">{ocupado ? "Ativando…" : "Notificações desativadas, toque para ativar"}</span>
-          <span className="block text-[12px] text-ink-dim">Sem isso este aparelho não recebe os avisos de venda, pausa e operação.</span>
+          <span className="block text-[12px] text-ink-dim">Sem isso este aparelho não recebe os avisos de venda e de reembolso.</span>
           {erro && <span className="block text-[12px] text-[rgb(var(--tag-laranja))]">{erro}</span>}
         </button>
       ) : (

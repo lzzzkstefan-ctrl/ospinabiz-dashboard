@@ -12,12 +12,20 @@
 // Sem app_metadata.vendas: admin = chefe; plantonista = nenhum; os outros = vendedor (igual à função
 // privado.vendas_papel).
 
+import { temGestao } from "./gestao";
 import { createClient } from "@/lib/supabase/server";
 
 export type Papel = "admin" | "atendente" | "plantonista";
 export type PapelVendas = "chefe" | "gerente" | "vendedor" | "nenhum";
 
-export type UsuarioLogado = { id: string; papel: Papel | null; vendas: PapelVendas };
+/**
+ * gestao (21/11/2026): acesso à central de gestão (Hoje, Arquivado, Usuários e as abas novas). Fica em
+ * app_metadata.gestao, só no Davi e no Rodrigo. Não usa o papel admin porque a Vyenna também é admin e a
+ * aba Vendas lê esse papel (ex.: Reembolsos): tirar o admin dela mudaria a Vendas.
+ */
+export type UsuarioLogado = { id: string; papel: Papel | null; vendas: PapelVendas; gestao: boolean };
+
+export { temGestao };
 
 /** Quem está logado e o papel dele, ou null se ninguém está logado. */
 export async function usuarioLogado(): Promise<UsuarioLogado | null> {
@@ -36,7 +44,11 @@ export async function usuarioLogado(): Promise<UsuarioLogado | null> {
         : papel === "admin"
           ? "chefe"
           : "vendedor";
-  return { id: claims.sub, papel, vendas };
+  return { id: claims.sub, papel, vendas, gestao: temGestao(claims.app_metadata) };
+}
+
+export async function ehGestao(): Promise<boolean> {
+  return (await usuarioLogado())?.gestao === true;
 }
 
 export async function ehAdmin(): Promise<boolean> {

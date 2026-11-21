@@ -9,11 +9,14 @@ import { createClient } from "@/lib/supabase/server";
 import { sincronizarFunil } from "@/modulos/funil/sincronizar";
 import { refresh } from "next/cache";
 import { after } from "next/server";
+import { soLeitura } from "@/lib/arquivo";
 
 const SO_ADMIN: EstadoForm = { erro: "Só o admin pode alterar." };
 const horaOk = (h: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(h);
 
 export async function salvarConfigFunil(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const horas = Number(String(form.get("horas_espera") ?? "").replace(",", "."));
@@ -46,6 +49,8 @@ export async function salvarConfigFunil(_anterior: EstadoForm, form: FormData): 
  * (AAAA-MM-DDTHH:MM); só as colocações a partir daí contam. Depois de salvar, ressincroniza.
  */
 export async function salvarEtiquetaChegada(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const etiqueta = String(form.get("etiqueta") ?? "").trim() || null;
@@ -67,6 +72,8 @@ export async function salvarEtiquetaChegada(_anterior: EstadoForm, form: FormDat
 }
 
 export async function criarMudanca(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const dia = String(form.get("dia") ?? "");
@@ -82,6 +89,8 @@ export async function criarMudanca(_anterior: EstadoForm, form: FormData): Promi
 }
 
 export async function apagarMudanca(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return;
   const id = Number(form.get("id"));
@@ -103,6 +112,8 @@ function sincronizarDepois() {
 }
 
 export async function criarNumeroInterno(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const nome = String(form.get("nome") ?? "").trim();
@@ -118,6 +129,8 @@ export async function criarNumeroInterno(_anterior: EstadoForm, form: FormData):
 }
 
 export async function apagarNumeroInterno(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return;
   const id = Number(form.get("id"));
@@ -130,6 +143,8 @@ export async function apagarNumeroInterno(form: FormData): Promise<void> {
 
 /** Custo de mensagens: preço por mensagem cobrada, franquia mensal por número, moeda e janela grátis de anúncio. */
 export async function salvarCustoMensagens(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const preco = Number(String(form.get("preco") ?? "").replace(",", "."));
@@ -166,6 +181,8 @@ export async function salvarCustoMensagens(_anterior: EstadoForm, form: FormData
  * Mesmo nome substitui o anterior. Tudo é conferido de novo aqui (tipos, tamanhos, só as primeiras palavras).
  */
 export async function salvarMapas(mapas: unknown): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   if (!Array.isArray(mapas) || !mapas.length || mapas.length > 50) return { erro: "Nenhum fluxo para salvar." };
@@ -198,6 +215,8 @@ export async function salvarMapas(mapas: unknown): Promise<EstadoForm> {
 }
 
 export async function apagarMapa(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return;
   const id = Number(form.get("id"));

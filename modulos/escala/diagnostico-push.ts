@@ -1,5 +1,5 @@
 // Diagnóstico das notificações (só admin; o RLS confere): por aparelho, quantos avisos foram enviados, aceitos
-// por Apple/Google e confirmados pelo aparelho, e em que dia parou. Tela em /admin/notificacoes.
+// por Apple/Google e confirmados pelo aparelho, e em que dia parou. Tela em /configuracoes/diagnostico.
 
 import { createClient } from "@/lib/supabase/server";
 import { emBrasilia } from "./regras";

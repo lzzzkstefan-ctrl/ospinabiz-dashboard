@@ -4,8 +4,11 @@
 // Regras ficam em modulos/monitor/avaliar-resultado.ts e montar-alerta.ts.
 
 import { chamadaDoCron } from "@/lib/auth/cron";
+import { ARQUIVADO_EM, soLeitura } from "@/lib/arquivo";
 
 export function POST(request: Request) {
+  // aba arquivada em 21/11/2026: o agendamento foi desligado; se alguém ainda chamar, não faz nada
+  if (soLeitura()) return Response.json({ ok: false, arquivado: ARQUIVADO_EM }, { status: 410 });
   if (!chamadaDoCron(request)) {
     return Response.json({ error: "nao autorizado" }, { status: 401 });
   }

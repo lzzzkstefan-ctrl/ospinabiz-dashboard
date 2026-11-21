@@ -14,7 +14,8 @@ const PAPEIS: PapelUsuario[] = ["chefe", "gerente", "vendedor", "plantonista"];
 
 async function gestor(): Promise<string | null> {
   const u = await usuarioLogado();
-  return u && (u.vendas === "chefe" || u.vendas === "gerente") ? u.id : null;
+  // desde 21/11/2026 só a gestão (Davi e Rodrigo); antes, chefe e gerente de Vendas
+  return u?.gestao ? u.id : null;
 }
 
 /** Endereço do site para o link do convite (produção: o domínio da Vercel). */
@@ -25,7 +26,7 @@ async function site(): Promise<string> {
   return `${proto}://${host}`;
 }
 
-const NEGADO: Resultado = { erro: "Só o chefe e o gerente gerenciam usuários." };
+const NEGADO: Resultado = { erro: "Só a gestão (Davi e Rodrigo) gerencia usuários." };
 
 export async function acaoConvidar(_anterior: Resultado, form: FormData): Promise<Resultado> {
   const eu = await gestor();

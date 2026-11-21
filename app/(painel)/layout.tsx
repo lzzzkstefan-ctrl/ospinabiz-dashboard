@@ -1,34 +1,25 @@
 import { PainelNav, PainelNavMobile, type PapelMenu } from "@/components/painel-nav";
 import { UsuarioAtual } from "@/components/usuario-atual";
 import { usuarioLogado } from "@/lib/auth/papeis";
-import { perguntaFeriado } from "@/modulos/escala/dados";
 import { AvisoNotificacoes } from "./_componentes/aviso-notificacoes";
-import { FeriadoPopup } from "./escala/_componentes/feriado-popup";
 import { Suspense } from "react";
 
 // O papel vem do login (pedido), então o menu fica dentro do Suspense. Enquanto carrega,
-// mostra o menu mais restrito (o do plantonista): nunca aparece aba que a pessoa não pode abrir.
+// mostra o menu mais restrito (o do plantonista, sem gestão): nunca aparece aba que a pessoa não pode abrir.
+// O aviso de feriado da véspera saiu em 21/11/2026 (Check-in arquivado).
 async function Menu() {
   const usuario = await usuarioLogado();
-  const gestor = usuario?.vendas === "chefe" || usuario?.vendas === "gerente";
-  return <Navegacao papel={usuario?.papel ?? "plantonista"} gestor={gestor} />;
+  return <Navegacao papel={usuario?.papel ?? "plantonista"} gestao={usuario?.gestao ?? false} />;
 }
 
-// Feriado na véspera (a partir das 9h): o admin decide se a operação roda (modulos/escala/feriados.ts)
-async function Feriado() {
-  const usuario = await usuarioLogado();
-  if (usuario?.papel !== "admin") return null;
-  return <FeriadoPopup pergunta={await perguntaFeriado(usuario.id)} />;
-}
-
-function Navegacao({ papel, gestor = false }: { papel: PapelMenu; gestor?: boolean }) {
+function Navegacao({ papel, gestao = false }: { papel: PapelMenu; gestao?: boolean }) {
   return (
     <>
       {/* na impressão (relatório de fechamento em PDF) o menu some */}
       <div className="print:hidden">
         <PainelNav
           papel={papel}
-          gestor={gestor}
+          gestao={gestao}
           usuario={
             <Suspense>
               <UsuarioAtual />
@@ -37,7 +28,7 @@ function Navegacao({ papel, gestor = false }: { papel: PapelMenu; gestor?: boole
         />
       </div>
       <div className="print:hidden">
-        <PainelNavMobile papel={papel} gestor={gestor} />
+        <PainelNavMobile papel={papel} gestao={gestao} />
       </div>
     </>
   );
@@ -65,9 +56,6 @@ export default function PainelLayout({
       {/* faixa no topo (computador): o conteúdo que rola some por baixo do menu fixo em vez de ficar
           atrás dele, legível e "por baixo" */}
       <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-30 hidden h-[92px] bg-gradient-to-b from-background via-background/85 to-transparent md:block print:hidden" />
-      <Suspense fallback={null}>
-        <Feriado />
-      </Suspense>
       {/* notificações desativadas neste aparelho: reativa sozinho ou pede um toque */}
       <AvisoNotificacoes />
       <main className="mx-auto max-w-[1180px] px-6 pb-28 pt-8 md:pb-16 md:pt-[112px] print:max-w-none print:p-0">{children}</main>

@@ -6,17 +6,15 @@
 
 import type { EstadoForm } from "@/components/formulario";
 import { usuarioLogado } from "@/lib/auth/papeis";
-import { guardarInscricao } from "@/lib/notificacoes";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import type { InscricaoNavegador } from "@/lib/push-navegador";
 import { hojeSP } from "@/modulos/funil/calculo";
 import { inicioDaSemana, instante, somarDias, TIPOS_COMPROMISSO, type TipoCompromisso } from "@/modulos/escala/regras";
 import { avisarCompromisso, type AcaoCompromisso } from "@/modulos/escala/compromissos";
-import { avisarEntradaSaida, avisarPausa, avisoDeTeste, verificarAlertas } from "@/modulos/escala/alertas";
+import { avisarEntradaSaida, avisarPausa, verificarAlertas } from "@/modulos/escala/alertas";
 import { enviarMensagensDaDecisao, verificarFeriados, type EnvioFeriado } from "@/modulos/escala/feriados";
 import { refresh } from "next/cache";
 import { after } from "next/server";
+import { soLeitura } from "@/lib/arquivo";
 
 const SO_ADMIN: EstadoForm = { erro: "Só o admin pode fazer isso." };
 const horaOk = (h: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(h);
@@ -54,6 +52,8 @@ function conferirAlertasDepois() {
 
 /** "Entrei na operação" (hora do servidor). */
 export async function entrarNaOperacao(): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const supabase = await createClient();
   const { data: checkinId, error } = await supabase.rpc("escala_comecar_turno", { p_tipo: "normal" });
   if (error) return { erro: mensagem(error) };
@@ -72,6 +72,8 @@ export async function entrarNaOperacao(): Promise<EstadoForm> {
 
 /** "Sair da operação" (hora do servidor). */
 export async function sairDaOperacao(): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const supabase = await createClient();
   const { error } = await supabase.rpc("escala_encerrar_turno");
   if (error) return { erro: mensagem(error) };
@@ -97,6 +99,8 @@ const MOTIVOS = ["almoco", "banho", "imprevisto", "outro"] as const;
 
 /** "Pausa": escolhe o motivo (e um texto opcional). Só quem está online; hora do servidor. */
 export async function pausar(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const motivo = String(form.get("motivo") ?? "");
   if (!(MOTIVOS as readonly string[]).includes(motivo)) return { erro: "Escolha o motivo da pausa." };
   const detalhe = String(form.get("detalhe") ?? "").trim().slice(0, 120) || null;
@@ -118,6 +122,8 @@ export async function pausar(_anterior: EstadoForm, form: FormData): Promise<Est
 
 /** "Voltar da pausa" (hora do servidor). */
 export async function voltarDaPausa(): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const supabase = await createClient();
   const { error } = await supabase.rpc("escala_voltar_da_pausa");
   if (error) return { erro: mensagem(error) };
@@ -141,6 +147,8 @@ export async function voltarDaPausa(): Promise<EstadoForm> {
 
 /** Admin: a partir de quantos minutos a pausa é longa (destaque em vermelho). */
 export async function salvarPausaLonga(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const min = Number(form.get("minutos"));
@@ -154,6 +162,8 @@ export async function salvarPausaLonga(_anterior: EstadoForm, form: FormData): P
 
 /** Admin corrige o horário de entrada/saída (exige motivo; fica registrado). */
 export async function corrigirTurno(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const id = Number(form.get("id"));
@@ -180,6 +190,8 @@ export async function corrigirTurno(_anterior: EstadoForm, form: FormData): Prom
 // ---------------------------------------------------------------------------
 
 export async function criarPadrao(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const dias = form.getAll("dia_semana").map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
@@ -207,6 +219,8 @@ export async function criarPadrao(_anterior: EstadoForm, form: FormData): Promis
  * começou é apagado.
  */
 export async function encerrarPadrao(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return;
   const id = Number(form.get("id"));
@@ -221,6 +235,8 @@ export async function encerrarPadrao(form: FormData): Promise<void> {
 }
 
 export async function criarPessoa(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const nome = String(form.get("nome") ?? "").trim();
@@ -240,6 +256,8 @@ const TIPOS_FERIADO_MANUAL = ["estadual", "municipal", "manual"] as const;
 
 /** "Adicionar feriado": estadual de SP, municipal ou ponto facultativo. */
 export async function adicionarFeriado(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const data = String(form.get("data") ?? "");
@@ -264,6 +282,8 @@ export async function adicionarFeriado(_anterior: EstadoForm, form: FormData): P
 
 /** Admin: apaga um feriado cadastrado à mão (os nacionais não saem). */
 export async function apagarFeriado(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return;
   const id = Number(form.get("id"));
@@ -280,6 +300,8 @@ export type ResultadoDecisao = EstadoForm & { envios?: EnvioFeriado[] };
  * quando: o banco preenche) e manda o WhatsApp para quem tem horário fixo no dia.
  */
 export async function decidirFeriado(_anterior: ResultadoDecisao, form: FormData): Promise<ResultadoDecisao> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const id = Number(form.get("id"));
@@ -302,6 +324,8 @@ export async function decidirFeriado(_anterior: ResultadoDecisao, form: FormData
 
 /** Admin: WhatsApp de uma pessoa da equipe (para as mensagens automáticas). Vazio = apaga. */
 export async function salvarWhatsappEquipe(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (usuario?.papel !== "admin") return SO_ADMIN;
   const equipeId = Number(form.get("equipe_id"));
@@ -327,46 +351,10 @@ export async function salvarWhatsappEquipe(_anterior: EstadoForm, form: FormData
 // Notificações (cada um mexe só nas próprias; o RLS confere)
 // ---------------------------------------------------------------------------
 
-/**
- * O aparelho abriu o app com uma inscrição: garante que ela está no banco (se foi apagada, por
- * expirar ou por engano, volta). Sem refresh: roda em segundo plano a cada abertura.
- */
-export async function confirmarInscricao(sub: InscricaoNavegador, aparelho: string, aparelhoId: string | null): Promise<{ voltou: boolean }> {
-  if (!/^https:\/\//.test(sub?.endpoint ?? "") || !sub.keys?.p256dh || !sub.keys?.auth) return { voltou: false };
-  const usuario = await usuarioLogado();
-  if (!usuario) return { voltou: false };
-  const r = await guardarInscricao(createAdminClient(), usuario.id, sub, aparelho, aparelhoId);
-  return { voltou: r.mudou };
-}
-
-/** Aparelho ativou as notificações: guarda a inscrição (troca se já existia). */
-export async function salvarInscricao(sub: InscricaoNavegador, aparelho: string, aparelhoId: string | null): Promise<EstadoForm> {
-  if (!/^https:\/\//.test(sub?.endpoint ?? "") || !sub.keys?.p256dh || !sub.keys?.auth) return { erro: "Inscrição inválida." };
-  const usuario = await usuarioLogado();
-  if (!usuario) return { erro: "Entre de novo." };
-  const r = await guardarInscricao(createAdminClient(), usuario.id, sub, aparelho, aparelhoId);
-  if (r.erro) return { erro: "Não deu para ativar." };
-  refresh();
-  return { ok: "Notificações ativadas neste aparelho." };
-}
-
-export async function apagarInscricao(endpoint: string): Promise<EstadoForm> {
-  const supabase = await createClient();
-  await supabase.from("push_inscricoes").delete().eq("endpoint", endpoint);
-  refresh();
-  return { ok: "Notificações desligadas neste aparelho." };
-}
-
-/** Manda um aviso de teste só para os aparelhos de quem clicou. */
-export async function testarNotificacao(): Promise<EstadoForm> {
-  const usuario = await usuarioLogado();
-  if (!usuario) return { erro: "Entre de novo." };
-  const n = await avisoDeTeste(usuario.id);
-  return n ? { ok: `Teste enviado (${n} aparelho${n > 1 ? "s" : ""}).` } : { erro: "Nenhum aparelho seu ativado (ou as chaves de notificação faltam no servidor)." };
-}
-
 /** Quais avisos a pessoa quer receber. */
 export async function salvarPreferencias(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (!usuario) return { erro: "Entre de novo." };
   const marcado = (k: string) => form.get(k) === "on";
@@ -414,6 +402,8 @@ function depoisDoCompromisso(id: number, acao: AcaoCompromisso, quem: string) {
 
 /** Cadastrar (sem id) ou editar (com id) um compromisso previsto. */
 export async function salvarCompromisso(_anterior: EstadoForm, form: FormData): Promise<EstadoForm> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (!usuario) return { erro: "Entre de novo." };
   const admin = usuario.papel === "admin";
@@ -459,6 +449,8 @@ export async function salvarCompromisso(_anterior: EstadoForm, form: FormData): 
 
 /** Cancelar (não apaga: fica cancelado). */
 export async function cancelarCompromisso(form: FormData): Promise<void> {
+  const bloqueio = soLeitura();
+  if (bloqueio) return bloqueio as never;
   const usuario = await usuarioLogado();
   if (!usuario) return;
   const id = Number(form.get("id"));

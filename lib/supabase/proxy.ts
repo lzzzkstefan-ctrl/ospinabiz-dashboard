@@ -1,5 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { ehAbaArquivada } from "../arquivo";
+import { temGestao } from "../auth/gestao";
 import { hasEnvVars } from "../utils";
 
 // Rotas acessiveis sem login.
@@ -12,7 +14,16 @@ const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/confirmar", "/erro", "/api",
 // Telas só de admin. Atendente que digitar o endereço volta pro Início.
 // Manter igual aos itens com `admin: true` em components/painel-nav.tsx.
 // /vendas/config fica liberada: atendente vê em modo leitura (a página decide o que mostra).
-const ADMIN_PATHS = ["/monitor", "/bms", "/fechamento", "/admin", "/vendas/fechamento"];
+const ADMIN_PATHS = ["/vendas/fechamento"];
+
+// Central de gestão (21/11/2026): só quem tem app_metadata.gestao (Davi e Rodrigo). Inclui o Hoje ("/"),
+// as abas arquivadas (lib/arquivo.ts) e Usuários. Os outros (Vyenna, Teste) vão para Vendas.
+// Manter igual a `para: "gestao"` em components/painel-nav.tsx.
+const GESTAO_PATHS = ["/arquivado", "/configuracoes/usuarios", "/configuracoes/diagnostico", "/admin"];
+
+function soGestao(pathname: string) {
+  return pathname === "/" || comecaCom(pathname, GESTAO_PATHS) || ehAbaArquivada(pathname);
+}
 
 // Telas que o plantonista (só cobre turnos) não abre. O bloqueio dos dados é no banco (RLS);
 // aqui só evita a tela. Manter igual a `para` em components/painel-nav.tsx.
@@ -79,16 +90,16 @@ export async function updateSession(request: NextRequest) {
   }
 
   const papel = (user?.app_metadata as { papel?: unknown } | undefined)?.papel;
-  if (user && ((papel !== "admin" && comecaCom(pathname, ADMIN_PATHS)) || (papel === "plantonista" && comecaCom(pathname, BLOQUEADO_PLANTONISTA)))) {
+  const gestao = temGestao(user?.app_metadata);
+  // quem não é da gestão começa em Vendas (o plantonista, que não abre Vendas, em Configurações)
+  const inicio = gestao ? "/" : papel === "plantonista" ? "/configuracoes" : "/vendas";
+  const bloqueado =
+    (!gestao && soGestao(pathname)) ||
+    (papel !== "admin" && comecaCom(pathname, ADMIN_PATHS)) ||
+    (papel === "plantonista" && comecaCom(pathname, BLOQUEADO_PLANTONISTA));
+  if (user && (bloqueado || pathname === "/login")) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
-    url.search = "";
-    return NextResponse.redirect(url);
-  }
-
-  if (user && pathname === "/login") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = inicio;
     url.search = "";
     return NextResponse.redirect(url);
   }
