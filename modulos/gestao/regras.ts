@@ -148,3 +148,88 @@ export function numeroDoForm(form: FormData, campo: string): number | null {
 export function urlOk(url: string | null): url is string {
   return !!url && /^https?:\/\/\S+$/i.test(url) && url.length <= 2000;
 }
+
+// ---------------------------------------------------------------------------
+// Frentes e Funis (fase 3)
+// ---------------------------------------------------------------------------
+export type TipoOferta = "front" | "downsell" | "upsell" | "order_bump";
+export const NOME_TIPO_OFERTA: Record<TipoOferta, string> = { front: "Front", downsell: "Downsell", upsell: "Upsell", order_bump: "Order bump" };
+
+export type Remuneracao = "fixo" | "comissao" | "cupom";
+export const NOME_REMUNERACAO: Record<Remuneracao, string> = { fixo: "Fixo", comissao: "Comissão", cupom: "Cupom" };
+export const ehRemuneracao = (v: unknown): v is Remuneracao => v === "fixo" || v === "comissao" || v === "cupom";
+export const ehStatusFrente = (v: unknown): v is StatusFrente => typeof v === "string" && v in STATUS_FRENTE;
+
+/** "R$ 338" ou "R$ 48,90 a R$ 118". */
+export function faixaDePreco(preco: number | null, ate: number | null): string | null {
+  if (preco == null) return null;
+  const f = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: Number.isInteger(v) ? 0 : 2 });
+  return ate != null && ate !== preco ? `${f(preco)} a ${f(ate)}` : f(preco);
+}
+
+export type TipoBloco =
+  | "entrada"
+  | "anuncio"
+  | "mensagem"
+  | "audio"
+  | "video"
+  | "pagina"
+  | "checkout"
+  | "oferta"
+  | "grupo"
+  | "live"
+  | "upsell"
+  | "downsell"
+  | "resultado"
+  | "funil";
+export const TIPOS_BLOCO: { id: TipoBloco; nome: string }[] = [
+  { id: "entrada", nome: "Entrada" },
+  { id: "anuncio", nome: "Anúncio" },
+  { id: "mensagem", nome: "Mensagem" },
+  { id: "audio", nome: "Áudio" },
+  { id: "video", nome: "Vídeo" },
+  { id: "pagina", nome: "Página" },
+  { id: "checkout", nome: "Checkout" },
+  { id: "oferta", nome: "Oferta" },
+  { id: "grupo", nome: "Grupo" },
+  { id: "live", nome: "Live" },
+  { id: "upsell", nome: "Upsell" },
+  { id: "downsell", nome: "Downsell" },
+  { id: "resultado", nome: "Resultado" },
+  { id: "funil", nome: "Funil" },
+];
+export const ehTipoBloco = (v: unknown): v is TipoBloco => TIPOS_BLOCO.some((t) => t.id === v);
+
+export type StatusBloco = "no_ar" | "construcao" | "ideia" | "problema";
+/** verde = no ar, amarelo = em construção, cinza = ideia, vermelho = com problema */
+export const STATUS_BLOCO: { id: StatusBloco; nome: string; cor: string }[] = [
+  { id: "no_ar", nome: "No ar", cor: "verde" },
+  { id: "construcao", nome: "Em construção", cor: "amarelo" },
+  { id: "ideia", nome: "Ideia", cor: "cinza" },
+  { id: "problema", nome: "Com problema", cor: "vermelho" },
+];
+export const ehStatusBloco = (v: unknown): v is StatusBloco => STATUS_BLOCO.some((s) => s.id === v);
+
+export type LinkBloco = { titulo: string; url: string };
+
+/** Links do painel do bloco: uma linha por link, "Nome | https://..." ou só a URL. Inválidos ficam de fora. */
+export function lerLinks(textoLinks: string): LinkBloco[] {
+  return textoLinks
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => {
+      const i = l.lastIndexOf("|");
+      const url = (i >= 0 ? l.slice(i + 1) : l).trim();
+      const titulo = (i >= 0 ? l.slice(0, i) : "").trim();
+      return { titulo: titulo || (urlOk(url) ? new URL(url).hostname.replace(/^www\./, "") : ""), url };
+    })
+    .filter((l) => urlOk(l.url))
+    .slice(0, 12)
+    .map((l) => ({ titulo: l.titulo.slice(0, 80), url: l.url }));
+}
+
+export const figmaOk = (url: string | null): url is string => !!url && /^https:\/\/([a-z0-9-]+\.)?figma\.com\/\S+$/i.test(url) && url.length <= 2000;
+
+/** Endereço para incorporar o arquivo do Figma/FigJam (embed oficial). */
+export const figmaEmbed = (url: string) => `https://www.figma.com/embed?embed_host=ospinabiz&url=${encodeURIComponent(url)}`;

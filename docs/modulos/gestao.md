@@ -35,3 +35,35 @@ Reels dos módulos, Pesquisa GCS, Viral via influencers e Lançamento (colunas i
 - **Pauta da reunião** (`pauta_itens`): qualquer um da gestão põe assunto durante a semana; na reunião
   cada item vira decisão (`decisao_id`), tarefa num projeto (`iniciativa_item_id`) ou é descartado.
   Os resolvidos dos últimos 14 dias ficam visíveis e podem voltar para a pauta.
+
+# Fase 3 (21/11/2026): Frentes e Funis
+
+Migration `20261121190000_gestao_frentes_funis`. Ações em `app/(painel)/frentes/acoes.ts` e
+`app/(painel)/funis/acoes.ts`.
+
+## Frentes (`/frentes`, `/frentes/<slug>`)
+- `frentes` ganhou objetivo, `meta_mensal`, público, canal, `estrategia` ("Como funciona"), notas e
+  `linha_vendas` (`gcs`/`viral`): de onde sai o real do mês (vendas pagas, sem teste, confirmadas;
+  líquido como no Hoje) para comparar com a meta.
+- **Oferta e escada de preços:** `ofertas` (front, downsell, upsell, order bump; preço ou faixa com
+  `preco_ate`; condição; conversão com origem para a fase 4).
+- **Influencers:** `frente_influencers` (nome, @, nicho, seguidores, contato, custo, remuneração
+  fixo/comissão/cupom, link, cupom, vendas com origem, notas). Aparece na frente do Viral (ou em
+  qualquer frente que tiver influencer).
+- **Próximos passos:** as iniciativas da frente em Projetos que não estão no ar nem pausadas.
+- Dados iniciais: o texto do pedido de 21/11 (X1, Viral, Webinários); Lançamento vazio. Os 6 ganchos
+  não estavam em nenhum arquivo: as notas dos blocos P1/P2 começaram vazias.
+
+## Funis (`/funis`, `?m=<slug>`)
+- Canvas com React Flow (`@xyflow/react` 12.12.1): `mapas` (um por funil; `frente_id` vazio = visão
+  geral), `mapa_blocos` e `mapa_ligacoes` (o banco só liga blocos do mesmo funil). Nomes `mapa_*`
+  para não confundir com as tabelas `funil_*` antigas (Data Crazy, arquivadas).
+- Bloco: nome, tipo, status (verde no ar, amarelo em construção, cinza ideia, vermelho com problema),
+  preço ou faixa, número da etapa (com origem), nota (gancho), links (um por linha "Nome | url") e,
+  na visão geral, o funil que ele abre (`abre_mapa_id`).
+- Editar: clicar no bloco abre o painel; "+ Bloco" cria num espaço livre perto do meio da tela;
+  puxar de uma bolinha até outra liga (raio de 48 px); clicar na seta edita o rótulo ou apaga.
+  Arrastar salva a posição. A câmera não fica salva (abre ajustada à tela; computador e celular
+  são diferentes) — a coluna `mapas.viewport` ficou sem uso.
+- Exportar PNG: `html-to-image` 1.11.11 (exemplo oficial do React Flow), imagem do funil inteiro.
+- Figma/FigJam: link por funil (só `figma.com`), aberto embutido ao lado com "Figma ao lado".

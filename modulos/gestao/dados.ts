@@ -2,7 +2,7 @@
 // (o RLS só libera para a gestão). Contexto em docs/modulos/gestao.md.
 
 import { createClient } from "@/lib/supabase/server";
-import { segundaDa, somarDias, somarVendas, type Coluna, type Investimento, type Numeros, type StatusDecisao, type StatusFrente } from "./regras";
+import { segundaDa, somarDias, somarVendas, type Coluna, type Investimento, type LinkBloco, type Numeros, type Remuneracao, type StatusBloco, type StatusDecisao, type StatusFrente, type TipoBloco, type TipoOferta } from "./regras";
 
 export type Pessoa = { id: number; nome: string };
 export type Frente = { id: number; slug: string; nome: string; status: StatusFrente };
@@ -214,3 +214,161 @@ export async function listarIniciativasCurtas(): Promise<{ id: number; titulo: s
   erro("as iniciativas", error);
   return (data ?? []).map((i) => ({ id: Number(i.id), titulo: i.titulo, frente_id: i.frente_id == null ? null : Number(i.frente_id) }));
 }
+
+// ---------------------------------------------------------------------------
+// Frentes (fase 3)
+// ---------------------------------------------------------------------------
+const num = (v: unknown) => (v == null ? null : Number(v));
+
+export type Oferta = { id: number; ordem: number; tipo: TipoOferta; nome: string; preco: number | null; preco_ate: number | null; condicao: string | null; conversao: number | null };
+export type Influencer = {
+  id: number;
+  nome: string;
+  arroba: string | null;
+  nicho: string | null;
+  seguidores: number | null;
+  contato: string | null;
+  custo: number | null;
+  remuneracao: Remuneracao | null;
+  link: string | null;
+  cupom: string | null;
+  vendas: number | null;
+  vendas_origem: "manual" | "prime";
+  notas: string | null;
+};
+export type FrenteCompleta = Frente & {
+  objetivo: string | null;
+  meta_mensal: number | null;
+  publico: string | null;
+  canal: string | null;
+  estrategia: string | null;
+  notas: string | null;
+  linha_vendas: "gcs" | "viral" | null;
+  ofertas: Oferta[];
+  influencers: Influencer[];
+  mapa: { id: number; slug: string; nome: string } | null;
+};
+
+export async function carregarFrentes(): Promise<FrenteCompleta[]> {
+  const db = await createClient();
+  const [fr, of, inf, ma] = await Promise.all([
+    db.from("frentes").select("id, slug, nome, status, objetivo, meta_mensal, publico, canal, estrategia, notas, linha_vendas").order("ordem"),
+    db.from("ofertas").select("id, frente_id, ordem, tipo, nome, preco, preco_ate, condicao, conversao").order("ordem").order("id"),
+    db.from("frente_influencers").select("*").order("ordem").order("id"),
+    db.from("mapas").select("id, slug, nome, frente_id").not("frente_id", "is", null),
+  ]);
+  erro("as frentes", fr.error ?? of.error ?? inf.error ?? ma.error);
+  return (fr.data ?? []).map((f) => {
+    const id = Number(f.id);
+    const m = (ma.data ?? []).find((x) => Number(x.frente_id) === id);
+    return {
+      ...f,
+      id,
+      status: f.status as StatusFrente,
+      meta_mensal: num(f.meta_mensal),
+      linha_vendas: f.linha_vendas as FrenteCompleta["linha_vendas"],
+      ofertas: (of.data ?? [])
+        .filter((o) => Number(o.frente_id) === id)
+        .map((o) => ({ id: Number(o.id), ordem: o.ordem, tipo: o.tipo as TipoOferta, nome: o.nome, preco: num(o.preco), preco_ate: num(o.preco_ate), condicao: o.condicao, conversao: num(o.conversao) })),
+      influencers: (inf.data ?? [])
+        .filter((x) => Number(x.frente_id) === id)
+        .map((x) => ({ ...x, id: Number(x.id), seguidores: num(x.seguidores), custo: num(x.custo), vendas: num(x.vendas) }) as Influencer),
+      mapa: m ? { id: Number(m.id), slug: m.slug, nome: m.nome } : null,
+    };
+  });
+}
+
+/** Vendas pagas (sem teste, confirmadas) e líquido do mês por linha (gcs/viral), para meta x real. */
+export async function vendasDoMesPorLinha(hoje: string): Promise<Record<"gcs" | "viral", { vendas: number; liquido: number }>> {
+  const inicio = `${hoje.slice(0, 7)}-01`;
+  const db = await createClient();
+  const { data, error } = await db
+    .from("vendas")
+    .select("linha, teste, aguardando_confirmacao, receita_liquida, viral_liquido, snap_liquido")
+    .gte("data", inicio)
+    .lte("data", hoje)
+    .eq("status", "pago");
+  erro("as vendas do mês", error);
+  const r = { gcs: { vendas: 0, liquido: 0 }, viral: { vendas: 0, liquido: 0 } };
+  for (const v of data ?? []) {
+    if (v.teste || v.aguardando_confirmacao) continue;
+    const linha = v.linha === "viral" ? "viral" : "gcs";
+    r[linha].vendas++;
+    r[linha].liquido += num(v.receita_liquida) ?? num(v.viral_liquido) ?? num(v.snap_liquido) ?? 0;
+  }
+  return r;
+}
+
+/** Iniciativas de uma frente que ainda não estão no ar (os próximos passos). */
+export async function proximosPassos(frenteId: number): Promise<{ id: number; titulo: string; coluna: Coluna; prazo: string | null; feitos: number; total: number }[]> {
+  const db = await createClient();
+  const { data, error } = await db
+    .from("iniciativas")
+    .select("id, titulo, coluna, prazo, ordem, itens:iniciativa_itens(feito_em)")
+    .eq("frente_id", frenteId)
+    .in("coluna", ["ideia", "planejando", "andamento"])
+    .order("ordem");
+  erro("os próximos passos", error);
+  const peso: Record<string, number> = { andamento: 0, planejando: 1, ideia: 2 };
+  return (data ?? [])
+    .map((i) => {
+      const itens = (i.itens ?? []) as { feito_em: string | null }[];
+      return { id: Number(i.id), titulo: i.titulo, coluna: i.coluna as Coluna, prazo: i.prazo, feitos: itens.filter((x) => x.feito_em).length, total: itens.length };
+    })
+    .sort((a, b) => peso[a.coluna] - peso[b.coluna]);
+}
+
+// ---------------------------------------------------------------------------
+// Funis desenhados (fase 3)
+// ---------------------------------------------------------------------------
+export type Mapa = { id: number; slug: string; nome: string; frente_id: number | null; figma_url: string | null; viewport: { x: number; y: number; zoom: number } | null };
+export type Bloco = {
+  id: number;
+  nome: string;
+  tipo: TipoBloco;
+  status: StatusBloco;
+  preco: number | null;
+  preco_ate: number | null;
+  numero: number | null;
+  numero_origem: "manual" | "prime";
+  nota: string | null;
+  links: LinkBloco[];
+  abre_mapa_id: number | null;
+  pos_x: number;
+  pos_y: number;
+};
+export type Ligacao = { id: number; de: number; para: number; rotulo: string | null };
+
+export async function listarMapas(): Promise<Mapa[]> {
+  const db = await createClient();
+  const { data, error } = await db.from("mapas").select("id, slug, nome, frente_id, figma_url, viewport").order("ordem");
+  erro("os funis", error);
+  return (data ?? []).map((m) => ({ ...m, id: Number(m.id), frente_id: num(m.frente_id) }) as Mapa);
+}
+
+export async function carregarMapa(mapaId: number): Promise<{ blocos: Bloco[]; ligacoes: Ligacao[] }> {
+  const db = await createClient();
+  const [b, l] = await Promise.all([
+    db.from("mapa_blocos").select("id, nome, tipo, status, preco, preco_ate, numero, numero_origem, nota, links, abre_mapa_id, pos_x, pos_y").eq("mapa_id", mapaId).order("id"),
+    db.from("mapa_ligacoes").select("id, de_bloco_id, para_bloco_id, rotulo").eq("mapa_id", mapaId).order("id"),
+  ]);
+  erro("o funil", b.error ?? l.error);
+  return {
+    blocos: (b.data ?? []).map(
+      (x) =>
+        ({
+          ...x,
+          id: Number(x.id),
+          preco: num(x.preco),
+          preco_ate: num(x.preco_ate),
+          numero: num(x.numero),
+          abre_mapa_id: num(x.abre_mapa_id),
+          pos_x: Number(x.pos_x),
+          pos_y: Number(x.pos_y),
+          links: Array.isArray(x.links) ? (x.links as LinkBloco[]) : [],
+        }) as Bloco,
+    ),
+    ligacoes: (l.data ?? []).map((x) => ({ id: Number(x.id), de: Number(x.de_bloco_id), para: Number(x.para_bloco_id), rotulo: x.rotulo })),
+  };
+}
+
