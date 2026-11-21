@@ -1,9 +1,10 @@
 import { usuarioLogado } from "@/lib/auth/papeis";
 import { cn } from "@/lib/utils";
-import { decisoesPendentes, listarPessoas, numerosDaSemana, prazosDaSemana, prioridadesDaSemana, vendasDaSemana } from "@/modulos/gestao/dados";
+import { carregarProgresso, decisoesPendentes, listarPessoas, numerosDaSemana, prazosDaSemana, prioridadesDaSemana, vendasDaSemana } from "@/modulos/gestao/dados";
 import { dataCurta, diasAte, hojeSP, segundaDa, somarDias, textoPrazo } from "@/modulos/gestao/regras";
 import { nomeNaEquipe, urlDaCapa } from "@/modulos/inicio/capa";
-import { ArrowRight } from "lucide-react";
+import { META_DIA, sequencia, xpPorDia } from "@/modulos/gestao/progresso";
+import { ArrowRight, Flame } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Capa } from "./_componentes/capa";
@@ -58,6 +59,8 @@ async function ConteudoHoje() {
           </h1>
         </header>
       </div>
+
+      {usuario?.gestao && <SeuDia usuarioId={usuario.id} hoje={hoje} />}
 
       <Secao titulo="Prioridades da semana" detalhe={`${dataCurta(semana, hoje)} a ${dataCurta(somarDias(semana, 6), hoje)}`}>
         <Prioridades itens={prioridades} pessoas={pessoas} semana={semana} hoje={hoje} />
@@ -137,4 +140,42 @@ function Secao({ titulo, detalhe, link, children }: { titulo: string; detalhe?: 
 
 function Vazio({ children }: { children: React.ReactNode }) {
   return <p className="m-0 border-y border-line-soft py-3 text-[13px] text-ink-faint">{children}</p>;
+}
+
+/** Faixa do Progresso no Hoje: XP do dia, meta e sequência. Se der erro, some (não derruba o Hoje). */
+async function SeuDia({ usuarioId, hoje }: { usuarioId: string; hoje: string }) {
+  let xp = 0;
+  let dias = 0;
+  try {
+    const { eventos } = await carregarProgresso(hoje, usuarioId);
+    const porDia = xpPorDia(eventos.filter((e) => e.meu));
+    xp = porDia.get(hoje) ?? 0;
+    dias = sequencia(porDia, hoje).dias;
+  } catch (e) {
+    console.error("[hoje] progresso:", e);
+    return null;
+  }
+  const p = Math.min(100, (xp / META_DIA) * 100);
+  return (
+    <Link href="/progresso" className="glass-lite mb-10 flex flex-wrap items-center gap-x-5 gap-y-3 p-4 transition-colors hover:border-accent/50">
+      <div className="min-w-[180px] flex-1">
+        <div className="flex items-baseline justify-between text-[13px]">
+          <span className="font-semibold text-white">Seu dia</span>
+          <span className="tabular-nums text-ink-dim">
+            {xp} / {META_DIA} XP
+          </span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-bg-raised-2">
+          <div className={cn("h-full rounded-full", xp >= META_DIA ? "bg-[rgb(var(--tag-verde))]" : "bg-accent")} style={{ width: `${Math.max(2, p)}%` }} />
+        </div>
+      </div>
+      <span className="flex items-center gap-1.5 text-[13px] text-ink-dim">
+        <Flame size={15} className={dias > 0 ? "text-[rgb(var(--tag-laranja))]" : "text-ink-faint"} aria-hidden />
+        {dias} {dias === 1 ? "dia seguido" : "dias seguidos"}
+      </span>
+      <span className="flex items-center gap-1 text-[13px] font-medium text-accent">
+        {xp === 0 ? "Registrar o que fiz" : "Ver progresso"} <ArrowRight size={14} aria-hidden />
+      </span>
+    </Link>
+  );
 }

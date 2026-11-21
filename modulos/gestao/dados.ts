@@ -2,6 +2,7 @@
 // (o RLS só libera para a gestão). Contexto em docs/modulos/gestao.md.
 
 import { createClient } from "@/lib/supabase/server";
+import { ehTamanho, ehTipoRegistro, XP_AUTOMATICO, xpDoTamanho, type Evento } from "./progresso";
 import { segundaDa, somarDias, somarVendas, type Coluna, type Investimento, type LinkBloco, type Numeros, type Remuneracao, type StatusBloco, type StatusDecisao, type StatusFrente, type TipoBloco, type TipoOferta } from "./regras";
 
 export type Pessoa = { id: number; nome: string };
@@ -372,3 +373,128 @@ export async function carregarMapa(mapaId: number): Promise<{ blocos: Bloco[]; l
   };
 }
 
+
+// ---------------------------------------------------------------------------
+// Progresso (21/11/2026): o que foi feito, dia a dia, com XP. Junta os registros digitados com o que
+// já aconteceu nas outras abas (itens de projeto feitos, prioridades concluídas, decisões tomadas)
+// e as vendas do dia como resultado.
+// ---------------------------------------------------------------------------
+export type DadosProgresso = {
+  eventos: Evento[];
+  vendasPorDia: Record<string, { vendas: number; liquido: number }>;
+  desde: string;
+};
+
+/** Dia em Brasília de um timestamp. */
+function diaSP(ts: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ts));
+}
+
+export async function carregarProgresso(hoje: string, usuarioId: string): Promise<DadosProgresso> {
+  const desde = somarDias(hoje, -7 * 18);
+  const inicioTs = `${desde}T00:00:00-03:00`;
+  const db = await createClient();
+  const [eq, regs, itens, prios, decs, vendas] = await Promise.all([
+    db.from("equipe").select("id, nome, usuario_id"),
+    db.from("registros").select("id, data, titulo, resultado, tipo, tamanho, link, autor_id").gte("data", desde).order("criado_em", { ascending: false }),
+    db.from("iniciativa_itens").select("id, texto, feito_em, responsavel_id, iniciativas (titulo)").gte("feito_em", inicioTs),
+    db.from("prioridades").select("id, titulo, concluida_em, dono_id").gte("concluida_em", inicioTs),
+    db.from("decisoes").select("id, data, decisao, quem_id, criado_por").eq("status", "decidido").gte("data", desde),
+    db.from("vendas").select("data, status, teste, aguardando_confirmacao, receita_liquida, viral_liquido, snap_liquido").gte("data", desde).lte("data", hoje).eq("status", "pago"),
+  ]);
+  erro("a equipe", eq.error);
+  // sem a tabela ainda (migration não rodou), o resto do Progresso funciona com o que já existe
+  if (regs.error) console.error("[progresso] registros:", regs.error.code, regs.error.message);
+  erro("os itens de projeto", itens.error);
+  erro("as prioridades", prios.error);
+  erro("as decisões", decs.error);
+  erro("as vendas", vendas.error);
+
+  const pessoas = (eq.data ?? []).map((p) => ({ id: Number(p.id), nome: String(p.nome), usuario: p.usuario_id as string | null }));
+  const nomePorUsuario = (u: string | null) => pessoas.find((p) => u && p.usuario === u)?.nome ?? null;
+  const nomePorId = (id: unknown) => (id == null ? null : (pessoas.find((p) => p.id === Number(id))?.nome ?? null));
+  const meuId = pessoas.find((p) => p.usuario === usuarioId)?.id ?? null;
+  const ehMeu = (id: unknown) => meuId != null && id != null && Number(id) === meuId;
+
+  const eventos: Evento[] = [];
+  for (const r of regs.data ?? []) {
+    const tamanho = ehTamanho(r.tamanho) ? r.tamanho : "m";
+    eventos.push({
+      chave: `r${r.id}`,
+      dia: String(r.data),
+      titulo: String(r.titulo),
+      resultado: r.resultado ?? null,
+      origem: "registro",
+      tipo: ehTipoRegistro(r.tipo) ? r.tipo : "entrega",
+      tamanho,
+      xp: xpDoTamanho(tamanho),
+      link: r.link ?? null,
+      quem: nomePorUsuario(r.autor_id),
+      meu: r.autor_id === usuarioId,
+      registroId: Number(r.id),
+    });
+  }
+  for (const i of itens.data ?? []) {
+    if (!i.feito_em) continue;
+    const ini = Array.isArray(i.iniciativas) ? i.iniciativas[0] : i.iniciativas;
+    eventos.push({
+      chave: `i${i.id}`,
+      dia: diaSP(i.feito_em),
+      titulo: String(i.texto),
+      resultado: ini?.titulo ? `Avançou o projeto "${ini.titulo}"` : null,
+      origem: "projeto",
+      tipo: null,
+      tamanho: null,
+      xp: XP_AUTOMATICO.projeto,
+      link: null,
+      quem: nomePorId(i.responsavel_id),
+      meu: ehMeu(i.responsavel_id),
+      registroId: null,
+    });
+  }
+  for (const p of prios.data ?? []) {
+    if (!p.concluida_em) continue;
+    eventos.push({
+      chave: `p${p.id}`,
+      dia: diaSP(p.concluida_em),
+      titulo: String(p.titulo),
+      resultado: "Prioridade da semana concluída",
+      origem: "prioridade",
+      tipo: null,
+      tamanho: null,
+      xp: XP_AUTOMATICO.prioridade,
+      link: null,
+      quem: nomePorId(p.dono_id),
+      meu: ehMeu(p.dono_id),
+      registroId: null,
+    });
+  }
+  for (const d of decs.data ?? []) {
+    eventos.push({
+      chave: `d${d.id}`,
+      dia: String(d.data),
+      titulo: String(d.decisao),
+      resultado: "Decisão tomada",
+      origem: "decisao",
+      tipo: null,
+      tamanho: null,
+      xp: XP_AUTOMATICO.decisao,
+      link: `/decisoes?d=${d.id}`,
+      quem: nomePorId(d.quem_id) ?? nomePorUsuario(d.criado_por),
+      meu: d.quem_id != null ? ehMeu(d.quem_id) : d.criado_por === usuarioId,
+      registroId: null,
+    });
+  }
+
+  const n = (v: unknown) => (v == null ? null : Number(v));
+  const vendasPorDia: DadosProgresso["vendasPorDia"] = {};
+  for (const v of vendas.data ?? []) {
+    if (v.teste || v.aguardando_confirmacao) continue;
+    const dia = String(v.data);
+    const atual = (vendasPorDia[dia] ??= { vendas: 0, liquido: 0 });
+    atual.vendas++;
+    atual.liquido += n(v.receita_liquida) ?? n(v.viral_liquido) ?? n(v.snap_liquido) ?? 0;
+  }
+
+  return { eventos, vendasPorDia, desde };
+}

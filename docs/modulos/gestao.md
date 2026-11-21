@@ -67,3 +67,21 @@ Migration `20261121190000_gestao_frentes_funis`. Ações em `app/(painel)/frente
   são diferentes) — a coluna `mapas.viewport` ficou sem uso.
 - Exportar PNG: `html-to-image` 1.11.11 (exemplo oficial do React Flow), imagem do funil inteiro.
 - Figma/FigJam: link por funil (só `figma.com`), aberto embutido ao lado com "Figma ao lado".
+
+# Progresso (21/11/2026)
+
+Migration `20261121220000_gestao_progresso`. Regras em `modulos/gestao/progresso.ts`, leitura em
+`carregarProgresso` (`modulos/gestao/dados.ts`), ações em `app/(painel)/progresso/acoes.ts`.
+
+Pra ver que as coisas estão andando: o que foi feito, dia a dia, e o que isso gerou.
+
+- **Registros** (`registros`): o que se digita à mão (o que fez, o que gerou, tipo, tamanho P/M/G,
+  link, dia). Cada um cria, edita e apaga só o seu (RLS por `autor_id`); a gestão vê tudo.
+- **Automático** (sem tabela nova): item de projeto feito (+10, conta pra quem é o responsável),
+  prioridade concluída (+50, pro dono), decisão tomada (+20, pra quem decidiu). Vendas pagas do dia
+  aparecem como resultado da operação, sem XP.
+- **XP**: P 15, M 40, G 80. Meta do dia: 100 XP. Nível: 300 XP o primeiro, +100 a cada nível.
+  Sequência = dias seguidos com algum XP (o dia de hoje só quebra quando acaba).
+- Tela: "Só eu" / "Gestão", placar (nível, anel do dia, sequência e semana x semana passada),
+  registrar, mapa de calor das últimas 18 semanas e linha do tempo. O Hoje tem a faixa "Seu dia".
+- Sem a migration rodada, a tela funciona só com o automático (o erro dos registros é engolido).

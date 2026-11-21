@@ -317,3 +317,14 @@
 [data-arquivado] :is(button, input:not([type="hidden"]), select, textarea):not(:is(form[method="get" i] *)) {
   opacity: 0.35;
 }
+
+/* Progresso: "+40 XP" sobe e some depois de registrar */
+@keyframes subirXp {
+  0% { opacity: 0; transform: translateY(6px) scale(0.9); }
+  15% { opacity: 1; transform: translateY(0) scale(1.05); }
+  70% { opacity: 1; transform: translateY(-6px) scale(1); }
+  100% { opacity: 0; transform: translateY(-16px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-[subirXp"] { animation: none !important; }
+}
