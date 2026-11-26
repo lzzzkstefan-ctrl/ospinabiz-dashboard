@@ -14,6 +14,7 @@ Onde está cada conta e quem é o dono. **Só nomes e URLs. Nunca senhas, tokens
 | Meta | BM do monitor + número remetente | _pendente_ | | | |
 | Telegram | Bot de alertas | _pendente_ | | | |
 | Hubla | Webhook de vendas → Edge Function `https://ihxevdaaxzamqzawzgmd.supabase.co/functions/v1/hubla-webhook` (segundo webhook, ao lado do masterview e do Metrito) | Token da conta Hubla (um só para todos os webhooks) no secret `HUBLA_WEBHOOK_TOKEN` da Edge Function | Davi | | 2026-10-08 |
+| Anthropic | API do Claude (aba Criativos): chave em `ANTHROPIC_API_KEY` (.env.local e Vercel) | [console.anthropic.com](https://console.anthropic.com) · _dono a definir (registrar aqui quem criou a conta)_ | _a definir_ | _a definir_ | 2026-11-26 |
 
 ## Observações
 

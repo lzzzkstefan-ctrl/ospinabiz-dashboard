@@ -2,7 +2,7 @@
 
 import { LogoutButton } from "@/components/logout-button";
 import { cn } from "@/lib/utils";
-import { Archive, BadgeDollarSign, FolderKanban, House, Layers, Scale, Settings, Trophy, Workflow } from "lucide-react";
+import { Archive, BadgeDollarSign, Clapperboard, FolderKanban, House, Layers, Scale, Settings, Trophy, Workflow } from "lucide-react";
 import { ehAbaArquivada } from "@/lib/arquivo";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -22,6 +22,7 @@ const TODOS: { href: string; label: string; icon: typeof House; emBreve: boolean
   { href: "/frentes", label: "Frentes", icon: Layers, emBreve: false, para: "gestao" },
   { href: "/funis", label: "Funis", icon: Workflow, emBreve: false, para: "gestao" },
   { href: "/projetos", label: "Projetos", icon: FolderKanban, emBreve: false, para: "gestao" },
+  { href: "/criativos", label: "Criativos", icon: Clapperboard, emBreve: false, para: "gestao" },
   { href: "/decisoes", label: "Decisões", icon: Scale, emBreve: false, para: "gestao" },
   { href: "/progresso", label: "Progresso", icon: Trophy, emBreve: false, para: "gestao" },
   { href: "/arquivado", label: "Arquivado", icon: Archive, emBreve: false, para: "gestao" },

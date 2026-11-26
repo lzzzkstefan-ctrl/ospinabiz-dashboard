@@ -373,11 +373,18 @@ function Registrar({ hoje }: { hoje: string }) {
   const [ganho, setGanho] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
+  // registro salvo: mostra o XP ganho e volta o tamanho pro padrão (ajuste no render, sem efeito)
+  const [estadoVisto, setEstadoVisto] = useState(estado);
+  if (estado !== estadoVisto) {
+    setEstadoVisto(estado);
+    if (estado.ok) {
+      setGanho(estado.ok);
+      setTamanho("m");
+    }
+  }
   useEffect(() => {
     if (!estado.ok) return;
-    setGanho(estado.ok);
     formRef.current?.reset();
-    setTamanho("m");
     const t = setTimeout(() => setGanho(null), 1800);
     return () => clearTimeout(t);
   }, [estado]);

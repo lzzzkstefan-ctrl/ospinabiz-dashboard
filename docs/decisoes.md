@@ -2,6 +2,26 @@
 
 Registro curto do que foi decidido e por quê. Decisão nova entra no topo.
 
+## 2026-11-26: Criativos com IA pela API da Anthropic, sem raspar a Biblioteca de Anúncios
+
+- **Geração pela API da Anthropic (Claude Sonnet 5.5, `claude-sonnet-5-5`)**, chamada do servidor
+  (`lib/integracoes/anthropic.ts`), com o agente de `docs/modulos/criativos-agente.md` como system prompt.
+  O texto do agente nunca vai pro navegador. Resposta em JSON com formato fixo por modo (structured
+  outputs), conferida antes de salvar; quebrada, pede de novo uma vez.
+- **Rota `app/api/criativos/gerar`** (e não Server Action) pra ter `maxDuration = 300` explícito: uma
+  geração leva de 20 s a 2 min, e a segunda tentativa precisa caber.
+- **Trava de gasto no nosso banco:** toda geração grava tokens e custo estimado em R$ em
+  `criativo_geracoes` (inclusive as que falharam); passou de `CRIATIVOS_LIMITE_MENSAL_BRL` (padrão
+  R$ 100) no mês, os botões param. Ninguém altera nem apaga esse histórico.
+- **Sem raspagem da Biblioteca de Anúncios:** o Rodrigo escolhe os players à mão (extensão da
+  Biblioteca) e cola o link e a transcrição; a IA só analisa o que foi colado.
+
+**Por quê:** a IA via API roda dentro do fluxo da operação (salva, organiza por status, vira variação
+com um clique, aprende com venceu/perdeu), o que um chat solto não faz. Raspar a Biblioteca de Anúncios
+fere os termos da Meta (risco pra conta e pras BMs) e quebra a cada mudança na página; a escolha do player
+já é manual e é onde está o julgamento do Rodrigo. A trava no banco existe porque a fatura da Anthropic
+chega depois: sem ela, um mês de uso pesado só apareceria no cartão.
+
 ## 2026-10-08: Regra A — Protocolo na venda = ticket, pelo valor cobrado
 
 Substitui as versões do mesmo dia ("só o principal" e "nome ≠ cobrado vai para A revisar").
