@@ -55,7 +55,7 @@ modulos/<modulo>/             regras de negócio do módulo (sem tela, sem HTML)
 lib/                          ferramentas compartilhadas por todos os módulos
   supabase/                   client.ts (navegador), server.ts (servidor, usuário logado),
                               admin.ts (chave secreta, só servidor), proxy.ts (sessão/login)
-  integracoes/                meta.ts, telegram.ts (futuro: hubla.ts, kirvano.ts)
+  integracoes/                meta.ts, telegram.ts, anthropic.ts (IA da aba Criativos)
   auth/papeis.ts              checagem de papel admin/atendente
 components/                   peças visuais usadas por mais de um módulo (ui/ = shadcn)
 supabase/
